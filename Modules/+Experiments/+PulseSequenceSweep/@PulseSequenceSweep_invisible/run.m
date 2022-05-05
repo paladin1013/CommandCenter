@@ -30,6 +30,7 @@ for i = 1:numVars
 end
 
 obj.data.sumCounts = NaN([obj.averages,varLength,obj.nCounterBins]);
+% obj.data.completeCounts = NaN([obj.averages,varLength,obj.samples]);
 obj.data.stdCounts = NaN([obj.averages,varLength,obj.nCounterBins]);
 
 obj.meta.prefs = obj.prefs2struct;
@@ -76,6 +77,7 @@ try
                 else
                     obj.data.sumCounts(j,indices{:},:) = sum(dat);
                     obj.data.stdCounts(j,indices{:},:) = std(dat);
+                    % obj.data.completeCounts(j,indices{:},:) = dat;
                 end
             end
             obj.UpdateRun(status,managers,ax,j,indices{:});

@@ -149,49 +149,56 @@ classdef SMIQ06B < Drivers.SignalGenerators.SignalGenerator
         %%
         
         function UnitPower = getUnitPower(obj)
-            UnitPower = obj.writeRead('UNIT:POWER?');
+            UnitPower = obj.writeOnly('UNIT:POWER?');
             UnitPower = strrep(UnitPower,newline,''); %remove excess carriage returns
         end
         
         function  [Freq]=getFreqCW(obj)
             string = sprintf('FREQ?');  % Hz
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             Freq = str2double(s);
         end
         
         function  [Power]=getPowerCW(obj)
             string = sprintf('POW?');
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             Power = str2double(s);
         end
         
         function  [FreqMode]=getFreqMode(obj)
             string = sprintf('FREQ:MODE?');
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             FreqMode = strrep(s,newline,''); %remove excess carriage returns;
         end
         
         function  [PowerMode]=getPowerMode(obj)
             string = sprintf('POWer:MODE?');
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             PowerMode = strrep(s,newline,''); %remove excess carriage returns;
         end
         
         function  [FreqList]=getFreqList(obj)
             string = sprintf('LIST:FREQ?');
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             FreqList = str2double(s);
         end
         
         function  [PowerList]=getPowerList(obj)
             string = sprintf('LIST:POWer?');
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             PowerList = str2double(s);
         end
         
         function  [MWstate]=getMWstate(obj)
             string = sprintf('OUTPUT:STATE?');
-            s = obj.writeRead(string);
+            s = 0;
+            obj.writeOnly(string);
             if strcmp(strrep(s,newline,''),'1')
                 MWstate = 'On';
             else

@@ -21,8 +21,10 @@ classdef PicoHarp300 < Modules.Driver
         MODE_HIST   =      0;
         MODE_T2	    =      2;
         MODE_T3	    =      3;
+        TTREADMAX = 131072;     % 128K event records 
         
         FLAG_OVERFLOW = hex2dec('0040');
+        FLAG_FIFOFULL = hex2dec('0003');
         
         ZCMIN		  =          0;		% mV
         ZCMAX		  =         20;		% mV
@@ -114,6 +116,8 @@ classdef PicoHarp300 < Modules.Driver
                     Serials = cat(1,Serials,Serial);
                 end
             end
+            dev
+            Serials
             if (length(dev)<1)
                 error('No PicoHarp device available.');
             end
@@ -122,7 +126,7 @@ classdef PicoHarp300 < Modules.Driver
             ret = -1;
             while i<length(dev) && ret~=0
                 i = i+1;
-                [ret] = calllib('PHlib', 'PH_Initialize', dev(i), obj.MODE_HIST);
+                [ret] = calllib('PHlib', 'PH_Initialize', dev(i), obj.MODE_T2);
             end
             if ret~=0
                 error('Error initializing PicoHarp300\nDevice index: %d S/N: %s', dev(i), Serials{i})
@@ -150,6 +154,7 @@ classdef PicoHarp300 < Modules.Driver
             if (ret<0)
                 error('PH_Calibrate error %1d. Aborted.\n',ret);
             end
+            fprintf("Finish PH initialization\n")
         end
     end
     
@@ -191,7 +196,7 @@ classdef PicoHarp300 < Modules.Driver
         end
 
         function PH_SetOffset(obj,Offset)
-            assert(CFDLevel>=obj.OFFSETMIN && CFDLevel<=obj.OFFSETMAX,sprintf('PH_SetOffset out of range [%g, %g]',obj.OFFSETMIN,obj.OFFSETMAX));
+            assert(Offset>=obj.OFFSETMIN && Offset<=obj.OFFSETMAX,sprintf('PH_SetOffset out of range [%g, %g]',obj.OFFSETMIN,obj.OFFSETMAX));
             [ret] = calllib('PHlib','PH_SetOffset',obj.DeviceNr,Offset);
             assert(ret==0,sprintf('PH_SetOffset error %ld.',ret));
         end
@@ -277,5 +282,36 @@ classdef PicoHarp300 < Modules.Driver
             assert(ret==0,sprintf('PH_GetFlags error %ld.',ret));
         end
 
+        function [buffer, nactual] = PH_ReadFiFo(obj)
+            buffer  = uint32(zeros(1,obj.TTREADMAX));
+            bufferptr = libpointer('uint32Ptr', buffer);
+            nactual = int32(0);
+            nactualptr = libpointer('int32Ptr', nactual);
+            
+            [ret, buffer, nactual] = calllib('PHlib','PH_ReadFiFo', obj.DeviceNr, bufferptr, obj.TTREADMAX, nactualptr);
+            assert(ret==0, sprintf('\nPH_ReadFiFo error %ld. Aborted.\n', ret));
+        end
+        
+        function [result, length] = PH_ReadTimeTag(obj)
+            result = [];
+            length = 0;
+            ctcdone = 0;
+            fprintf('\nProgress:%9d',length);
+            
+            while(ctcdone == 0)
+                [buffer, nactual] = obj.PH_ReadFiFo;
+                if(nactual)
+                    result = [result, buffer];
+                    length = length + nactual;
+                    fprintf('\b\b\b\b\b\b\b\b\b%9d',length);
+
+                else
+                    ctcdone = int32(0);
+                    ctcdonePtr = libpointer('int32Ptr', ctcdone);
+                    [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.DeviceNr, ctcdonePtr); 
+                end
+            end
+            fprintf('\nDone\n');
+        end
     end
 end
