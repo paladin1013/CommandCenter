@@ -292,26 +292,6 @@ classdef PicoHarp300 < Modules.Driver
             assert(ret==0, sprintf('\nPH_ReadFiFo error %ld. Aborted.\n', ret));
         end
         
-        function [result, length] = PH_ReadTimeTag(obj)
-            result = [];
-            length = 0;
-            ctcdone = 0;
-            fprintf('\nProgress:%9d',length);
-            
-            while(ctcdone == 0)
-                [buffer, nactual] = obj.PH_ReadFiFo;
-                if(nactual)
-                    result = [result, buffer];
-                    length = length + nactual;
-                    fprintf('\b\b\b\b\b\b\b\b\b%9d',length);
-
-                else
-                    ctcdone = int32(0);
-                    ctcdonePtr = libpointer('int32Ptr', ctcdone);
-                    [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.DeviceNr, ctcdonePtr); 
-                end
-            end
-            fprintf('\nDone\n');
-        end
+        
     end
 end

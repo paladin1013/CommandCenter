@@ -8,19 +8,19 @@ classdef PicoHarp_tttr < Modules.Experiment
         PH_serialNr = 'No device';
         PH_BaseResolution = 'No device';
         connection = false;
-        Tacq_ms = 100; %ms
+        Tacq_ms = 1000; %ms
         MaxTime_s = 3600*10; %s
         MaxCounts = 10000;
-        plot_x_max_cnt = 50;
-        SyncDivider = {uint8(1),uint8(2),uint8(4),uint8(8)};
-        % SyncDivider = uint8(1);
+        plot_x_max_cnt = 1000;
+        % SyncDivider = {uint8(1),uint8(2),uint8(4),uint8(8)};
+        SyncDivider = uint8(1);
         SyncOffset = 0; %ms
         Ch0_CFDzero = 10;% mV
         Ch0_CFDlevel = 50;% mV
         Ch1_CFDzero = 10;% mV
         Ch1_CFDlevel = 150;% mV
-        Binning = num2cell(0:7); % Binning can be 0 to MAXBINSTEPS-1 %time resolution = (PH_BaseResolution*2^Binning) ps
-        % Binning = 0;
+        % Binning = num2cell(0:7); % Binning can be 0 to MAXBINSTEPS-1 %time resolution = (PH_BaseResolution*2^Binning) ps
+        Binning = 0;
         Offset = 0; %ms - still not sure what offset is this
         StopAtOverflow = true;
         OverflowCounts = 65535; %65535 is max value
@@ -74,22 +74,34 @@ classdef PicoHarp_tttr < Modules.Experiment
             fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
             t = tic;
             obj.picoharpH.PH_StartMeas(obj.Tacq_ms);
-            [result, len] = obj.picoharpH.PH_ReadTimeTag;
+            result = [];
+            progress = 0;
+            ctcdone = 0;
+            fprintf('\nProgress:%9d, Time Elapsed: %0.2f\n',progress, toc(t));
+            while(ctcdone == 0)
+                [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
+                buffer(buffer == 4026531840) = 0;
+                if(nactual)
+                    result = [result, buffer(1:nactual)];
+                    progress = progress + nactual;
+                    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%9d, Time Elapsed: %0.2f\n',progress, toc(t));
+                    ax.Children.YData = [ax.Children.YData, buffer(1:nactual)];
+                    ax.Children.XData = [0:progress];
+                    set(ax, 'XLim', [max(0, progress-obj.plot_x_max_cnt), progress])
+                    drawnow limitrate;
+                else
+                    ctcdone = int32(0);
+                    ctcdonePtr = libpointer('int32Ptr', ctcdone);
+                    [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
+                end
+            end
             obj.picoharpH.PH_StopMeas;
-            fprintf('Time elapsed: %0.2f\n', toc(t))
-            obj.data.y = result(1:len);
-            obj.data.x = [1:length(obj.data.y)];
-            ax.Children.YData = obj.data.y;
-            ax.Children.XData = obj.data.x;
-            drawnow limitrate;
-
+            fprintf('\nDone\n');
         end
         
         function prepPlot(obj,ax)
             resolution = obj.picoharpH.PH_GetResolution;
             obj.meta.resolution = resolution;
-            % obj.data.x = uint32(resolution*[0:obj.picoharpH.HISTCHAN-1]);
-            % obj.data.y = uint32(zeros(1,obj.picoharpH.HISTCHAN));
             obj.data.x = [0];
             obj.data.y = [0];
             plot(ax,obj.data.x,obj.data.y);
@@ -98,8 +110,6 @@ classdef PicoHarp_tttr < Modules.Experiment
             if obj.plot_x_max_cnt<x_max
                 set(ax,'XLim',[x_max-obj.plot_x_max_cnt, x_max])
             else
-
-
                 set(ax,'XLim',[0 obj.plot_x_max_cnt])
             end
             set(ax.XLabel,'String','Count')
