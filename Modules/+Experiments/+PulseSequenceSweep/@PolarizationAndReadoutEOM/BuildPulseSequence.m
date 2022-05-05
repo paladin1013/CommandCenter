@@ -34,6 +34,6 @@ m = node(r_e1,MWChannel, 'units','us','delta',obj.readoutPulseDelay_us/2);
 m = node(r_e2,MWChannel, 'units','us','delta',0);
 
 g = node(r_e2,repumpChannel,'units','us','delta',0);
-s.draw
+% s.draw
 end
 

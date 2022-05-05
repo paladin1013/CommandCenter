@@ -11,7 +11,6 @@ classdef PicoHarp_tttr < Modules.Experiment
         Tacq_ms = 1000; %ms
         MaxTime_s = 3600*10; %s
         MaxCounts = 10000;
-        plot_x_max_cnt = 1000;
         % SyncDivider = {uint8(1),uint8(2),uint8(4),uint8(8)};
         SyncDivider = uint8(1);
         SyncOffset = 0; %ms
@@ -25,9 +24,10 @@ classdef PicoHarp_tttr < Modules.Experiment
         StopAtOverflow = true;
         OverflowCounts = 65535; %65535 is max value
         prefs = {'connection'};
-        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','MaxTime_s','MaxCounts','plot_x_max_cnt','Binning','SyncDivider','SyncOffset','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','Tacq_ms','StopAtOverflow','OverflowCounts'};
-        readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
+        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','MaxTime_s','MaxCounts','Binning','SyncDivider','SyncOffset','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','Tacq_ms','StopAtOverflow','OverflowCounts'};
+        readonly_prefs = {'PH_serialNr','PH_BaseResolution', 'PH_WRAPAROUND'};
         Mode         = 2; % 2 for T2 and 3 for T3
+        WRAPAROUND=210698240; % Time period (ps) between two overflow signals
 
     end
     properties(SetAccess=private,Hidden)
@@ -71,23 +71,35 @@ classdef PicoHarp_tttr < Modules.Experiment
             Resolution = obj.picoharpH.PH_GetResolution;
             Countrate0 = obj.picoharpH.PH_GetCountRate(0);
             Countrate1 = obj.picoharpH.PH_GetCountRate(1);
+            obj.meta.resolution = Resolution;
             fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
             t = tic;
             obj.picoharpH.PH_StartMeas(obj.Tacq_ms);
-            result = [];
+            result = double(zeros(1, obj.picoharpH.TTREADMAX));
             progress = 0;
             ctcdone = 0;
             fprintf('\nProgress:%9d, Time Elapsed: %0.2f\n',progress, toc(t));
+            ofl_num = 0;
+            cnt = 0;
             while(ctcdone == 0)
                 [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
-                buffer(buffer == 4026531840) = 0;
+                % buffer(buffer == 4026531840) = 0;
+
+                for k = 1:nactual
+                    if (bitand(bitshift(buffer(k),-28),15)==15) % to detect an overflow signal
+                        ofl_num = ofl_num + 1;
+                    else
+                        cnt = cnt + 1;
+                        result(cnt) = double(ofl_num) * double(obj.WRAPAROUND) + double(buffer(k));
+                    end
+                end
+                    
                 if(nactual)
-                    result = [result, buffer(1:nactual)];
                     progress = progress + nactual;
                     fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%9d, Time Elapsed: %0.2f\n',progress, toc(t));
-                    ax.Children.YData = [ax.Children.YData, buffer(1:nactual)];
-                    ax.Children.XData = [0:progress];
-                    set(ax, 'XLim', [max(0, progress-obj.plot_x_max_cnt), progress])
+                    ax.Children.YData = result(1:cnt)*Resolution;
+                    ax.Children.XData = [1:cnt];
+                    set(ax, 'XLim', [0,  cnt])
                     drawnow limitrate;
                 else
                     ctcdone = int32(0);
@@ -96,24 +108,19 @@ classdef PicoHarp_tttr < Modules.Experiment
                 end
             end
             obj.picoharpH.PH_StopMeas;
+            obj.data.y = result(1:cnt);
+            obj.data.x = [1:cnt];
             fprintf('\nDone\n');
         end
         
         function prepPlot(obj,ax)
-            resolution = obj.picoharpH.PH_GetResolution;
-            obj.meta.resolution = resolution;
             obj.data.x = [0];
             obj.data.y = [0];
             plot(ax,obj.data.x,obj.data.y);
             set(ax,'YLim',[0 inf])
-            x_max = max(obj.data.x);
-            if obj.plot_x_max_cnt<x_max
-                set(ax,'XLim',[x_max-obj.plot_x_max_cnt, x_max])
-            else
-                set(ax,'XLim',[0 obj.plot_x_max_cnt])
-            end
+            set(ax, 'XLim', [0 inf])
             set(ax.XLabel,'String','Count')
-            set(ax.YLabel,'String','TimeStamp')
+            set(ax.YLabel,'String','TimeStamp (ps)')
         end
         
         function SetPHconfig(obj)
