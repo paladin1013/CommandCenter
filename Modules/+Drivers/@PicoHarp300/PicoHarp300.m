@@ -46,28 +46,29 @@ classdef PicoHarp300 < Modules.Driver
     end
     
     methods(Static)
-        function obj = instance(ip)
+        function obj = instance(MODE)
             mlock;
             persistent Objects
             if isempty(Objects)
-                Objects = Drivers.PicoHarp300.empty(1,0);
+                Objects = Drivers.PicoHarp300(MODE).empty(1,0);
             end
             for i = 1:length(Objects)
-                if isvalid(Objects(i)) && isequal(ip,Objects(i).singleton_id)
-                    error('%s driver is already instantiated!',mfilename)
+                if isvalid(Objects(i)) && isequal("PicoHarp300_Mode"+num2str(MODE),Objects(i).singleton_id)
+                    error('%s driver Mode %d is already instantiated!',mfilename, MODE)
+                    return
                 end
             end
-            obj = Drivers.PicoHarp300(ip);
-            obj.singleton_id = ip;
+            obj = Drivers.PicoHarp300(MODE);
+            obj.singleton_id = "PicoHarp300_Mode"+num2str(MODE);
             Objects(end+1) = obj;
         end
     end
     
     methods(Access=private)
-        function obj = PicoHarp300(inputArg)
+        function obj = PicoHarp300(MODE)
             try
                 obj.loadlibPH;
-                obj.opendevPH;
+                obj.opendevPH(MODE);
             catch err
                 obj.delete;
                 error('Error opening communication, PicoHarp300 handle destroyed:\n%s',err.message);
@@ -100,7 +101,7 @@ classdef PicoHarp300 < Modules.Driver
             end
         end
         
-        function opendevPH(obj) % open communication with any PicoHarp found and initialise for histogram acquisition mode
+        function opendevPH(obj, MODE) % open communication with any PicoHarp found and initialise for histogram acquisition MODE
             dev = [];
             Serials = {};
             found = 0;
@@ -126,7 +127,7 @@ classdef PicoHarp300 < Modules.Driver
             ret = -1;
             while i<length(dev) && ret~=0
                 i = i+1;
-                [ret] = calllib('PHlib', 'PH_Initialize', dev(i), obj.MODE_T2);
+                [ret] = calllib('PHlib', 'PH_Initialize', dev(i), MODE);
             end
             if ret~=0
                 error('Error initializing PicoHarp300\nDevice index: %d S/N: %s', dev(i), Serials{i})
@@ -295,3 +296,4 @@ classdef PicoHarp300 < Modules.Driver
         
     end
 end
+ 

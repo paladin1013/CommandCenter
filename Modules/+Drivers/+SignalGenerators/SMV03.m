@@ -218,13 +218,13 @@ classdef SMV03 < Drivers.SignalGenerators.SignalGenerator
             % Grab errors, but timeout after 1 second
             t = tic;
             errs  = {};
-            while toc(t) < 1
-                err = strip(query(obj.comObject,'SYSTEM:ERROR?'));
-                if contains(err,'No error')
-                    break
-                end
-                errs{end+1} = err;
-            end
+            % while toc(t) < 1
+            %     err = strip(query(obj.comObject,'SYSTEM:ERROR?'));
+            %     if contains(err,'No error')
+            %         break
+            %     end
+            %     errs{end+1} = err;
+            % end
             errs = strjoin(errs,newline);
         end
         

@@ -157,7 +157,7 @@ classdef PicoHarp_histo < Modules.Experiment
                 obj.PH_serialNr = 'connecting...';
                 drawnow;
                 try
-                    obj.picoharpH = Drivers.PicoHarp300.instance(1);
+                    obj.picoharpH = Drivers.PicoHarp300.instance(0);
                 catch err
                     obj.connection = false;
                     obj.PH_serialNr = 'No device';

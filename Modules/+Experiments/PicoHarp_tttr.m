@@ -24,10 +24,10 @@ classdef PicoHarp_tttr < Modules.Experiment
         StopAtOverflow = true;
         OverflowCounts = 65535; %65535 is max value
         prefs = {'connection'};
-        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','MaxTime_s','MaxCounts','Binning','SyncDivider','SyncOffset','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','Tacq_ms','StopAtOverflow','OverflowCounts'};
-        readonly_prefs = {'PH_serialNr','PH_BaseResolution', 'PH_WRAPAROUND'};
-        Mode         = 2; % 2 for T2 and 3 for T3
+        PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
         WRAPAROUND=210698240; % Time period (ps) between two overflow signals
+        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','PH_Mode', 'MaxTime_s','MaxCounts','Binning','SyncDivider','SyncOffset','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','Tacq_ms','StopAtOverflow','OverflowCounts'};
+        readonly_prefs = {'PH_serialNr','PH_BaseResolution', 'WRAPAROUND'};
 
     end
     properties(SetAccess=private,Hidden)
@@ -78,10 +78,9 @@ classdef PicoHarp_tttr < Modules.Experiment
             result = double(zeros(1, obj.picoharpH.TTREADMAX));
             progress = 0;
             ctcdone = 0;
-            fprintf('\nProgress:%9d, Time Elapsed: %0.2f\n',progress, toc(t));
             ofl_num = 0;
             cnt = 0;
-            while(ctcdone == 0)
+            while(ctcdone == 0 && obj.abort_request == false)
                 [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
                 % buffer(buffer == 4026531840) = 0;
 
@@ -96,7 +95,7 @@ classdef PicoHarp_tttr < Modules.Experiment
                     
                 if(nactual)
                     progress = progress + nactual;
-                    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%9d, Time Elapsed: %0.2f\n',progress, toc(t));
+                    status.String = sprintf('Progress: %9d, Time Elapsed: %0.2f\n',progress, toc(t));
                     ax.Children.YData = result(1:cnt)*Resolution;
                     ax.Children.XData = [1:cnt];
                     set(ax, 'XLim', [0,  cnt])
@@ -160,8 +159,10 @@ classdef PicoHarp_tttr < Modules.Experiment
             if val
                 obj.PH_serialNr = 'connecting...';
                 drawnow;
+
+
                 try
-                    obj.picoharpH = Drivers.PicoHarp300.instance(1);
+                    obj.picoharpH = Drivers.PicoHarp300.instance(obj.PH_Mode);
                 catch err
                     obj.connection = false;
                     obj.PH_serialNr = 'No device';
