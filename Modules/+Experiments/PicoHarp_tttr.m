@@ -26,7 +26,7 @@ classdef PicoHarp_tttr < Modules.Experiment
         prefs = {'connection'};
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
         show_prefs = {'PH_serialNr','PH_BaseResolution','connection','PH_Mode', 'MaxTime_s','MaxCounts','Binning','SyncDivider','SyncOffset','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','Tacq_ms','StopAtOverflow','OverflowCounts'};
-        readonly_prefs = {'PH_serialNr','PH_BaseResolution', 'WRAPAROUND'};
+        readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
 
     end
     properties(SetAccess=private,Hidden)
@@ -74,30 +74,40 @@ classdef PicoHarp_tttr < Modules.Experiment
             fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
             t = tic;
             obj.picoharpH.PH_StartMeas(obj.Tacq_ms);
-            result = double(zeros(1, obj.picoharpH.TTREADMAX));
+            result0 = double(zeros(1, obj.picoharpH.TTREADMAX));
+            result1 = double(zeros(1, obj.picoharpH.TTREADMAX));
             progress = 0;
             ctcdone = 0;
             ofl_num = 0;
-            cnt = 0;
+            cnt0 = 0;
+            cnt1 = 0;
             while(ctcdone == 0 && obj.abort_request == false)
                 [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
                 % buffer(buffer == 4026531840) = 0;
 
                 for k = 1:nactual
-                    if (bitand(bitshift(buffer(k),-28),15)==15) % to detect an overflow signal
+                    chan = bitand(bitshift(buffer(k),-28),15);
+                    cur_time_tag = bitand(buffer(k), 2^28-1);
+                    if (chan==15) % to detect an overflow signal
                         ofl_num = ofl_num + 1;
-                    else
-                        cnt = cnt + 1;
-                        result(cnt) = double(ofl_num) * double(obj.WRAPAROUND) + double(buffer(k));
+                    elseif (chan == 0)
+                        cnt0 = cnt0 + 1;
+                        result0(cnt0) = double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag);
+                    else % chan == 1
+                        cnt1 = cnt1 + 1;
+                        result1(cnt1) = double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag);
                     end
                 end
+
                     
                 if(nactual)
                     progress = progress + nactual;
                     status.String = sprintf('Progress: %9d, Time Elapsed: %0.2f\n',progress, toc(t));
-                    ax.Children.YData = result(1:cnt)*Resolution;
-                    ax.Children.XData = [1:cnt];
-                    set(ax, 'XLim', [0,  cnt])
+                    ax.Children(1).YData = result0(1:cnt0)*Resolution;
+                    ax.Children(1).XData = [1:cnt0];
+                    ax.Children(2).YData = result1(1:cnt1)*Resolution;
+                    ax.Children(2).XData = [1:cnt1];
+                    set(ax, 'XLim', [0,  max(cnt0, cnt1)])
                     drawnow limitrate;
                 else
                     ctcdone = int32(0);
@@ -106,15 +116,19 @@ classdef PicoHarp_tttr < Modules.Experiment
                 end
             end
             obj.picoharpH.PH_StopMeas;
-            obj.data.y = result(1:cnt);
-            obj.data.x = [1:cnt];
+            obj.data.y0 = result0(1:cnt0);
+            obj.data.x0 = [1:cnt0];
+            obj.data.y1 = result1(1:cnt1);
+            obj.data.x1 = [1:cnt1];
             fprintf('\nDone\n');
         end
         
         function prepPlot(obj,ax)
-            obj.data.x = [0];
-            obj.data.y = [0];
-            plot(ax,obj.data.x,obj.data.y);
+            obj.data.x0 = [0];
+            obj.data.y0 = [0];
+            obj.data.x1 = [0];
+            obj.data.y1 = [0];
+            plot(ax,obj.data.x0,obj.data.y0, obj.data.x1, obj.data.y1);
             set(ax,'YLim',[0 inf])
             set(ax, 'XLim', [0 inf])
             set(ax.XLabel,'String','Count')

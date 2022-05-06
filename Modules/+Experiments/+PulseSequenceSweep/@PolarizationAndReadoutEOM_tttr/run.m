@@ -68,14 +68,14 @@ try
                 apdPS.seq = pulseSeq;
                 max_time = max(pulseSeq.processSequenceN);
                 apdPS.start(1000); % hard coded
-                
-                
-                obj.picoharpH.PH_StartMeas(max_time/1000);
+
+
+                obj.picoharpH.PH_StartMeas(1);
                 apdPS.stream(p);
                 
 
                 % Retrieve data from picoharp and process to fit the two APD bins
-                rawTttrData = obj.picoharpH.PH_GetTimeTags;
+                [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
                 obj.picoharpH.PH_StopMeas;
                 
 
@@ -85,10 +85,10 @@ try
                 apdBin2Start = apdBin1End+obj.readoutPulseDelay_us;
                 apdBin2End = apdBin2Start+obj.CounterLength_us;
 
-                % obj.data.timeTags{j, indices{:}, 1} = rawTttrData((rawTttrData>apdBin1Start*1e6) & (rawTttrData<apdBin1End*1e6))-apdBin1Start*1e6;
-                % obj.data.timeTags{j, indices{:}, 2} = rawTttrData((rawTttrData>apdBin2Start*1e6) & (rawTttrData<apdBin2End*1e6))-apdBin2Start*1e6;
-                obj.data.timeTags{j, indices{:}, 1} = rawTttrData;
-                obj.data.timeTags{j, indices{:}, 2} = rawTttrData((rawTttrData>apdBin2Start*1e6) & (rawTttrData<apdBin2End*1e6))-apdBin2Start*1e6;
+                obj.data.timeTags{j, indices{:}, 1} = rawTttrData1((rawTttrData1>apdBin1Start*1e6) & (rawTttrData1<apdBin1End*1e6))-apdBin1Start*1e6;
+                obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>apdBin2Start*1e6) & (rawTttrData1<apdBin2End*1e6))-apdBin2Start*1e6;
+                % obj.data.timeTags{j, indices{:}, 1} = rawTttrData1(rawTttrData1<apdBin2End*1e6);
+                % obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>apdBin2Start*1e6) & (rawTttrData1<apdBin2End*1e6))-apdBin2Start*1e6;
                 
 
 

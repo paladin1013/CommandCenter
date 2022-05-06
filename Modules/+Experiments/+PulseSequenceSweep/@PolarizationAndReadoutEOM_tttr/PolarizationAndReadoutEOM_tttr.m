@@ -32,7 +32,7 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         Ch0_CFDzero = 10;% mV
         Ch0_CFDlevel = 50;% mV
         Ch1_CFDzero = 10;% mV
-        Ch1_CFDlevel = 150;% mV
+        Ch1_CFDlevel = 50;% mV
         Binning = 0;
         Offset = 0; %ms - still not sure what offset is this
         StopAtOverflow = true;

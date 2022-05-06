@@ -40,7 +40,7 @@ classdef PicoHarp300 < Modules.Driver
         
         % Errorcodes from errorcodes.h
         PH_ERROR_DEVICE_OPEN_FAIL		 = -1;
-        
+        WRAPAROUND = 210698240;
     end
     
     properties (SetAccess=immutable)
@@ -306,21 +306,28 @@ classdef PicoHarp300 < Modules.Driver
             assert(ret==0, sprintf('\nPH_ReadFiFo error %ld. Aborted.\n', ret));
         end
         
-        function time_tags = PH_GetTimeTags(obj)
+        function [time_tags0, time_tags1] = PH_GetTimeTags(obj)
 
-            result = double(zeros(1, obj.TTREADMAX));
+            result0 = double(zeros(1, obj.TTREADMAX));
+            result1 = double(zeros(1, obj.TTREADMAX));
             progress = 0;
             ctcdone = 0;
             ofl_num = 0;
-            cnt = 0;
+            cnt0 = 0;
+            cnt1 = 0;
             while(ctcdone == 0)
                 [buffer, nactual] = obj.PH_ReadFiFo;
                 for k = 1:nactual
-                    if (bitand(bitshift(buffer(k),-28),15)==15) % to detect an overflow signal
+                    chan = bitand(bitshift(buffer(k),-28),15);
+                    cur_time_tag = bitand(buffer(k), 2^28-1);
+                    if (chan==15) % to detect an overflow signal
                         ofl_num = ofl_num + 1;
-                    else
-                        cnt = cnt + 1;
-                        result(cnt) = double(ofl_num) * double(obj.WRAPAROUND) + double(buffer(k));
+                    elseif (chan == 0)
+                        cnt0 = cnt0 + 1;
+                        result0(cnt0) = double(ofl_num) * double(obj.WRAPAROUND) + double(cur_time_tag);
+                    else % chan == 1
+                        cnt1 = cnt1 + 1;
+                        result1(cnt1) = double(ofl_num) * double(obj.WRAPAROUND) + double(cur_time_tag);
                     end
                 end
                     
@@ -332,7 +339,8 @@ classdef PicoHarp300 < Modules.Driver
                     [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.DeviceNr, ctcdonePtr); 
                 end
             end
-            time_tags = result(1:cnt)*obj.PH_GetResolution;
+            time_tags0 = result0(1:cnt0)*obj.PH_GetResolution;
+            time_tags1 = result1(1:cnt1)*obj.PH_GetResolution;
         end
         
     end
