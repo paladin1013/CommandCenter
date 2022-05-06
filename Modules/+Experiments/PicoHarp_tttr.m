@@ -17,7 +17,7 @@ classdef PicoHarp_tttr < Modules.Experiment
         Ch0_CFDzero = 10;% mV
         Ch0_CFDlevel = 50;% mV
         Ch1_CFDzero = 10;% mV
-        Ch1_CFDlevel = 150;% mV
+        Ch1_CFDlevel = 50;% mV
         % Binning = num2cell(0:7); % Binning can be 0 to MAXBINSTEPS-1 %time resolution = (PH_BaseResolution*2^Binning) ps
         Binning = 0;
         Offset = 0; %ms - still not sure what offset is this
@@ -25,7 +25,6 @@ classdef PicoHarp_tttr < Modules.Experiment
         OverflowCounts = 65535; %65535 is max value
         prefs = {'connection'};
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
-        WRAPAROUND=210698240; % Time period (ps) between two overflow signals
         show_prefs = {'PH_serialNr','PH_BaseResolution','connection','PH_Mode', 'MaxTime_s','MaxCounts','Binning','SyncDivider','SyncOffset','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','Tacq_ms','StopAtOverflow','OverflowCounts'};
         readonly_prefs = {'PH_serialNr','PH_BaseResolution', 'WRAPAROUND'};
 

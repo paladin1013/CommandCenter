@@ -22,16 +22,24 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         CounterLength_us = 10;
         tauTimes_us = 'linspace(0,100,101)'; %eval(tauTimes_us) will define sweepTimes
 
-
-        % For PicoHarp300 tttr mode
-        % show_prefs = {'PH_serialNr','PH_BaseResolution'};
-        % readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
-        PicoHarp300 = Drivers.PicoHarp300.empty(1,0);
+        
+        picoharpH = Drivers.PicoHarp300.empty(1,0);
         PH_serialNr = 'No device';
         PH_BaseResolution = 'No device';
-        WRAPAROUND=210698240; % Time period (ps) between two overflow signals
-        
-    end
+        readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
+        SyncDivider = uint8(1);
+        SyncOffset = 0; %ms
+        Ch0_CFDzero = 10;% mV
+        Ch0_CFDlevel = 50;% mV
+        Ch1_CFDzero = 10;% mV
+        Ch1_CFDlevel = 150;% mV
+        Binning = 0;
+        Offset = 0; %ms - still not sure what offset is this
+        StopAtOverflow = true;
+        OverflowCounts = 65535; %65535 is max value
+
+    end    
+    
     properties
         tauTimes = linspace(0,100,101); %will be in us
     end
@@ -50,8 +58,9 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
     methods(Access=private)
 
         function obj = PolarizationAndReadoutEOM_tttr()
-            obj.prefs = [obj.prefs,{'PicoHarp300', 'PH_Mode', 'PH_serialNr', 'PH_BaseResolution', 'resLaser','repumpLaser','MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline','APDline','repumpTime_us','resOffset_us',...
+            obj.prefs = [obj.prefs,{'PH_Mode', 'PH_serialNr', 'PH_BaseResolution', 'resLaser','repumpLaser','MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline','APDline','repumpTime_us','resOffset_us',...
             'readoutPulseTime_us','CounterLength_us','tauTimes_us'}]; %additional preferences not in superclass
+            
             obj.loadPrefs;
         end
     end
@@ -60,44 +69,22 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         
         function val = set_picoharp_dev(obj,val, ~)
             MODE = str2num(val);
-            mlock
-            persistent Objects;
-            % if isempty(Objects)
-            %     Objects = Drivers.PicoHarp300.empty(1,0);
-            % end
             if strcmp(val,'None Set') % Short circuit
-                obj.PicoHarp300 = [];
+                obj.picoharpH = [];
             end
-            find_instance = 0;
-            % for i = 1:length(Objects)
-            %     Objects(i).singleton_id
-            %     if isvalid(Objects(i)) && isequal("PicoHarp300_Mode"+val,Objects(i).singleton_id)
-            %         obj.PicoHarp300 = Objects(i);
-            %         find_instance = 1;
-            %         fprintf("Find initialized PicoHarp300_Mode%d", MODE);
-            %         break
-            %     end
-            % end
-            if (find_instance==0)
-                try
-                    obj.PicoHarp300 = Drivers.PicoHarp300.instance(MODE);
-                catch err
-                    % obj.PicoHarp300 = [];
-                    % obj.PH_serialNr = 'None Set';
-                    for i = 1:length(Objects)
-                        Objects(i).singleton_id
-                        if isvalid(Objects(i)) && isequal("PicoHarp300_Mode"+val,Objects(i).singleton_id)
-                            obj.PicoHarp300 = Objects(i);
-                            find_instance = 1;
-                            fprintf("Find initialized PicoHarp300_Mode%d", MODE);
-                            break
-                        end
-                    end
-                    % rethrow(err);
-                end
-            end
-            obj.PH_serialNr = obj.PicoHarp300.SerialNr{1};
-            obj.PH_BaseResolution = obj.PicoHarp300.PH_GetBaseResolution;
+            obj.picoharpH = Drivers.PicoHarp300.instance(MODE);
+            obj.PH_serialNr = obj.picoharpH.SerialNr{1};
+            obj.PH_BaseResolution = obj.picoharpH.PH_GetBaseResolution;
+
+
+            obj.picoharpH.PH_SetInputCFD(0,obj.Ch0_CFDlevel,obj.Ch0_CFDzero);
+            obj.picoharpH.PH_SetInputCFD(1,obj.Ch1_CFDlevel,obj.Ch1_CFDzero);
+            obj.picoharpH.PH_SetBinning(obj.Binning);
+            obj.picoharpH.PH_SetOffset(obj.Offset);
+            obj.picoharpH.PH_SetStopOverflow(obj.StopAtOverflow,obj.OverflowCounts); %65535 is max value
+            obj.picoharpH.PH_SetSyncOffset(obj.SyncOffset);
+            obj.picoharpH.PH_SetSyncDiv(obj.SyncDivider);
+            
         end
 
         pulseSeq = BuildPulseSequence(obj,tauIndex) %Defined in separate file
@@ -109,17 +96,16 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
             obj.MWSource_read.set_power(obj.MW_power_dBm_read);
             obj.MWSource_init.source_on = 1; % still need to find out which state is which generator
 
-
-            Resolution = obj.PicoHarp300.PH_GetResolution;
-            Countrate0 = obj.PicoHarp300.PH_GetCountRate(0);
-            Countrate1 = obj.PicoHarp300.PH_GetCountRate(1);
-            obj.meta.resolution = Resolution;
-            fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
+            % Resolution = obj.picoharpH.PH_GetResolution;
+            % Countrate0 = obj.picoharpH.PH_GetCountRate(0);
+            % Countrate1 = obj.picoharpH.PH_GetCountRate(1);
+            % obj.meta.resolution = Resolution;
+            % fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
 
             %prepare axes for plotting
             hold(ax,'on');
-            plotH(1) = plot(ax,obj.tauTimes,obj.data.sumCounts(1,:,1),'color','b');
-            plotH(2) = plot(ax,obj.tauTimes,obj.data.sumCounts(1,:,2),'color','r');
+            plotH(1) = plot(ax,obj.tauTimes,obj.data.counts(1,:,1),'color','b');
+            plotH(2) = plot(ax,obj.tauTimes,obj.data.counts(1,:,2),'color','r');
             ax.UserData.plots = plotH;
             ylabel(ax,'Normalized PL');
             xlabel(ax,'Delay Time \tau (\mus)');
@@ -129,25 +115,21 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         
         function UpdateRun(obj,~,~,ax,~,~)
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,1));
-                meanError = squeeze(nanmean(obj.data.stdCounts,1));
+                averagedData = squeeze(nanmean(obj.data.counts,1));
             else
-                averagedData = obj.data.sumCounts;
-                meanError = obj.data.stdCounts;
+                averagedData = obj.data.counts;
             end
             
             %grab handles to data from axes plotted in PreRun
             %ax.UserData.plots(1).YData = averagedData(:,1);
             ax.UserData.plots(2).YData = averagedData(:,2);
-%             ax.UserData.plots{1}.YNegativeDelta = meanError(:);
-%             ax.UserData.plots{1}.YPositiveDelta = meanError(:);
 %             ax.UserData.plots{1}.update;
 %             drawnow limitrate;
             drawnow limitrate;
         end
         
         function PostRun(obj,~,~,ax)
-            obj.PicoHarp300.PH_StopMeas;
+            obj.picoharpH.PH_StopMeas;
         end
 
         function set.tauTimes_us(obj,val)

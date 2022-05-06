@@ -10,6 +10,7 @@ classdef PicoHarp300 < Modules.Driver
         Model = 'NaN';
         Partnum = 'NaN';
         Version = 'NaN';
+        Mode = 0;
     end
     
     properties (Constant)
@@ -39,6 +40,7 @@ classdef PicoHarp300 < Modules.Driver
         
         % Errorcodes from errorcodes.h
         PH_ERROR_DEVICE_OPEN_FAIL		 = -1;
+        
     end
     
     properties (SetAccess=immutable)
@@ -53,22 +55,33 @@ classdef PicoHarp300 < Modules.Driver
                 Objects = Drivers.PicoHarp300(MODE).empty(1,0);
             end
             for i = 1:length(Objects)
-                if isvalid(Objects(i)) && isequal("PicoHarp300_Mode"+num2str(MODE),Objects(i).singleton_id)
-                    error('%s driver Mode %d is already instantiated!',mfilename, MODE)
-                    return
+                if isvalid(Objects(i)) && isequal("PicoHarp300",Objects(i).singleton_id)
+                    fprintf('%s driver is already instantiated!',mfilename);
+                    if (Objects(i).Mode == MODE)
+                        fprintf('The previous driver has the same mode %d. Use the previous instead.\n', MODE);
+                        obj = Objects(i);
+                        return
+                    else
+                        fprintf('The previous driver has a different mode %d, rather than %d.\n', Objects(i).Mode, MODE);
+                        obj = Drivers.PicoHarp300(MODE);
+                        obj.singleton_id = "PicoHarp300";
+                        Objects(i) = obj;
+                        return;
+                    end
                 end
             end
             obj = Drivers.PicoHarp300(MODE);
-            obj.singleton_id = "PicoHarp300_Mode"+num2str(MODE);
+            obj.singleton_id = "PicoHarp300";
             Objects(end+1) = obj;
         end
     end
     
     methods(Access=private)
         function obj = PicoHarp300(MODE)
+            obj.Mode = MODE;
             try
                 obj.loadlibPH;
-                obj.opendevPH(MODE);
+                obj.opendevPH;
             catch err
                 obj.delete;
                 error('Error opening communication, PicoHarp300 handle destroyed:\n%s',err.message);
@@ -101,7 +114,7 @@ classdef PicoHarp300 < Modules.Driver
             end
         end
         
-        function opendevPH(obj, MODE) % open communication with any PicoHarp found and initialise for histogram acquisition MODE
+        function opendevPH(obj) % open communication with any PicoHarp found and initialise for histogram acquisition MODE
             dev = [];
             Serials = {};
             found = 0;
@@ -127,7 +140,7 @@ classdef PicoHarp300 < Modules.Driver
             ret = -1;
             while i<length(dev) && ret~=0
                 i = i+1;
-                [ret] = calllib('PHlib', 'PH_Initialize', dev(i), MODE);
+                [ret] = calllib('PHlib', 'PH_Initialize', dev(i), obj.Mode);
             end
             if ret~=0
                 error('Error initializing PicoHarp300\nDevice index: %d S/N: %s', dev(i), Serials{i})
@@ -293,6 +306,34 @@ classdef PicoHarp300 < Modules.Driver
             assert(ret==0, sprintf('\nPH_ReadFiFo error %ld. Aborted.\n', ret));
         end
         
+        function time_tags = PH_GetTimeTags(obj)
+
+            result = double(zeros(1, obj.TTREADMAX));
+            progress = 0;
+            ctcdone = 0;
+            ofl_num = 0;
+            cnt = 0;
+            while(ctcdone == 0)
+                [buffer, nactual] = obj.PH_ReadFiFo;
+                for k = 1:nactual
+                    if (bitand(bitshift(buffer(k),-28),15)==15) % to detect an overflow signal
+                        ofl_num = ofl_num + 1;
+                    else
+                        cnt = cnt + 1;
+                        result(cnt) = double(ofl_num) * double(obj.WRAPAROUND) + double(buffer(k));
+                    end
+                end
+                    
+                if(nactual)
+                    progress = progress + nactual;
+                else
+                    ctcdone = int32(0);
+                    ctcdonePtr = libpointer('int32Ptr', ctcdone);
+                    [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.DeviceNr, ctcdonePtr); 
+                end
+            end
+            time_tags = result(1:cnt)*obj.PH_GetResolution;
+        end
         
     end
 end

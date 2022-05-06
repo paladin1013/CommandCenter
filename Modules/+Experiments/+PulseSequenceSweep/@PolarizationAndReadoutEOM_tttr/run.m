@@ -29,9 +29,8 @@ for i = 1:numVars
     varLength(i) = length(obj.(obj.vars{i}));
 end
 
-obj.data.sumCounts = NaN([obj.averages,varLength,obj.nCounterBins]);
-% obj.data.completeCounts = NaN([obj.averages,varLength,obj.samples]);
-obj.data.stdCounts = NaN([obj.averages,varLength,obj.nCounterBins]);
+obj.data.counts = NaN([obj.averages,varLength,obj.nCounterBins]);
+obj.data.timeTags = cell([obj.averages, varLength,obj.nCounterBins]);
 
 obj.meta.prefs = obj.prefs2struct;
 for i = 1:length(obj.vars)
@@ -51,7 +50,7 @@ try
     % Not only will this be faster than constructing many times,
     % APDPulseSequence upon deletion closes PulseBlaster connection
     indices = num2cell(ones(1,numVars));
-    apdPS = APDPulseSequence_tttr(obj.nidaqH,obj.pbH, obj.picoharpH,sequence('placeholder')); %create an instance of apdpulsesequence to avoid recreating in loop
+    apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder')); %create an instance of apdpulsesequence to avoid recreating in loop
     statusString = cell(1,numVars);
     for j = 1:obj.averages
         for i = 1:prod(varLength)
@@ -67,18 +66,36 @@ try
             if pulseSeq ~= false % Interpret a return of false as skip this one (leaving in NaN)
                 pulseSeq.repeat = obj.samples;
                 apdPS.seq = pulseSeq;
-                
+                max_time = max(pulseSeq.processSequenceN);
                 apdPS.start(1000); % hard coded
+                
+                
+                obj.picoharpH.PH_StartMeas(max_time/1000);
                 apdPS.stream(p);
+                
+
+                % Retrieve data from picoharp and process to fit the two APD bins
+                rawTttrData = obj.picoharpH.PH_GetTimeTags;
+                obj.picoharpH.PH_StopMeas;
+                
+
+                % The following time nodes are in us
+                apdBin1Start = obj.repumpTime_us+obj.resOffset_us;
+                apdBin1End = apdBin1Start+obj.tauTimes(indices{:});
+                apdBin2Start = apdBin1End+obj.readoutPulseDelay_us;
+                apdBin2End = apdBin2Start+obj.CounterLength_us;
+
+                % obj.data.timeTags{j, indices{:}, 1} = rawTttrData((rawTttrData>apdBin1Start*1e6) & (rawTttrData<apdBin1End*1e6))-apdBin1Start*1e6;
+                % obj.data.timeTags{j, indices{:}, 2} = rawTttrData((rawTttrData>apdBin2Start*1e6) & (rawTttrData<apdBin2End*1e6))-apdBin2Start*1e6;
+                obj.data.timeTags{j, indices{:}, 1} = rawTttrData;
+                obj.data.timeTags{j, indices{:}, 2} = rawTttrData((rawTttrData>apdBin2Start*1e6) & (rawTttrData<apdBin2End*1e6))-apdBin2Start*1e6;
+                
+
+
                 dat = reshape(p.YData,obj.nCounterBins,[])';
-                if size(dat,1)==1
-                    obj.data.sumCounts(j,indices{:},:) = dat;
-                    obj.data.stdCounts(j,indices{:},:) = dat;
-                else
-                    obj.data.sumCounts(j,indices{:},:) = sum(dat);
-                    obj.data.stdCounts(j,indices{:},:) = std(dat);
-                    % obj.data.completeCounts(j,indices{:},:) = dat;
-                end
+                assert(size(dat,1)==1, "Samples should be 1 and data should not be averaged")
+                obj.data.counts(j,indices{:},:) = dat;
+
             end
             obj.UpdateRun(status,managers,ax,j,indices{:});
         end
