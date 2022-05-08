@@ -31,7 +31,7 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         SyncOffset = 0; %ms
         Ch0_CFDzero = 20;% mV
         Ch0_CFDlevel = 20;% mV
-        Ch1_CFDzero = 0;% mV
+        Ch1_CFDzero = 20;% mV
         Ch1_CFDlevel = 20;% mV
         Binning = 0;
         Offset = 0; %ms - still not sure what offset is this
