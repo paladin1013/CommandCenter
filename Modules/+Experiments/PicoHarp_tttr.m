@@ -115,6 +115,13 @@ classdef PicoHarp_tttr < Modules.Experiment
                     [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
                 end
             end
+            % [time_tags0, time_tags1] = obj.picoharpH.PH_GetTimeTags;
+            % ax.Children(2).YData = time_tags1;
+            % ax.Children(2).XData = 1:length(time_tags1);
+
+            % ax.Children(1).YData = time_tags0;
+            % ax.Children(1).XData = 1:length(time_tags0);
+            % drawnow limitrate;
             obj.picoharpH.PH_StopMeas;
             obj.data.y0 = result0(1:cnt0);
             obj.data.x0 = [1:cnt0];

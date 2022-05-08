@@ -22,6 +22,7 @@ assert(all(check_prop_exists),sprintf('Properties not found in obj that are list
     strjoin(obj.vars(check_prop_exists),newline)));
 assert(numel(obj.nCounterBins)==1 && isnumeric(obj.nCounterBins) && floor(obj.nCounterBins)==obj.nCounterBins,...
     'Property "nCounterBins" should be a single integer');
+assert(~isempty(obj.picoharpH), "PicoHarp300 is not connected");
 
 numVars = length(obj.vars);
 varLength = NaN(1,numVars);
@@ -52,6 +53,10 @@ try
     indices = num2cell(ones(1,numVars));
     apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder')); %create an instance of apdpulsesequence to avoid recreating in loop
     statusString = cell(1,numVars);
+    t = tic;
+                
+    fprintf("time1: %f\n", toc(t));
+
     for j = 1:obj.averages
         for i = 1:prod(varLength)
             drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
@@ -67,16 +72,23 @@ try
                 pulseSeq.repeat = obj.samples;
                 apdPS.seq = pulseSeq;
                 max_time = max(pulseSeq.processSequenceN);
+                fprintf("time2: %f\n", toc(t));
+                obj.picoharpH.PH_StartMeas(2000);
                 apdPS.start(1000); % hard coded
+                fprintf("time3: %f\n", toc(t));
 
 
-                obj.picoharpH.PH_StartMeas(1);
+
+
                 apdPS.stream(p);
+                fprintf("time4: %f\n", toc(t));
                 
 
                 % Retrieve data from picoharp and process to fit the two APD bins
+                pause(0.2);
                 [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
                 obj.picoharpH.PH_StopMeas;
+                fprintf("time5: %f\n", toc(t));
                 
 
                 % The following time nodes are in us
@@ -84,7 +96,10 @@ try
                 apdBin1End = apdBin1Start+obj.tauTimes(indices{:});
                 apdBin2Start = apdBin1End+obj.readoutPulseDelay_us;
                 apdBin2End = apdBin2Start+obj.CounterLength_us;
-
+   
+                if (length(rawTttrData0)) >= 1
+                 rawTttrData0_relative = rawTttrData0 - rawTttrData0(1);
+                end
                 obj.data.timeTags{j, indices{:}, 1} = rawTttrData1((rawTttrData1>apdBin1Start*1e6) & (rawTttrData1<apdBin1End*1e6))-apdBin1Start*1e6;
                 obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>apdBin2Start*1e6) & (rawTttrData1<apdBin2End*1e6))-apdBin2Start*1e6;
                 % obj.data.timeTags{j, indices{:}, 1} = rawTttrData1(rawTttrData1<apdBin2End*1e6);

@@ -29,15 +29,16 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
         SyncDivider = uint8(1);
         SyncOffset = 0; %ms
-        Ch0_CFDzero = 10;% mV
-        Ch0_CFDlevel = 50;% mV
-        Ch1_CFDzero = 10;% mV
-        Ch1_CFDlevel = 50;% mV
+        Ch0_CFDzero = 20;% mV
+        Ch0_CFDlevel = 20;% mV
+        Ch1_CFDzero = 0;% mV
+        Ch1_CFDlevel = 20;% mV
         Binning = 0;
         Offset = 0; %ms - still not sure what offset is this
         StopAtOverflow = true;
         OverflowCounts = 65535; %65535 is max value
-
+        SyncPBLine = 6;
+        SyncPulseWidth_us = 0.01;
     end    
     
     properties
@@ -58,8 +59,8 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
     methods(Access=private)
 
         function obj = PolarizationAndReadoutEOM_tttr()
-            obj.prefs = [obj.prefs,{'PH_Mode', 'PH_serialNr', 'PH_BaseResolution', 'resLaser','repumpLaser','MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline','APDline','repumpTime_us','resOffset_us',...
-            'readoutPulseTime_us','CounterLength_us','tauTimes_us'}]; %additional preferences not in superclass
+            obj.prefs = [obj.prefs,{'PH_Mode', 'PH_serialNr', 'PH_BaseResolution','Ch0_CFDzero', 'Ch0_CFDlevel', 'Ch1_CFDzero', 'Ch1_CFDlevel' 'resLaser','repumpLaser','MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline','APDline','repumpTime_us','resOffset_us',...
+            'readoutPulseTime_us','CounterLength_us', 'SyncPBLine', 'SyncPulseWidth_us','tauTimes_us'}]; %additional preferences not in superclass
             
             obj.loadPrefs;
         end
