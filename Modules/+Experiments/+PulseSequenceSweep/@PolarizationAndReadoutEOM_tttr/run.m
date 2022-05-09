@@ -55,7 +55,6 @@ try
     statusString = cell(1,numVars);
     t = tic;
                 
-    fprintf("time1: %f\n", toc(t));
 
     for j = 1:obj.averages
         for i = 1:prod(varLength)
@@ -72,38 +71,26 @@ try
                 pulseSeq.repeat = obj.samples;
                 apdPS.seq = pulseSeq;
                 max_time = max(pulseSeq.processSequenceN);
-                fprintf("time2: %f\n", toc(t));
                 obj.picoharpH.PH_StartMeas(2000);
                 apdPS.start(1000); % hard coded
-                fprintf("time3: %f\n", toc(t));
-
-
 
 
                 apdPS.stream(p);
-                fprintf("time4: %f\n", toc(t));
                 
 
                 % Retrieve data from picoharp and process to fit the two APD bins
                 pause(0.2);
                 [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
                 obj.picoharpH.PH_StopMeas;
-                fprintf("time5: %f\n", toc(t));
                 
 
-                % The following time nodes are in us
-                apdBin1Start = obj.repumpTime_us+obj.resOffset_us;
-                apdBin1End = apdBin1Start+obj.tauTimes(indices{:});
-                apdBin2Start = apdBin1End+obj.readoutPulseDelay_us;
-                apdBin2End = apdBin2Start+obj.CounterLength_us;
    
                 if (length(rawTttrData0)) >= 1
                  rawTttrData0_relative = rawTttrData0 - rawTttrData0(1);
                 end
-                obj.data.timeTags{j, indices{:}, 1} = rawTttrData1((rawTttrData1>apdBin1Start*1e6) & (rawTttrData1<apdBin1End*1e6))-apdBin1Start*1e6;
-                obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>apdBin2Start*1e6) & (rawTttrData1<apdBin2End*1e6))-apdBin2Start*1e6;
-                % obj.data.timeTags{j, indices{:}, 1} = rawTttrData1(rawTttrData1<apdBin2End*1e6);
-                % obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>apdBin2Start*1e6) & (rawTttrData1<apdBin2End*1e6))-apdBin2Start*1e6;
+                assert(length(rawTttrData0) == 4, sprintf("Number of time tag from PB should be exactly 4, but now got %d", length(rawTttrData0)))
+                obj.data.timeTags{j, indices{:}, 1} = rawTttrData1((rawTttrData1>rawTttrData0(1)) & (rawTttrData1<rawTttrData0(2)))-rawTttrData0(1);
+                obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>rawTttrData0(3)) & (rawTttrData1<rawTttrData0(4)))-rawTttrData0(3);
                 
 
 
