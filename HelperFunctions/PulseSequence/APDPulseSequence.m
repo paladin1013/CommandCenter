@@ -6,6 +6,7 @@ classdef APDPulseSequence < handle
         ni              % NIDAQ driver
         pb              % PulseBlaster handle
         seq             % Handle to sequence object
+        ph              % Handle of picoharp300
     end
     properties(SetAccess=private)
         tasks           % Handles to nidaq tasks (can querry for available samples)
@@ -14,10 +15,13 @@ classdef APDPulseSequence < handle
     end
 
     methods
-        function obj = APDPulseSequence(ni,pb,seq)
+        function obj = APDPulseSequence(ni,pb,seq,ph)
             obj.ni = ni;
             obj.seq = seq;
             obj.pb = pb;
+            if ~isempty(ph)
+            obj.ph = ph;
+            end
             % Verify chanels exist in nidaq
             chans = seq.getSequenceChannels;
             chans(cellfun(@(a)isempty(a),{chans.counter}))=[];
@@ -67,7 +71,6 @@ classdef APDPulseSequence < handle
         function start(obj,MaxCounts,overrideMinDuration)
             % Max expected counts per gate as input
             % See sequence.compile for overrideMinDuration
-
             if nargin < 3
                 overrideMinDuration = false;
             end
@@ -100,10 +103,12 @@ classdef APDPulseSequence < handle
             end
             try
                 [program, ~, ~, obj.time] = obj.seq.compile(overrideMinDuration);
-
                 obj.timeout = 1.5*obj.time + 1;
 
                 obj.pb.load(program);
+                if ~isempty(obj.ph)
+                    obj.ph.PH_StartMeas(max(obj.seq.processSequenceN)/1000+1000); % Time unit of obj.seq.processSequenceN is us. Need to convert into ms. (1s extra time for startup)
+                end
                 obj.pb.start;
             catch err
                 for j = 1:numel(obj.tasks)
@@ -114,6 +119,7 @@ classdef APDPulseSequence < handle
             end
         end
         function stream(obj,varargin)
+
             % Inputs are line objects (one for each counter)
             assert(~isempty(obj.tasks),'Nothing setup!')
             assert(numel(varargin)==numel(obj.tasks),sprintf('%i Counters. Only received %i inputs.',numel(obj.tasks),numel(varargin)))

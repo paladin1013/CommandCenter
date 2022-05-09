@@ -30,8 +30,9 @@ for i = 1:numVars
     varLength(i) = length(obj.(obj.vars{i}));
 end
 
-obj.data.counts = NaN([obj.averages,varLength,obj.nCounterBins]);
-obj.data.timeTags = cell([obj.averages, varLength,obj.nCounterBins]);
+obj.data.counts = NaN([obj.averages,varLength, obj.samples,obj.nCounterBins]);
+obj.data.diff = NaN([obj.averages,varLength, obj.samples,obj.nCounterBins]);
+obj.data.timeTags = cell([obj.averages, varLength, obj.samples,obj.nCounterBins]);
 
 obj.meta.prefs = obj.prefs2struct;
 for i = 1:length(obj.vars)
@@ -51,59 +52,68 @@ try
     % Not only will this be faster than constructing many times,
     % APDPulseSequence upon deletion closes PulseBlaster connection
     indices = num2cell(ones(1,numVars));
-    apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder')); %create an instance of apdpulsesequence to avoid recreating in loop
+    apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder'), obj.picoharpH); %create an instance of apdpulsesequence to avoid recreating in loop
     statusString = cell(1,numVars);
-    t = tic;
-                
+    
+    % offsetMax = 10;
+    % diff = zeros(1, offsetMax*2+1);
+    % countSum = zeros(1, offsetMax*2+1);
+    % bias = zeros(1, offsetMax*2+1);
+    % for syncPulseBias = -offsetMax:offsetMax
+        % obj.syncPulseBias = syncPulseBias/10;
+        for j = 1:obj.averages
+            for i = 1:prod(varLength)
 
-    for j = 1:obj.averages
-        for i = 1:prod(varLength)
-            drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
-            [indices{:}] = ind2sub(varLength,i); % this does breadth-first
-            for k=1:numVars
-                statusString{k} = sprintf('%s = %g (%i/%i)',obj.vars{k},obj.(obj.vars{k})(indices{k}),indices{k},varLength(k));
-            end
-            status.String = [sprintf('Progress (%i/%i averages):\n  ',j,obj.averages),strjoin(statusString,'\n  ')];
-            
-            % BuildPulseSequence must take in vars in the order listed
-            pulseSeq = obj.BuildPulseSequence(indices{:});
-            if pulseSeq ~= false % Interpret a return of false as skip this one (leaving in NaN)
-                pulseSeq.repeat = obj.samples;
-                apdPS.seq = pulseSeq;
-                max_time = max(pulseSeq.processSequenceN);
-                obj.picoharpH.PH_StartMeas(2000);
-                apdPS.start(1000); % hard coded
-
-
-                apdPS.stream(p);
-                
-
-                % Retrieve data from picoharp and process to fit the two APD bins
-                pause(0.2);
-                [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
-                obj.picoharpH.PH_StopMeas;
-                
-
-   
-                if (length(rawTttrData0)) >= 1
-                 rawTttrData0_relative = rawTttrData0 - rawTttrData0(1);
+                drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
+                [indices{:}] = ind2sub(varLength,i); % this does breadth-first
+                for k=1:numVars
+                    statusString{k} = sprintf('%s = %g (%i/%i)',obj.vars{k},obj.(obj.vars{k})(indices{k}),indices{k},varLength(k));
                 end
-                assert(length(rawTttrData0) == 4, sprintf("Number of time tag from PB should be exactly 4, but now got %d", length(rawTttrData0)))
-                obj.data.timeTags{j, indices{:}, 1} = rawTttrData1((rawTttrData1>rawTttrData0(1)) & (rawTttrData1<rawTttrData0(2)))-rawTttrData0(1);
-                obj.data.timeTags{j, indices{:}, 2} = rawTttrData1((rawTttrData1>rawTttrData0(3)) & (rawTttrData1<rawTttrData0(4)))-rawTttrData0(3);
+                status.String = [sprintf('Progress (%i/%i averages):\n  ',j,obj.averages),strjoin(statusString,'\n  ')];
                 
+                % BuildPulseSequence must take in vars in the order listed
+                pulseSeq = obj.BuildPulseSequence(indices{:});
+                if pulseSeq ~= false % Interpret a return of false as skip this one (leaving in NaN)
+                    pulseSeq.repeat = obj.samples;
+                    apdPS.seq = pulseSeq;
+                    t = tic;
+                    % obj.picoharpH.PH_StartMeas(3000);
+                    apdPS.start(1000); % hard coded
+                    % pause(0.2);
+                    [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
+
+                    
+                    apdPS.stream(p);
+                    
+
+                    % Retrieve data from picoharp and process to fit the two APD bins
+                    obj.picoharpH.PH_StopMeas;
+                    
 
 
-                dat = reshape(p.YData,obj.nCounterBins,[])';
-                assert(size(dat,1)==1, "Samples should be 1 and data should not be averaged")
-                obj.data.counts(j,indices{:},:) = dat;
+                    assert(length(rawTttrData0) == 7*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",7*obj.samples - 3, length(rawTttrData0)))
+                    for k = 1:obj.samples
+                        obj.data.timeTags{j, indices{:}, k, 1} = rawTttrData1((rawTttrData1>rawTttrData0(k*7-6)) & (rawTttrData1<rawTttrData0(k*7-5)))-rawTttrData0(k*7-6);
+                        obj.data.timeTags{j, indices{:}, k, 2} = rawTttrData1((rawTttrData1>rawTttrData0(k*7-4)) & (rawTttrData1<rawTttrData0(k*7-3)))-rawTttrData0(k*7-4);
+                    end
 
+
+                    dat = reshape(p.YData,obj.nCounterBins,[])';
+                    obj.data.counts(j,indices{:},:,:) = dat;
+                    for k = 1:obj.samples
+                        obj.data.diff(j, indices{:}, k, 1) = length(obj.data.timeTags{j, indices{:}, k, 1}) - obj.data.counts(j, indices{:}, k, 1);
+                        obj.data.diff(j, indices{:}, k, 2) = length(obj.data.timeTags{j, indices{:}, k, 2}) - obj.data.counts(j, indices{:}, k, 2);
+                    end
+                end
+                obj.UpdateRun(status,managers,ax,j,indices{:});
             end
-            obj.UpdateRun(status,managers,ax,j,indices{:});
-        end
+        % end
+        % diff(syncPulseBias+offsetMax+1) = sum(abs(obj.data.diff), 'all');
+        % countSum(syncPulseBias+offsetMax+1) = sum(obj.data.counts, 'all');
+        % fprintf('Time delay: %.2f(us), count difference: %d, total count: %d, ratio: %.4d\n', syncPulseBias/10, diff(syncPulseBias+offsetMax+1), countSum(syncPulseBias+offsetMax+1),  diff(syncPulseBias+offsetMax+1)/countSum(syncPulseBias+offsetMax+1));
+        
     end
     obj.PostRun(status,managers,ax);
-    
 catch err
 end
 delete(f);

@@ -334,7 +334,6 @@ classdef PicoHarp300 < Modules.Driver
                 if(nactual)
                     progress = progress + nactual;
                 else
-                    delay(0.1);
                     ctcdone = int32(0);
                     ctcdonePtr = libpointer('int32Ptr', ctcdone);
                     [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.DeviceNr, ctcdonePtr); 

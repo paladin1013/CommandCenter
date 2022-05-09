@@ -17,7 +17,7 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         repumpTime_us = 1; %us
         resOffset_us = 0.1;
         %resPulse1Time_us = 10;
-        readoutPulseDelay_us = 1;
+        readoutPulseDelay_us = 5;
         readoutPulseTime_us = 10;
         CounterLength_us = 10;
         tauTimes_us = 'linspace(0,100,101)'; %eval(tauTimes_us) will define sweepTimes
@@ -39,6 +39,10 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         OverflowCounts = 65535; %65535 is max value
         SyncPBLine = 6;
         SyncPulseWidth_us = 0.01;
+
+
+        syncPulseBias_begin = 0; 
+        syncPulseBias_end = 0; 
     end    
     
     properties
