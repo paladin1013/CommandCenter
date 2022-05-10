@@ -29,7 +29,7 @@ classdef PicoHarpCalibration < Modules.Experiment
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
 
 
-        signCoefficients = [-1, 1; -1, 0; 0, 1; -1, -1; 1, 1];
+        signCoefficients = [0, 0];
         timeOffsetsStr_ns = 'linspace(0, 1000, 11)';
         timeOffsets_us = linspace(0, 1000, 11)/1000;
         vars = {'signCoefficients', 'timeOffsetsStr_ns'};
@@ -88,10 +88,10 @@ classdef PicoHarpCalibration < Modules.Experiment
             assert(~isempty(obj.picoharpH), "PicoHarp300 is not connected");
 
             [signCoefficientsSetNum, ~] = size(obj.signCoefficients);
-            obj.data.counts = NaN([signCoefficientsSetNum,length(obj.timeOffsetsStr_ns), obj.rounds, obj.samples]);
-            obj.data.diff = NaN([signCoefficientsSetNum,length(obj.timeOffsetsStr_ns), obj.rounds, obj.samples]);
-            obj.data.timeTags = cell([signCoefficientsSetNum,length(obj.timeOffsetsStr_ns), obj.rounds, obj.samples]);
-            obj.data.errorRate = NaN([signCoefficientsSetNum, length(obj.timeOffsetsStr_ns)]);
+            obj.data.counts = NaN([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds, obj.samples]);
+            obj.data.diff = NaN([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds, obj.samples]);
+            obj.data.timeTags = cell([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds, obj.samples]);
+            obj.data.errorRate = NaN([signCoefficientsSetNum, length(obj.timeOffsets_us)]);
 
             obj.meta.prefs = obj.prefs2struct;
             obj.SetPHconfig;
