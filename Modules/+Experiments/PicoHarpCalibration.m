@@ -22,6 +22,7 @@ classdef PicoHarpCalibration < Modules.Experiment
         Ch1_CFDzero = 20;% mV
         Ch1_CFDlevel = 20;% mV
         Binning = 0;
+        Offset = 0;
         StopAtOverflow = false;
         OverflowCounts = 65535; %65535 is max value
         windowTime_us = 500;
@@ -38,7 +39,8 @@ classdef PicoHarpCalibration < Modules.Experiment
         rounds = 10;
         samples = 500;
 
-        prefs = { 'rounds', 'samples','windowTime_us', 'syncPulseWidth_us', 'pb_IP', 'NIDAQ_dev', 'PH_connection', 'PH_serialNr','PH_BaseResolution','PH_Mode','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','StopAtOverflow','OverflowCounts'};
+        prefs = { 'rounds', 'samples','windowTime_us', 'syncPulseWidth_us', 'pb_IP', 'NIDAQ_dev', 'PH_connection', 'PH_serialNr','PH_BaseResolution','PH_Mode','Ch0_CFDzero','Ch0_CFDlevel','Ch1_CFDzero','Ch1_CFDlevel','StopAtOverflow','OverflowCounts', 'timeOffsetsStr_ns'
+        };
         readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
 
     end
@@ -86,13 +88,13 @@ classdef PicoHarpCalibration < Modules.Experiment
             assert(~isempty(obj.picoharpH), "PicoHarp300 is not connected");
 
             [signCoefficientsSetNum, ~] = size(obj.signCoefficients);
-            timeOffsetNum = length(obj.timeOffsetsStr_ns);
             obj.data.counts = NaN([signCoefficientsSetNum,length(obj.timeOffsetsStr_ns), obj.rounds, obj.samples]);
             obj.data.diff = NaN([signCoefficientsSetNum,length(obj.timeOffsetsStr_ns), obj.rounds, obj.samples]);
             obj.data.timeTags = cell([signCoefficientsSetNum,length(obj.timeOffsetsStr_ns), obj.rounds, obj.samples]);
             obj.data.errorRate = NaN([signCoefficientsSetNum, length(obj.timeOffsetsStr_ns)]);
 
             obj.meta.prefs = obj.prefs2struct;
+            obj.SetPHconfig;
 
             for i = 1:length(obj.vars)
                 obj.meta.vars(i).name = obj.vars{i};
@@ -115,14 +117,14 @@ classdef PicoHarpCalibration < Modules.Experiment
 
                 for signCnt = 1:size(obj.signCoefficients, 1)
                     signCoefficient = obj.signCoefficients(signCnt, :);
-                    for offsetCnt = 1:size(obj.timeOffsets_us, 1)
+                    for offsetCnt = 1:numel(obj.timeOffsets_us)
                         syncPulseOffset_us = obj.timeOffsets_us(offsetCnt);
                         assert(floor(100*syncPulseOffset_us) == 100*syncPulseOffset_us, "The syncPulseOffset should be integer times of resolution (0.01 us).")
                         for roundCnt = 1:obj.rounds
                             drawnow('limitrate'); 
                             assert(~obj.abort_request,'User aborted.');
 
-                            statusString = sprintf("signCoefficient: %d, %d (%i/%i)\ntimeOffset_ns: %d (%i/%i)\n, Progress: %i/%i rounds\n", signCoefficient(1), signCoefficient(2), signCnt, signCoefficientsSetNum, syncPulseOffset_us, offsetCnt, timeOffsetNum, roundCnt, obj.rounds);
+                            statusString = sprintf("signCoefficient: %d, %d (%i/%i)\ntimeOffset_us: %.2f (%i/%i)\n, Progress: %i/%i rounds\n", signCoefficient(1), signCoefficient(2), signCnt, signCoefficientsSetNum, syncPulseOffset_us, offsetCnt, numel(obj.timeOffsets_us), roundCnt, obj.rounds);
                             status.String = statusString;
                             
                             pulseSeq = obj.BuildPulseSequence(signCoefficient*syncPulseOffset_us);
@@ -137,24 +139,24 @@ classdef PicoHarpCalibration < Modules.Experiment
 
 
                             assert(length(rawTttrData0) == 5*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",5*obj.samples - 3, length(rawTttrData0)))
-                            obj.data.counts(signCnt, offsetCnt, roundCnt,:) = dat;
+                            obj.data.counts(signCnt, offsetCnt, roundCnt,:) = p.YData;
                             for sampleCnt = 1:obj.samples
                                 obj.data.timeTags{signCnt, offsetCnt, roundCnt, sampleCnt} = rawTttrData1((rawTttrData1>rawTttrData0(sampleCnt*5-4)) & (rawTttrData1<rawTttrData0(sampleCnt*5-3)))-rawTttrData0(sampleCnt*5-4);
-                                obj.data.diff(signCnt, offsetCnt, roundCnt, sampleCnt) = length(obj.data.timeTags{signCnt, offsetCnt, roundCnt}) - obj.data.counts(signCnt, offsetCnt, roundCnt, sampleCnt);
+                                obj.data.diff(signCnt, offsetCnt, roundCnt, sampleCnt) = length(obj.data.timeTags{signCnt, offsetCnt, roundCnt, sampleCnt}) - obj.data.counts(signCnt, offsetCnt, roundCnt, sampleCnt);
 
                             end
                         end
                         diff = obj.data.diff(signCnt, offsetCnt, :, :);
-                        count = obj.data.count(signCnt, offsetCnt, :, :);
+                        count = obj.data.counts(signCnt, offsetCnt, :, :);
                         obj.data.positiveErrorRate(signCnt, offsetCnt) = sum(diff(diff>0), 'all')/ sum(count, 'all');
                         obj.data.negativeErrorRate(signCnt, offsetCnt) = -sum(diff(diff<0), 'all')/ sum(count, 'all');
                         obj.data.errorRate(signCnt, offsetCnt) = sum(abs(diff), 'all')/ sum(count, 'all');
                         ax.UserData.plots(1).YData = obj.data.positiveErrorRate(signCnt, 1:offsetCnt);
                         ax.UserData.plots(2).YData = obj.data.negativeErrorRate(signCnt, 1:offsetCnt);
                         ax.UserData.plots(3).YData = obj.data.errorRate(signCnt, 1:offsetCnt);
-                        ax.UserData.plots(1).XData = obj.timeOffsetsStr_ns(1:offsetCnt);
-                        ax.UserData.plots(2).XData = obj.timeOffsetsStr_ns(1:offsetCnt);
-                        ax.UserData.plots(3).XData = obj.timeOffsetsStr_ns(1:offsetCnt);
+                        ax.UserData.plots(1).XData = obj.timeOffsets_us(1:offsetCnt);
+                        ax.UserData.plots(2).XData = obj.timeOffsets_us(1:offsetCnt);
+                        ax.UserData.plots(3).XData = obj.timeOffsets_us(1:offsetCnt);
                         
                     end
 
@@ -203,11 +205,12 @@ classdef PicoHarpCalibration < Modules.Experiment
         function prepPlot(obj,ax)
             hold(ax, 'on'); 
 
-            plotH(1) = plot(ax, [0], [0]);
-            plotH(2) = plot(ax, [0], [0]);
-            plotH(3) = plot(ax, [0], [0]);
+            plotH(1) = plot(ax, [0], [0], 'Color', 'r');
+            plotH(2) = plot(ax, [0], [0], 'Color', 'g');
+            plotH(3) = plot(ax, [0], [0], 'Color', 'b');
+            legend(ax, {'Positive error rate', 'Negative error rate', 'Error rate'});
             ax.UserData.plots = plotH;
-            xlabel("Offset (us)");
+            xlabel("Offset time (us)");
             ylabel("Miscount rate");
             set(ax,'xlimmode','auto','ylimmode','auto','ytickmode','auto')
 
@@ -219,8 +222,8 @@ classdef PicoHarpCalibration < Modules.Experiment
             obj.picoharpH.PH_SetBinning(obj.Binning);
             obj.picoharpH.PH_SetOffset(obj.Offset);
             obj.picoharpH.PH_SetStopOverflow(obj.StopAtOverflow,obj.OverflowCounts); %65535 is max value
-            obj.picoharpH.PH_SetSyncOffset(obj.SyncOffset);
-            obj.picoharpH.PH_SetSyncDiv(obj.SyncDivider);
+            % obj.picoharpH.PH_SetSyncOffset(obj.SyncOffset);
+            % obj.picoharpH.PH_SetSyncDiv(obj.SyncDivider);
         end
         
         function abort(obj)
@@ -255,10 +258,10 @@ classdef PicoHarpCalibration < Modules.Experiment
                 obj.PH_connection = true;
                 obj.PH_serialNr = obj.picoharpH.SerialNr{1};
                 obj.PH_BaseResolution = obj.picoharpH.PH_GetBaseResolution;
-            elseif ~isempty(obj.picoharpH)
-                obj.picoharpH.delete;
-                obj.PH_connection = false;
-                obj.PH_serialNr = 'No device';
+            % elseif ~isempty(obj.picoharpH)
+            %     obj.picoharpH.delete;
+            %     obj.PH_connection = false;
+            %     obj.PH_serialNr = 'No device';
             end
         end
 
