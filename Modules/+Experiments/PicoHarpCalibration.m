@@ -92,7 +92,8 @@ classdef PicoHarpCalibration < Modules.Experiment
             obj.data.diff = NaN([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds, obj.samples]);
             obj.data.timeTags = cell([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds, obj.samples]);
             obj.data.errorRate = NaN([signCoefficientsSetNum, length(obj.timeOffsets_us)]);
-
+            obj.data.rawTimeTagsCh0 = cell([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds]);
+            obj.data.rawTimeTagsCh1 = cell([signCoefficientsSetNum,length(obj.timeOffsets_us), obj.rounds]);
             obj.meta.prefs = obj.prefs2struct;
             obj.SetPHconfig;
 
@@ -138,13 +139,18 @@ classdef PicoHarpCalibration < Modules.Experiment
                             
 
 
-                            assert(length(rawTttrData0) == 5*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",5*obj.samples - 3, length(rawTttrData0)))
+                            % assert(length(rawTttrData0) == 5*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",5*obj.samples - 3, length(rawTttrData0)))
+                            if (length(rawTttrData0) ~= 5*obj.samples - 3)
+                                fprintf("Fifo Overrun! Will skip this round. (Number of time tag from PB should be exactly %d, but now got %d)",5*obj.samples - 3, length(rawTttrData0))
+                            end
                             obj.data.counts(signCnt, offsetCnt, roundCnt,:) = p.YData;
                             for sampleCnt = 1:obj.samples
                                 obj.data.timeTags{signCnt, offsetCnt, roundCnt, sampleCnt} = rawTttrData1((rawTttrData1>rawTttrData0(sampleCnt*5-4)) & (rawTttrData1<rawTttrData0(sampleCnt*5-3)))-rawTttrData0(sampleCnt*5-4);
                                 obj.data.diff(signCnt, offsetCnt, roundCnt, sampleCnt) = length(obj.data.timeTags{signCnt, offsetCnt, roundCnt, sampleCnt}) - obj.data.counts(signCnt, offsetCnt, roundCnt, sampleCnt);
 
                             end
+                            obj.data.rawTimeTagsCh0{signCnt, offsetCnt, roundCnt} = rawTttrData0;
+                            obj.data.rawTimeTagsCh1{signCnt, offsetCnt, roundCnt} = rawTttrData1;
                         end
                         diff = obj.data.diff(signCnt, offsetCnt, :, :);
                         count = obj.data.counts(signCnt, offsetCnt, :, :);

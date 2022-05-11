@@ -20,6 +20,7 @@ classdef APDPulseSequence < handle
             obj.seq = seq;
             obj.pb = pb;
             if exist('ph', 'var')
+                fprintf("ph exists, initialize obj.ph by picoharpHandle\n");
                 obj.ph = ph;
             end
             % Verify chanels exist in nidaq
@@ -106,7 +107,8 @@ classdef APDPulseSequence < handle
                 obj.timeout = 1.5*obj.time + 1;
 
                 obj.pb.load(program);
-                if exist('obj.ph', 'var')
+                if ~isempty(obj.ph)
+                    % fprintf("obj.ph exists, run PH_SteartMeas\n");
                     obj.ph.PH_StartMeas(max(obj.seq.processSequenceN)/1000+1000); % Time unit of obj.seq.processSequenceN is us. Need to convert into ms. (1s extra time for startup)
                 end
                 obj.pb.start;
