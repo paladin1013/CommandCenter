@@ -19,8 +19,8 @@ classdef APDPulseSequence < handle
             obj.ni = ni;
             obj.seq = seq;
             obj.pb = pb;
-            if ~isempty(ph)
-            obj.ph = ph;
+            if exist('ph', 'var')
+                obj.ph = ph;
             end
             % Verify chanels exist in nidaq
             chans = seq.getSequenceChannels;
@@ -106,7 +106,7 @@ classdef APDPulseSequence < handle
                 obj.timeout = 1.5*obj.time + 1;
 
                 obj.pb.load(program);
-                if ~isempty(obj.ph)
+                if exist('obj.ph', 'var')
                     obj.ph.PH_StartMeas(max(obj.seq.processSequenceN)/1000+1000); % Time unit of obj.seq.processSequenceN is us. Need to convert into ms. (1s extra time for startup)
                 end
                 obj.pb.start;
