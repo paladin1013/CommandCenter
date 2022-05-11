@@ -140,14 +140,27 @@ classdef PicoHarpCalibration < Modules.Experiment
 
 
                             % assert(length(rawTttrData0) == 5*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",5*obj.samples - 3, length(rawTttrData0)))
-                            if (length(rawTttrData0) ~= 5*obj.samples - 3)
-                                fprintf("Fifo Overrun! Will skip this round. (Number of time tag from PB should be exactly %d, but now got %d)",5*obj.samples - 3, length(rawTttrData0))
+                            retryCnt = 0;
+                            while (length(rawTttrData0) ~= 5*obj.samples - 3)
+                                fprintf("Fifo Overrun! Will restart this round. Please decrease sample repeat times and shorten the pulse sequence.\n (Number of time tag from PB should be exactly %d, but now got %d)",5*obj.samples - 3, length(rawTttrData0))
+                                retryCnt = retryCnt + 1;
+                                pulseSeq = obj.BuildPulseSequence(signCoefficient*syncPulseOffset_us);
+                                assert(pulseSeq~= false, "Error building pulse sequence");
+                                pulseSeq.repeat = obj.samples;
+                                apdPS.seq = pulseSeq;
+                                apdPS.start(1000); % hard coded
+                                [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
+                                apdPS.stream(p);
+                                obj.picoharpH.PH_StopMeas;
+
+                                if (retryCnt >= 10)
+                                    assert(false, "Restart more than 10 rounds! Abort!\n");
+                                end
                             end
                             obj.data.counts(signCnt, offsetCnt, roundCnt,:) = p.YData;
                             for sampleCnt = 1:obj.samples
                                 obj.data.timeTags{signCnt, offsetCnt, roundCnt, sampleCnt} = rawTttrData1((rawTttrData1>rawTttrData0(sampleCnt*5-4)) & (rawTttrData1<rawTttrData0(sampleCnt*5-3)))-rawTttrData0(sampleCnt*5-4);
                                 obj.data.diff(signCnt, offsetCnt, roundCnt, sampleCnt) = length(obj.data.timeTags{signCnt, offsetCnt, roundCnt, sampleCnt}) - obj.data.counts(signCnt, offsetCnt, roundCnt, sampleCnt);
-
                             end
                             obj.data.rawTimeTagsCh0{signCnt, offsetCnt, roundCnt} = rawTttrData0;
                             obj.data.rawTimeTagsCh1{signCnt, offsetCnt, roundCnt} = rawTttrData1;
