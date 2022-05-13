@@ -43,13 +43,14 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
 
         syncPulseBias_begin = 0; 
         syncPulseBias_end = 0; 
+        recordAllTimeTags = false;
     end    
     
     properties
         tauTimes = linspace(0,100,101); %will be in us
     end
     properties(Constant)
-        nCounterBins = 2; %number of APD bins for this pulse sequence,20 is the maximum
+        nCounterBins = 3; %number of APD bins for this pulse sequence,20 is the maximum
         counterSpacing = 0.1; %spacing between APD bins
         vars = {'tauTimes'}; %names of variables to be swept
     end
@@ -64,7 +65,7 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
 
         function obj = PolarizationAndReadoutEOM_tttr()
             obj.prefs = [obj.prefs,{'PH_Mode', 'PH_serialNr', 'PH_BaseResolution','Ch0_CFDzero', 'Ch0_CFDlevel', 'Ch1_CFDzero', 'Ch1_CFDlevel' 'resLaser','repumpLaser','MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline','APDline','repumpTime_us','resOffset_us',...
-            'readoutPulseTime_us','CounterLength_us', 'SyncPBLine', 'SyncPulseWidth_us','tauTimes_us'}]; %additional preferences not in superclass
+            'readoutPulseTime_us','CounterLength_us', 'SyncPBLine', 'SyncPulseWidth_us','tauTimes_us', 'recordAllTimeTags'}]; %additional preferences not in superclass
             
             obj.loadPrefs;
         end

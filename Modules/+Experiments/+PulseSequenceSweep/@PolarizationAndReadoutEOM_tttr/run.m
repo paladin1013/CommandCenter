@@ -33,6 +33,10 @@ end
 obj.data.counts = NaN([obj.averages,varLength, obj.samples,obj.nCounterBins]);
 obj.data.diff = NaN([obj.averages,varLength, obj.samples,obj.nCounterBins]);
 obj.data.timeTags = cell([obj.averages, varLength, obj.samples,obj.nCounterBins]);
+if obj.recordAllTimeTags
+    obj.data.rawTimeTags0 = cell([obj.averages, varLength]);
+    obj.data.rawTimeTags1 = cell([obj.averages, varLength]);
+end
 
 obj.meta.prefs = obj.prefs2struct;
 for i = 1:length(obj.vars)
@@ -91,10 +95,11 @@ try
                     
 
 
-                    assert(length(rawTttrData0) == 7*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",7*obj.samples - 3, length(rawTttrData0)))
+                    assert(length(rawTttrData0) == 9*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",9*obj.samples - 3, length(rawTttrData0)))
                     for k = 1:obj.samples
-                        obj.data.timeTags{j, indices{:}, k, 1} = rawTttrData1((rawTttrData1>rawTttrData0(k*7-6)) & (rawTttrData1<rawTttrData0(k*7-5)))-rawTttrData0(k*7-6);
-                        obj.data.timeTags{j, indices{:}, k, 2} = rawTttrData1((rawTttrData1>rawTttrData0(k*7-4)) & (rawTttrData1<rawTttrData0(k*7-3)))-rawTttrData0(k*7-4);
+                        obj.data.timeTags{j, indices{:}, k, 1} = rawTttrData1((rawTttrData1>rawTttrData0(k*9-8)) & (rawTttrData1<rawTttrData0(k*9-7)))-rawTttrData0(k*9-8);
+                        obj.data.timeTags{j, indices{:}, k, 2} = rawTttrData1((rawTttrData1>rawTttrData0(k*9-6)) & (rawTttrData1<rawTttrData0(k*9-5)))-rawTttrData0(k*9-6);
+                        obj.data.timeTags{j, indices{:}, k, 3} = rawTttrData1((rawTttrData1>rawTttrData0(k*9-4)) & (rawTttrData1<rawTttrData0(k*9-3)))-rawTttrData0(k*9-4);
                     end
 
 
@@ -103,7 +108,13 @@ try
                     for k = 1:obj.samples
                         obj.data.diff(j, indices{:}, k, 1) = length(obj.data.timeTags{j, indices{:}, k, 1}) - obj.data.counts(j, indices{:}, k, 1);
                         obj.data.diff(j, indices{:}, k, 2) = length(obj.data.timeTags{j, indices{:}, k, 2}) - obj.data.counts(j, indices{:}, k, 2);
+                        obj.data.diff(j, indices{:}, k, 3) = length(obj.data.timeTags{j, indices{:}, k, 3}) - obj.data.counts(j, indices{:}, k, 3);
                     end
+                    if obj.recordAllTimeTags
+                        obj.data.rawTimeTags0{j, indices{:}} = rawTttrData0;
+                        obj.data.rawTimeTags1{j, indices{:}} = rawTttrData1;
+                    end
+
                 end
                 obj.UpdateRun(status,managers,ax,j,indices{:});
             end

@@ -26,6 +26,7 @@ g = node(g,repumpChannel,'units','us','delta',obj.repumpTime_us);
 r_s1 = node(g,resChannel,'units','us','delta',obj.resOffset_us);
 node(r_s1,APDchannel,'units','us', 'delta',0);
 
+m = node(r_s1,MWChannel, 'units','us','delta',0);
 r_s1_begin_sync = node(r_s1,SyncChannel,'units','us', 'delta',-1.5+obj.syncPulseBias_begin);
 test = node(r_s1_begin_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
 
@@ -43,6 +44,7 @@ node(r_s1,APDchannel,'units','us','delta',obj.tauTimes(tauIndex));
 
 
 r_e1 = node(r_s1,resChannel,'units','us','delta',obj.tauTimes(tauIndex));
+% m = node(r_e1,MWChannel, 'units','us','delta',0);
 
 
 r_s1_end_sync = node(r_e1,SyncChannel,'units','us', 'delta',obj.syncPulseBias_end);
@@ -67,11 +69,27 @@ node(r_s2_end_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
 % node(r_e2,APDchannel,'units','us','delta',-obj.CounterLength_us);
 
 % m = node(r_e0,MWChannel, 'units','us','delta',obj.readoutPulseDelay_us/2);
-m = node(r_e1,MWChannel, 'units','us','delta',obj.readoutPulseDelay_us/2);
+
 m = node(r_e2,MWChannel, 'units','us','delta',0);
 
-g = node(r_e2,repumpChannel,'units','us','delta',0);
+% 
 
+r_s3 = node(r_e2, resChannel, 'units', 'us', 'delta', obj.readoutPulseDelay_us);
+node(r_s3,APDchannel,'units','us','delta',0);
+
+r_s3_begin_sync = node(r_s3,SyncChannel,'units','us', 'delta',obj.syncPulseBias_begin);
+node(r_s3_begin_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
+
+
+r_e3 = node(r_s3, resChannel, 'units', 'us', 'delta', obj.readoutPulseTime_us);
+node(r_e3, APDchannel,'units','us','delta',0);
+
+r_s3_end_sync = node(r_e3,SyncChannel,'units','us', 'delta',obj.syncPulseBias_end);
+node(r_s3_end_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
+% m = node(r_e3,MWChannel, 'units','us','delta',0);
+
+
+% g = node(r_e3,repumpChannel,'units','us','delta',0);
 % s.draw
 end
 
