@@ -62,29 +62,137 @@ for roundCnt = 1:roundNum
         end
     end
 end
-
-
+fr=zeros(1,30);
+n0=zeros(1,30);
+thre=18;
+% for thre=1:30
+rdw=50;
+for rdw=10:10:50
+% for thre=1:20
 k = 1;
+% binEnd_ps = (70:5:170)*1e6;
+binEnd_ps = (65+rdw)*1e6;
 times = NaN(1, numel(sampleTT));
 nums = NaN(1, numel(sampleTT));
+% binTimes = NaN(1, 100000);
+bin2Cnt = NaN(length(binEnd_ps), numel(sampleTT));
+binStart_ps = 65e6;
+validCnt = 0;
+figure(1)
+
+
 for cnt = 1:length(sampleTT)
     timeTags = sampleTT{cnt};
-    if length(timeTags(timeTags<60e6)) < 2
+    if length(timeTags(timeTags<60e6)) < thre
         continue
     end
+    validCnt = validCnt + 1;
     for l = 1:length(timeTags)
         times(k) = timeTags(l);
         nums(k) = cnt;
         k = k+1;
     end
+    for l = 1:length(binEnd_ps)
+    bin2Cnt(l, validCnt) = sum(timeTags > binStart_ps & timeTags < binEnd_ps(l));
+    end
 end
-fig = figure;
-durationAvg_ps = mean(duration);
-durationStd_ps = std(duration);
-scatter(times(1:k-1)/1e6, nums(1:k-1))
-hold on;
-line([preOffset_ps, preOffset_ps]/1e6, [0, length(sampleTT)], 'Color', 'k')
-line(durationAvg_ps/1e6-[postOffset_ps, postOffset_ps]/1e6, [0, length(sampleTT)],  'Color', 'k')
+bin2Cnt = bin2Cnt(:, 1:validCnt);
+% fig = figure;
+% durationAvg_ps = mean(duration);
+% durationStd_ps = std(duration);
+% scatter(times(1:k-1)/1e6, nums(1:k-1))
+% hold on;
+% line([preOffset_ps, preOffset_ps]/1e6, [0, length(sampleTT)], 'Color', 'k')
+% line(durationAvg_ps/1e6-[postOffset_ps, postOffset_ps]/1e6, [0, length(sampleTT)],  'Color', 'k')
+% 
+% set(get(gca, 'XLabel'), 'String', 'Time (us)');
+% set(get(gca, 'YLabel'), 'String', 'Sample No.');
 
-set(get(gca, 'XLabel'), 'String', 'Time (us)');
-set(get(gca, 'YLabel'), 'String', 'Sample No.');
+
+% scatter (thre,(mean(bin2Cnt, 2)))
+% % hold on
+% fig = figure;
+% ax = axes(fig);
+h1=histogram(bin2Cnt,'FaceAlpha',0.3,'Normalization','probability');
+hdata1=h1.Values;
+hold on
+meanCnt = mean(bin2Cnt, 2)
+stdCnt = std(bin2Cnt, 0, 2)
+% plot(binEnd_ps-binStart_ps, meanCnt, 'b');
+% xlim([0 inf])
+% hold on;
+% plot(binEnd_ps-binStart_ps, stdCnt, 'r');
+% end
+
+
+%% third time bin
+% for thre=1:20
+k = 1;
+% binEnd_ps = (70:5:170)*1e6;
+binEnd_ps = (170+rdw)*1e6;
+times = NaN(1, numel(sampleTT));
+nums = NaN(1, numel(sampleTT));
+% binTimes = NaN(1, 100000);
+bin2Cnt = NaN(length(binEnd_ps), numel(sampleTT));
+binStart_ps = 170e6;
+validCnt = 0;
+% figure(1)
+
+for cnt = 1:length(sampleTT)
+    timeTags = sampleTT{cnt};
+    if length(timeTags(timeTags<60e6)) < thre
+        continue
+    end
+    validCnt = validCnt + 1;
+    for l = 1:length(timeTags)
+        times(k) = timeTags(l);
+        nums(k) = cnt;
+        k = k+1;
+    end
+    for l = 1:length(binEnd_ps)
+    bin2Cnt(l, validCnt) = sum(timeTags > binStart_ps & timeTags < binEnd_ps(l));
+    end
+end
+bin2Cnt = bin2Cnt(:, 1:validCnt);
+validCnt
+% fig = figure;
+% durationAvg_ps = mean(duration);
+% durationStd_ps = std(duration);
+% scatter(times(1:k-1)/1e6, nums(1:k-1))
+% hold on;
+% line([preOffset_ps, preOffset_ps]/1e6, [0, length(sampleTT)], 'Color', 'k')
+% line(durationAvg_ps/1e6-[postOffset_ps, postOffset_ps]/1e6, [0, length(sampleTT)],  'Color', 'k')
+% 
+% set(get(gca, 'XLabel'), 'String', 'Time (us)');
+% set(get(gca, 'YLabel'), 'String', 'Sample No.');
+
+
+h2=histogram(bin2Cnt,'FaceAlpha',0.3,'Normalization','probability');
+hdata2=h2.Values;
+meanCnt = mean(bin2Cnt, 2)
+stdCnt = std(bin2Cnt, 0, 2)
+
+    i_e=min(length(hdata1),length(hdata2));
+    fidelity=zeros(1,length(h2.Values));
+    for i=2:i_e
+       err1=sum(hdata1(1:i-1))/sum(hdata1);
+       err2=sum(hdata2(i:length(hdata2)))/sum(hdata2);
+       fidelity(i)=1-(err1+err2)/2;
+    end
+%     brightp=sum(hdata1(thre+1:length(hdata1)))/sum(hdata1);
+%     darkp=sum(hdata2(thre+1:length(hdata2)))/sum(hdata2);
+    i0=find(fidelity==max(fidelity))
+%     fr(thre)=max(fidelity);
+%     n0(thre)=validCnt;
+figure(2)
+    max(fidelity)
+    scatter(rdw,max(fidelity),'r')
+    scatter(rdw,max(fidelity)-(1-exp(-rdw/1200)),'b')
+%     hold on
+%     ini_f(thre)=brightp/(brightp+darkp);
+end
+% 
+% figure(2)
+% plot(1:30,fr,'r')
+% figure(3)
+% plot(1:30,n0,'b')
