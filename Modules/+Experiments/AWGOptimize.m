@@ -6,7 +6,8 @@ classdef AWGOptimize < Modules.Experiment
         PH_serialNr = 'No device';
         PH_BaseResolution = 'No device';
         connection = false;
-        Tacq_ms = 300000; %ms
+        RoundTime_ms = 1000; %ms
+        Rounds = 100;
         MaxTime_s = 3600*10; %s
         MaxCounts = 10000;
         SyncDivider = uint8(1);
@@ -25,7 +26,8 @@ classdef AWGOptimize < Modules.Experiment
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
         SyncChannel = 0;
         PhotonChannel = 1;
-        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','PH_Mode', 'sync_ns', 'bin_width_ns', 'SyncChannel', 'PhotonChannel', 'Tacq_ms'};
+        LogScale = 1;
+        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','PH_Mode', 'sync_ns', 'bin_width_ns', 'SyncChannel', 'PhotonChannel', 'RoundTime_ms', 'Rounds', 'LogScale'};
         readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
 
     end
@@ -64,77 +66,76 @@ classdef AWGOptimize < Modules.Experiment
             obj.abort_request = false;
             obj.acquiring = true;
             drawnow;
-
-
-            %Note: after Init or SetSyncDiv you must allow 100 ms for valid new count rate readings
-            pause(0.2);
+            t = tic;
             Resolution = obj.picoharpH.PH_GetResolution;
             Countrate0 = obj.picoharpH.PH_GetCountRate(0);
             Countrate1 = obj.picoharpH.PH_GetCountRate(1);
             obj.meta.resolution = Resolution;
-            fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
-            t = tic;
-            obj.picoharpH.PH_StartMeas(obj.Tacq_ms);
-            result0 = double(zeros(1, obj.picoharpH.TTREADMAX));
-            result1 = double(zeros(1, obj.picoharpH.TTREADMAX));
-            progress = 0;
-            ctcdone = 0;
-            ofl_num = 0;
-            cnt0 = 0;
-            cnt1 = 0;
             time_bin_result = zeros(1, ceil(obj.sync_ns/obj.bin_width_ns));
-            while(ctcdone == 0 && obj.abort_request == false)
-                [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
-                cnt0_prev = cnt0;
-                cnt1_prev = cnt1;
-                for k = 1:nactual
-                    chan = bitand(bitshift(buffer(k),-28),15);
-                    cur_time_tag = bitand(buffer(k), 2^28-1);
-                    if (chan==15) % to detect an overflow signal
-                        ofl_num = ofl_num + 1;
-                    elseif (chan == 0)
-                        cnt0 = cnt0 + 1;
-                        result0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
-                    else % chan == 1
-                        cnt1 = cnt1 + 1;
-                        result1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
+
+            for round_cnt = 1:obj.Rounds
+                if(obj.abort_request == true)
+                    break
+                end
+                status.String = sprintf('Round Cnt: %d/%d, Time Elapsed: %0.2f\n', round_cnt,obj.Rounds, toc(t));
+                pause(0.2);
+                fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
+                obj.picoharpH.PH_StartMeas(obj.RoundTime_ms);
+                result0 = double(zeros(1, obj.picoharpH.TTREADMAX));
+                result1 = double(zeros(1, obj.picoharpH.TTREADMAX));
+                progress = 0;
+                ctcdone = 0;
+                ofl_num = 0;
+                cnt0 = 0;
+                cnt1 = 0;
+                while(ctcdone == 0 && obj.abort_request == false)
+                    [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
+                    cnt0_prev = cnt0;
+                    cnt1_prev = cnt1;
+                    for k = 1:nactual
+                        chan = bitand(bitshift(buffer(k),-28),15);
+                        cur_time_tag = bitand(buffer(k), 2^28-1);
+                        if (chan==15) % to detect an overflow signal
+                            ofl_num = ofl_num + 1;
+                        elseif (chan == 0)
+                            cnt0 = cnt0 + 1;
+                            result0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
+                        else % chan == 1
+                            cnt1 = cnt1 + 1;
+                            result1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
+                        end
+                    end
+                    if(nactual)
+                        progress = progress + nactual;
+                        time_bin_result = time_bin_result + PulsePhotonAnalysis(result0(cnt0_prev + 1:cnt0), result1(cnt1_prev + 1:cnt1), obj.sync_ns, obj.bin_width_ns);
+                    else
+                        ctcdone = int32(0);
+                        ctcdonePtr = libpointer('ixnt32Ptr', ctcdone);
+                        [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
                     end
                 end
-
-                if(nactual)
-                    progress = progress + nactual;
-                    status.String = sprintf('Progress: %9d, Time Elapsed: %0.2f\n',progress, toc(t));
-                    time_bin_result = time_bin_result + PulsePhotonAnalysis(result0(cnt0_prev + 1:cnt0), result1(cnt1_prev + 1:cnt1), obj.sync_ns, obj.bin_width_ns);
-                    % time_bin_result = PulsePhotonAnalysis(result0(1:cnt0), result1(1:cnt1), obj.sync_ns, obj.bin_width_ns);
-                    % total_round_cnt = 
-                    ax.Children(1).YData = time_bin_result/cnt0/100;
-                    ax.Children(1).XData = (1:ceil(obj.sync_ns/obj.bin_width_ns))*obj.bin_width_ns;
-                    set(ax, 'XLim', [0 obj.sync_ns])
-                    set(ax, 'YScale', 'log')
-                    drawnow limitrate;
-                else
-                    ctcdone = int32(0);
-                    ctcdonePtr = libpointer('int32Ptr', ctcdone);
-                    [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
+                obj.picoharpH.PH_StopMeas;
+                ax.Children(1).YData = time_bin_result/cnt0/100;
+                ax.Children(1).XData = (1:ceil(obj.sync_ns/obj.bin_width_ns))*obj.bin_width_ns;
+                set(ax, 'XLim', [0 obj.sync_ns])
+                if obj.LogScale == 1
+                set(ax, 'YScale', 'log')
                 end
+                drawnow limitrate;
             end
-            obj.picoharpH.PH_StopMeas;
             obj.data.time_bin_result = time_bin_result;
             obj.data.bin_width_ns = obj.bin_width_ns;
             obj.data.sync_ns = obj.sync_ns;
-            fprintf('\nDone\n');
         end
         
         function prepPlot(obj,ax)
             obj.data.x0 = [0];
             obj.data.y0 = [0];
-            % obj.data.x1 = [0];
-            % obj.data.y1 = [0];
             plot(ax,obj.data.x0,obj.data.y0);
             set(ax,'YLim',[0 inf])
             set(ax, 'XLim', [0 inf])
             set(ax.XLabel,'String','Time (ns)')
-            set(ax.YLabel,'String','Counts')
+            set(ax.YLabel,'String','Probability')
         end
         
         function SetPHconfig(obj)
