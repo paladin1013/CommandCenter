@@ -6,7 +6,7 @@ classdef AWGOptimize < Modules.Experiment
         PH_serialNr = 'No device';
         PH_BaseResolution = 'No device';
         connection = false;
-        Tacq_ms = 10000; %ms
+        Tacq_ms = 300000; %ms
         MaxTime_s = 3600*10; %s
         MaxCounts = 10000;
         SyncDivider = uint8(1);
@@ -20,8 +20,8 @@ classdef AWGOptimize < Modules.Experiment
         StopAtOverflow = true;
         OverflowCounts = 65535; %65535 is max value
         prefs = {'connection'};
-        sync_ns = 10000;
-        bin_width_ns = 10;
+        sync_ns = 300;
+        bin_width_ns = 0.256;
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
         SyncChannel = 0;
         PhotonChannel = 1;
@@ -104,12 +104,13 @@ classdef AWGOptimize < Modules.Experiment
                 if(nactual)
                     progress = progress + nactual;
                     status.String = sprintf('Progress: %9d, Time Elapsed: %0.2f\n',progress, toc(t));
-                    % time_bin_result = time_bin_result + PulsePhotonAnalysis(result0(cnt0_prev + 1:cnt0), result1(cnt1_prev + 1:cnt1), obj.sync_ns, obj.bin_width_ns);
+                    time_bin_result = time_bin_result + PulsePhotonAnalysis(result0(cnt0_prev + 1:cnt0), result1(cnt1_prev + 1:cnt1), obj.sync_ns, obj.bin_width_ns);
                     % time_bin_result = PulsePhotonAnalysis(result0(1:cnt0), result1(1:cnt1), obj.sync_ns, obj.bin_width_ns);
-                    ax.Children(1).YData = time_bin_result;
+                    % total_round_cnt = 
+                    ax.Children(1).YData = time_bin_result/cnt0/100;
                     ax.Children(1).XData = (1:ceil(obj.sync_ns/obj.bin_width_ns))*obj.bin_width_ns;
                     set(ax, 'XLim', [0 obj.sync_ns])
-                    
+                    set(ax, 'YScale', 'log')
                     drawnow limitrate;
                 else
                     ctcdone = int32(0);
