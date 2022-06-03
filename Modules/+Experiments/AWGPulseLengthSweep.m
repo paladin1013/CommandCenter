@@ -1,4 +1,4 @@
-classdef AWGOptimize < Modules.Experiment
+classdef AWGPulseLengthSweep < Modules.Experiment
     properties(SetObservable,AbortSet)
         picoharpH;
         data
@@ -7,11 +7,13 @@ classdef AWGOptimize < Modules.Experiment
         PH_BaseResolution = 'No device';
         connection = false;
         SampleTime_ms = 1000; %ms
-        Samples = 100;
-        MaxTime_s = 3600*10; %s
-        MaxCounts = 10000;
+        SampleNum = 100;
         SyncDivider = uint8(1);
         SyncOffset = 0; %ms
+        PulseLength_ns = 1;
+        PulsePeriod_ns = 100;
+        MarkerLength_ns = 10;
+        PulseRepeat = 100;
         Ch0_CFDzero = 10;% mV
         Ch0_CFDlevel = 50;% mV
         Ch1_CFDzero = 10;% mV
@@ -26,8 +28,16 @@ classdef AWGOptimize < Modules.Experiment
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
         SyncChannel = 0;
         PhotonChannel = 1;
-        LogScale = 1;
-        show_prefs = {'PH_serialNr','PH_BaseResolution','connection','PH_Mode', 'sync_ns', 'bin_width_ns', 'SyncChannel', 'PhotonChannel', 'SampleTime_ms', 'Samples', 'LogScale'};
+        LogScale = true;
+
+        AWG_IP =    Prefs.String('None Set','set','set_awg_IP', ...
+        'help_text','AWG IP for TCP connection');
+        PB_IP =     Prefs.String('None Set','set','set_pb_IP', ... % 18.25.28.34
+                        'help_text','Hostname for computer running pulseblaster server');
+        AWG_SampleRate_GHz = 10;
+        PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B';
+        show_prefs = {'AWG_IP', 'AWG_SampleRate_GHz', 'PulseFileDir', 'PB_IP', 'PH_serialNr','PH_BaseResolution','connection','PH_Mode','SyncChannel', 'PhotonChannel',
+        'PulseLength_ns', 'PulsePeriod_ns', 'MarkerLength_ns', 'PulseRepeat', 'bin_width_ns',  'SampleTime_ms', 'SampleNum', 'LogScale'};
         readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
 
     end
@@ -38,8 +48,9 @@ classdef AWGOptimize < Modules.Experiment
         acquiring = false;
     end
     methods(Access=private)
-        function obj = AWGOptimize()
+        function obj = AWGPulseLengthSweep()
             obj.loadPrefs;
+            
         end
     end
 
@@ -57,6 +68,9 @@ classdef AWGOptimize < Modules.Experiment
 
     methods
         function run(obj,status,managers,ax)
+
+            
+
             assert(~isempty(obj.picoharpH)&&isvalid(obj.picoharpH),'PicoHarp driver not intialized properly.');
             status.String = 'Experiment started';
             obj.SetPHconfig;
@@ -71,13 +85,19 @@ classdef AWGOptimize < Modules.Experiment
             Countrate0 = obj.picoharpH.PH_GetCountRate(0);
             Countrate1 = obj.picoharpH.PH_GetCountRate(1);
             obj.meta.resolution = Resolution;
+
+            AWGPulseGen(obj.Amplitude, obj.PulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, obj.PulseFileDir+sprintf('\AWGPulseLengthSweep.txt'));
+
+
+            
+
             time_bin_result = zeros(1, ceil(obj.sync_ns/obj.bin_width_ns));
 
-            for Sample_cnt = 1:obj.Samples
+            for Sample_cnt = 1:obj.SampleNum
                 if(obj.abort_request == true)
                     break
                 end
-                status.String = sprintf('Sample Cnt: %d/%d, Time Elapsed: %0.2f\n', Sample_cnt,obj.Samples, toc(t));
+                status.String = sprintf('Sample Cnt: %d/%d, Time Elapsed: %0.2f\n', Sample_cnt,obj.SampleNum, toc(t));
                 pause(0.2);
                 fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
                 obj.picoharpH.PH_StartMeas(obj.SampleTime_ms);
@@ -152,6 +172,26 @@ classdef AWGOptimize < Modules.Experiment
             obj.abort_request = true;
         end
         
+        function val = set_AWG_IP(obj,val,~)
+            if strcmp(val,'None Set') % Short circuit
+                obj.AWG = [];
+            end
+            if isempty(obj.AWG)
+                try
+                    % currently '18.25.28.34'; 5/16/2022
+                    obj.AWG=Drivers.AWG70002B.instance('visa',obj.AWG_IP);
+    %                 obj.AWG=visa('tek', ['TCPIP0::' obj.AWG_IP '::INSTR']);
+    %                 fopen(obj.AWG);
+                catch err
+                    rmfield(obj,'AWG');
+    %                 obj.AWG = [];
+                    obj.AWG_IP = 'None Set';
+                    rethrow(err);
+                end
+            end
+        end
+
+
         function dat = GetData(obj,~,~)
             dat = [];
             for i=1:length(obj.show_prefs)
@@ -191,6 +231,41 @@ classdef AWGOptimize < Modules.Experiment
                 obj.picoharpH.delete;
                 obj.connection = false;
                 obj.PH_serialNr = 'No device';
+            end
+        end
+
+        function val = set_awg_IP(obj,val,~)
+            if strcmp(val,'None Set') % Short circuit
+                obj.AWG = [];
+            end
+            if isempty(obj.AWG)
+                try
+                    % currently '18.25.28.34'; 5/16/2022
+                    obj.AWG=Drivers.AWG70002B.instance('visa',obj.awg_IP);
+    %                 obj.AWG=visa('tek', ['TCPIP0::' obj.awg_IP '::INSTR']);
+    %                 fopen(obj.AWG);
+                    obj.AWG.SampleRate = obj.AWG_SampleRate_GHz * 1000000000;
+                    obj.AWG.Set;
+                catch err
+                    rmfield(obj,'AWG');
+    %                 obj.AWG = [];
+                    obj.awg_IP = 'None Set';
+                    rethrow(err);
+                end
+            end
+        end
+
+
+        function val = set_pb_IP(obj,val,~)
+            if strcmp(val,'None Set') % Short circuit
+                obj.pbH = [];
+            end
+            try
+                obj.pbH = Drivers.PulseBlaster.instance(val);
+            catch err
+                obj.pbH = [];
+                obj.PB_IP = 'None Set';
+                rethrow(err);
             end
         end
     end
