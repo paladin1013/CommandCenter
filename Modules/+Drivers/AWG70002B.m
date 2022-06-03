@@ -41,7 +41,7 @@ classdef AWG70002B < Modules.Driver
         %MIN_number_of_wfm_points = 1; % for hardware sequencer mode, a waveform must have at least 250 pts, vs 1 pt for software sequencer mode
         MarkerHighVoltage = 2.7; % Voltage when markers are high
         TotalChannels = 4;
-        PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B';
+        PulseFileDir = 'Z:\Experiments\AWG70002B';
         %%NEW NEW
         HWChanNameToNumMap
         Resolution = 8
@@ -151,46 +151,10 @@ classdef AWG70002B < Modules.Driver
         
         function writeToSocket(obj,string)
             write(obj.SocketHandle,string,"string");
-%             % check if the socket is already open
-%             CloseOnDone=0;
-%             
-%             % open the socket if it is closed
-%             if (strcmp(obj.SocketHandle.Status,'closed'))
-%                 obj.open();
-%                 CloseOnDone = 1;
-%             end
-%             
-%             % send the string command to execute
-%             if (strcmp(obj.SocketHandle.Status,'open'))
-%                 fprintf(obj.SocketHandle,string);
-%             end
-%             
-%             % close the socket if it was initially closed
-%             if CloseOnDone
-%                 obj.close();
-%             end
-%             
         end
         
         function [output] = writeReadToSocket(obj,string)
             output = writeread(obj.SocketHandle,string);
-%             CloseOnDone = 0;
-%             
-%             % open the socket if it is closed
-%             if (strcmp(obj.SocketHandle.Status,'closed'))
-%                 obj.open();      % open a socket connection
-%                 CloseOnDone = 1; % close open executing the function
-%             end
-%             
-%             % send the string command to execute
-%             fprintf(obj.SocketHandle,string) ;
-%             output = fscanf(obj.SocketHandle);
-%             
-%             % close the socket if it was initially closed
-%             if CloseOnDone
-%                 obj.close();
-%             end
-%             
         end
         
          function AWGTell(obj,command)
@@ -341,13 +305,12 @@ classdef AWG70002B < Modules.Driver
                 tokens = regexp(waveformName, expression, "tokens");
                 waveformName = tokens{1};
             end
-
             err = 0;           
-
-
-            obj.writeToSocket(sprintf('SOUR%d:WAV %s',channel,waveformName));
-
-            loadedName = obj.writeReadToSocket(sprintf("SOUR%d:WAV?", waveformName));
+            obj.writeToSocket(sprintf('MMEM:OPEN:TXT "%s\\%s.txt",ANAL', obj.PulseFileDir, waveformName))
+            obj.writeToSocket('?OPC');
+            obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',channel,waveformName));
+            obj.writeToSocket('?OPC');
+            loadedName = obj.writeReadToSocket(sprintf("SOUR%d:WAV?", channel));
             if ~strcmp(waveformName, loadedName(2:end-1))
                 err = 1;
                 uiwait(warndlg({sprintf('AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName)}));
