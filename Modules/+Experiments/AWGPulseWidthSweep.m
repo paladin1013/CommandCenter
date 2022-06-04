@@ -6,11 +6,12 @@ classdef AWGPulseWidthSweep < Modules.Experiment
         PH_serialNr = 'No device';
         PH_BaseResolution = 'No device';
         connection = false;
-        SampleTime_ms = 1000; %ms
-        SampleNum = 100;
+        SampleTime_ms = 5000; %ms
+        SampleNum = 10;
         SyncDivider = uint8(1);
         SyncOffset = 0; %ms
-        PulseWidth_ns = 1;
+        PulseWidthStr_ns = 'linspace(0, 20, 101)';
+        PulseWidths_ns = linspace(0, 20, 101);
         PulsePeriod_ns = 100;
         MarkerWidth_ns = 10;
         PulseRepeat = 100;
@@ -34,9 +35,9 @@ classdef AWGPulseWidthSweep < Modules.Experiment
         PB;
         AWG_Channel = 1;
         AWG_SampleRate_GHz = 10;
-        PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B';
+        PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B\waveforms';
         show_prefs = {'PB_IP','AWG_IP','AWG_Channel', 'AWG_SampleRate_GHz', 'PulseFileDir', 'PH_serialNr','PH_BaseResolution','connection','PH_Mode','SyncChannel', 'PhotonChannel', ...
-        'PulseWidth_ns', 'PulsePeriod_ns', 'MarkerWidth_ns', 'PulseRepeat', 'bin_width_ns',  'SampleTime_ms', 'SampleNum', 'LogScale'};
+        'PulsePeriod_ns','PulseWidthStr_ns' 'MarkerWidth_ns', 'PulseRepeat', 'bin_width_ns',  'SampleTime_ms', 'SampleNum', 'LogScale'};
         
         readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
 
@@ -55,6 +56,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
     end
     methods(Access=private)
         function obj = AWGPulseWidthSweep()
+            obj.prefs = [obj.prefs, {}];
             obj.loadPrefs;
             
         end
@@ -90,91 +92,126 @@ classdef AWGPulseWidthSweep < Modules.Experiment
             obj.SetPHconfig;
             obj.data = [];
             obj.meta = [];
-            obj.prepPlot(ax);
+            ax = obj.prepPlot(ax);
             obj.abort_request = false;
             obj.acquiring = true;
             drawnow;
             t = tic;
             Resolution = obj.picoharpH.PH_GetResolution;
-            Countrate0 = obj.picoharpH.PH_GetCountRate(0);
-            Countrate1 = obj.picoharpH.PH_GetCountRate(1);
+            % Countrate0 = obj.picoharpH.PH_GetCountRate(0);
+            % Countrate1 = obj.picoharpH.PH_GetCountRate(1);
+            Nwidths = length(obj.PulseWidths_ns);
+            Nbins = ceil(obj.PulsePeriod_ns/obj.bin_width_ns);
             obj.meta.resolution = Resolution;
+            obj.data.pulseWidths = obj.PulseWidths_ns;
+            obj.data.timeBinResults = zeros(Nwidths, Nbins);
+            obj.data.bin_width_ns = obj.bin_width_ns;
+            obj.data.PulsePeriod_ns = obj.PulsePeriod_ns;
+            obj.data.probability = zeros(1, Nwidths);
 
-            waveformName = sprintf("PulseWidth_%d_ns", obj.PulseWidth_ns);
-            AWGPulseGen(obj.Amplitude, obj.PulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName));
 
-
-            obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
-            obj.AWG.setAmplitude(obj.AWG_Channel, obj.Amplitude);
-            obj.AWG.setResolution(obj.AWG_Channel, 9);
-            obj.AWG.setChannelOn(obj.AWG_Channel);
-            obj.AWG.AWGStart;
-
-            time_bin_result = zeros(1, ceil(obj.PulsePeriod_ns/obj.bin_width_ns));
-
-            for Sample_cnt = 1:obj.SampleNum
+            for widthCnt = 1:Nwidths
                 if(obj.abort_request == true)
                     break
                 end
-                status.String = sprintf('Sample Cnt: %d/%d, Time Elapsed: %0.2f\n', Sample_cnt,obj.SampleNum, toc(t));
-                pause(0.2);
-                fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
-                obj.picoharpH.PH_StartMeas(obj.SampleTime_ms);
-                result0 = double(zeros(1, obj.picoharpH.TTREADMAX));
-                result1 = double(zeros(1, obj.picoharpH.TTREADMAX));
-                progress = 0;
-                ctcdone = 0;
-                ofl_num = 0;
-                cnt0 = 0;
-                cnt1 = 0;
-                while(ctcdone == 0 && obj.abort_request == false)
-                    [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
-                    cnt0_prev = cnt0;
-                    cnt1_prev = cnt1;
-                    for k = 1:nactual
-                        chan = bitand(bitshift(buffer(k),-28),15);
-                        cur_time_tag = bitand(buffer(k), 2^28-1);
-                        if (chan==15) % to detect an overflow signal
-                            ofl_num = ofl_num + 1;
-                        elseif (chan == 0)
-                            cnt0 = cnt0 + 1;
-                            result0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
-                        else % chan == 1
-                            cnt1 = cnt1 + 1;
-                            result1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
+                pulseWidth_ns = obj.PulseWidths_ns(widthCnt);
+                waveformName = sprintf("PulseWidth_%.2f_ns", pulseWidth_ns);
+                if ~isfile(sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName))
+                    AWGPulseGen(obj.Amplitude, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName));
+                end
+
+
+                obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
+                obj.AWG.setAmplitude(obj.AWG_Channel, obj.Amplitude);
+                obj.AWG.setResolution(obj.AWG_Channel, 9);
+                obj.AWG.setChannelOn(obj.AWG_Channel);
+                obj.AWG.AWGStart;
+
+                time_bin_result = zeros(1, Nbins);
+                photonNum = 0;
+                periodNum = 0;
+                for Sample_cnt = 1:obj.SampleNum
+                    if(obj.abort_request == true)
+                        break
+                    end
+                    status.String = sprintf('Width Cnt: %d/%d, Sample Cnt: %d/%d\n Time Elapsed: %0.2f\n', widthCnt, Nwidths, Sample_cnt,obj.SampleNum, toc(t));
+                    pause(0.2);
+                    % fprintf('\nResolution=%1dps Countrate0=%1d/s Countrate1=%1d/s', Resolution, Countrate0, Countrate1);
+                    obj.picoharpH.PH_StartMeas(obj.SampleTime_ms);
+                    result0 = double(zeros(1, obj.picoharpH.TTREADMAX));
+                    result1 = double(zeros(1, obj.picoharpH.TTREADMAX));
+                    progress = 0;
+                    ctcdone = 0;
+                    ofl_num = 0;
+                    cnt0 = 0;
+                    cnt1 = 0;
+                    while(ctcdone == 0 && obj.abort_request == false)
+                        [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
+                        cnt0_prev = cnt0;
+                        cnt1_prev = cnt1;
+                        for k = 1:nactual
+                            chan = bitand(bitshift(buffer(k),-28),15);
+                            cur_time_tag = bitand(buffer(k), 2^28-1);
+                            if (chan==15) % to detect an overflow signal
+                                ofl_num = ofl_num + 1;
+                            elseif (chan == 0)
+                                cnt0 = cnt0 + 1;
+                                result0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
+                            else % chan == 1
+                                cnt1 = cnt1 + 1;
+                                result1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
+                            end
+                        end
+                        if(nactual)
+                            progress = progress + nactual;
+                            time_bin_result = time_bin_result + PulsePhotonAnalysis(result0(cnt0_prev + 1:cnt0), result1(cnt1_prev + 1:cnt1), obj.PulsePeriod_ns, obj.bin_width_ns);
+                        else
+                            ctcdone = int32(0);
+                            ctcdonePtr = libpointer('int32Ptr', ctcdone);
+                            [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
                         end
                     end
-                    if(nactual)
-                        progress = progress + nactual;
-                        time_bin_result = time_bin_result + PulsePhotonAnalysis(result0(cnt0_prev + 1:cnt0), result1(cnt1_prev + 1:cnt1), obj.PulsePeriod_ns, obj.bin_width_ns);
-                    else
-                        ctcdone = int32(0);
-                        ctcdonePtr = libpointer('int32Ptr', ctcdone);
-                        [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
+                    obj.picoharpH.PH_StopMeas;
+                    photonNum = photonNum + cnt1;
+                    periodNum = periodNum + cnt0*obj.PulseRepeat;
+                    ax(2).Children(1).YData = time_bin_result/periodNum;
+                    ax(2).Children(1).XData = (1:Nbins)*obj.bin_width_ns;
+                    yticks(ax(2), 'auto');
+                    if obj.LogScale == 1
+                        set(ax(2), 'YScale', 'log')
                     end
+                    drawnow limitrate;
+
                 end
-                obj.picoharpH.PH_StopMeas;
-                ax.Children(1).YData = time_bin_result/cnt0/100;
-                ax.Children(1).XData = (1:ceil(obj.PulsePeriod_ns/obj.bin_width_ns))*obj.bin_width_ns;
-                set(ax, 'XLim', [0 obj.PulsePeriod_ns])
-                if obj.LogScale == 1
-                set(ax, 'YScale', 'log')
+                if ax(1).Children(1).YData(1) < 0
+                    ax(1).Children(1).YData = [photonNum/periodNum];
+                    ax(1).Children(1).XData = [pulseWidth_ns];
+                else 
+                    ax(1).Children(1).YData = [ax(1).Children(1).YData, photonNum/periodNum];
+                    ax(1).Children(1).XData = [ax(1).Children(1).XData, pulseWidth_ns];
                 end
-                drawnow limitrate;
+                yticks(ax(1), 'auto');
+                drawnow limitrate
+                obj.data.timeBinResults(widthCnt, :) = time_bin_result;
+                obj.data.probability(widthCnt) = cnt1/cnt0;
             end
-            obj.data.time_bin_result = time_bin_result;
-            obj.data.bin_width_ns = obj.bin_width_ns;
-            obj.data.PulsePeriod_ns = obj.PulsePeriod_ns;
         end
         
-        function prepPlot(obj,ax)
-            obj.data.x0 = [0];
-            obj.data.y0 = [0];
-            plot(ax,obj.data.x0,obj.data.y0);
-            set(ax,'YLim',[0 inf])
-            set(ax, 'XLim', [0 inf])
-            set(ax.XLabel,'String','Time (ns)')
-            set(ax.YLabel,'String','Probability')
+        function ax = prepPlot(obj,ax)
+            ax = plotyy(ax,[0], [-1], [0], [0]);
+            set(ax(2),'YLim',[0 inf])
+            set(ax(2), 'XLim', [0 obj.PulsePeriod_ns])
+            set(ax(1),'YLim',[0 inf])
+            set(ax(1), 'XLim', [0 inf])
+%             set(ax(2).XLabel,'String','Time (ns)')
+            set(ax(2).YLabel,'String','Time Bin Probability')
+            set(ax(1).XLabel,'String','PulseWidth (ns)')
+            set(ax(1).YLabel,'String','Total Probability')
+            ax(2).Box = 'off';
+            ax(1).Box = 'off';
+
+
+
         end
         
         function SetPHconfig(obj)
@@ -198,7 +235,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
             for i=1:length(obj.show_prefs)
                 obj.meta = setfield(obj.meta,obj.show_prefs{i},getfield(obj,obj.show_prefs{i}));
             end
-            obj.meta.PH_serialNr = obj.PH_serialNr
+            obj.meta.PH_serialNr = obj.PH_serialNr;
             
             dat.data = obj.data;
             dat.meta = obj.meta;
@@ -236,37 +273,51 @@ classdef AWGPulseWidthSweep < Modules.Experiment
         end
 
         function val = set_AWG_IP(obj,val,~)
+            emptyFlag = false;
+
             if strcmp(val,'None Set') % Short circuit
-                obj.AWG = [];
+                emptyFlag = true;
+
+                val = '18.25.28.34';
             end
-            if isempty(obj.AWG)
                 try
                     % currently '18.25.28.34'; 5/16/2022
-                    obj.AWG=Drivers.AWG70002B.instance('visa',obj.AWG_IP);
+                    obj.AWG=Drivers.AWG70002B.instance('visa',val);
+                    obj.AWG_IP = val;
                     obj.AWG.reset();
                     obj.AWG.setExtRefClock();
                     obj.AWG.setSampleRate(obj.AWG_Channel, obj.AWG_SampleRate_GHz*1e9);
                 catch err
                     rmfield(obj,'AWG');
-    %                 obj.AWG = [];
+                    obj.AWG = [];
                     obj.AWG_IP = 'None Set';
-                    rethrow(err);
+                    if emptyFlag == false
+                        rethrow(err);
+                        end
                 end
-            end
         end
 
 
         function val = set_PB_IP(obj,val,~)
+            emptyFlag = false;
             if strcmp(val,'None Set') % Short circuit
-                obj.PB = [];
+                val = 'localhost'; % Default value
+                emptyFlag = true;
             end
             try
                 obj.PB = Drivers.PulseBlaster.instance(val);
             catch err
                 obj.PB = [];
                 obj.PB_IP = 'None Set';
+                if emptyFlag == false
                 rethrow(err);
+                end
             end
+        end
+        function set.PulseWidthStr_ns(obj,val)
+            tempvals = eval(val);
+            obj.PulseWidths_ns = tempvals;
+            obj.PulseWidthStr_ns = val;
         end
     end
 end

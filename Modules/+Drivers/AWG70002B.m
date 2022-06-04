@@ -41,7 +41,7 @@ classdef AWG70002B < Modules.Driver
         %MIN_number_of_wfm_points = 1; % for hardware sequencer mode, a waveform must have at least 250 pts, vs 1 pt for software sequencer mode
         MarkerHighVoltage = 2.7; % Voltage when markers are high
         TotalChannels = 4;
-        PulseFileDir = 'Z:\Experiments\AWG70002B';
+        PulseFileDir = 'Z:\Experiments\AWG70002B\waveforms';
         %%NEW NEW
         HWChanNameToNumMap
         Resolution = 8
@@ -252,7 +252,7 @@ classdef AWG70002B < Modules.Driver
         
         function setResolution(obj, channel, resolution)
             obj.writeToSocket(sprintf("SOUR%d:DAC:RES %d", channel, resolution));
-            obj.writeToSocket("*OPC?");
+            obj.writeReadToSocket("*OPC?");
             loadedResolution = obj.writeReadToSocket(sprintf('SOUR%d:DAC:RES?', channel));
             if resolution ~= str2num(loadedResolution)
                 assert(sprintf("Set resolution failed! Should be %d instead of %d", resolution, loadedResolution))
@@ -317,16 +317,25 @@ classdef AWG70002B < Modules.Driver
                 waveformName = tokens{1};
             end
             err = 0;           
-            obj.writeToSocket(sprintf('MMEM:OPEN:TXT "%s\\%s.txt",ANAL', obj.PulseFileDir, waveformName))
-            obj.writeToSocket('*OPC?');
-            obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',channel,waveformName));
-            obj.writeToSocket('*OPC?');
-            loadedName = char(obj.writeReadToSocket(sprintf("SOUR%d:WAV?", channel)));
-            if (isempty(loadedName(2:end-1)) || ~strcmp(waveformName, loadedName(2:end-1)))
-                err = 1;
-                assert(false, 'AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName(2:end-1));
-                uiwait(warndlg({sprintf('AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName(2:end-1))}));
-                return;
+            retryTimes = 0;
+            while true
+                obj.writeToSocket(sprintf('MMEM:OPEN:TXT "%s\\%s.txt",ANAL', obj.PulseFileDir, waveformName))
+                obj.writeReadToSocket('*OPC?');
+                obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',channel,waveformName));
+                obj.writeReadToSocket('*OPC?');
+                pause(0.5);
+                loadedName = char(obj.writeReadToSocket(sprintf("SOUR%d:WAV?", channel)));
+                if ~isempty(loadedName(2:end-1)) && strcmp(waveformName, loadedName(2:end-1))
+                    break
+                end
+                pause(0.5);
+                retryTimes = retryTimes + 1;
+                if retryTimes > 5
+                    err = 1;
+                    assert(false, 'AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName(2:end-1));
+                    % uiwait(warndlg({sprintf('AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName(2:end-1))}));
+                    % return;
+                end
             end
         end
 
