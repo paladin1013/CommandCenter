@@ -77,7 +77,7 @@ classdef AWG70002B < Modules.Driver
             obj.CurrentSeqLength = 0;
             obj.CurrentSeq = {};
             obj.MinSampleRate = 10e6;
-            obj.MaxSampleRate = 1.2e9;
+            obj.MaxSampleRate = 25e9;
             
             obj.MinAmp = -69.0776; % dBm (-10dBm = 0.020 Vpp, 50 ohm)
             obj.MaxAmp = 39.2445; % dBm (39.24dBm = 4.5 Vpp, 50 ohm)
@@ -113,7 +113,8 @@ classdef AWG70002B < Modules.Driver
                 obj.SocketHandle=visadev("TCPIP0::"+ obj.IPAddress+"::INSTR");
                 disp('TCP/IP Protocol Initialized for AWG70002B');
             catch exception
-                disp('Error to init TCP/IP Protocol for AWG70002B');
+                % disp('Error to init TCP/IP Protocol for AWG70002B');
+                assert('Error to init TCP/IP Protocol for AWG70002B');
             end
         end
         
@@ -161,7 +162,7 @@ classdef AWG70002B < Modules.Driver
             obj.writeToSocket(command);
         end
         
-        %%%%% AWG Settings %%%%%
+        %%%%% AWG settings %%%%%
         
         function AWGStart(obj)
             obj.writeToSocket('AWGC:RUN:IMM');
@@ -175,25 +176,26 @@ classdef AWG70002B < Modules.Driver
             obj.writeToSocket('AWGC:STOP');
         end
         
-        function Set(obj)
+        function set(obj)
             obj.reset();
-            obj.SetExtRefClock();
-            obj.SetSampleRate();
+            obj.setExtRefClock();
+            obj.setSampleRate(1, obj.SampleRate);
+            obj.setSampleRate(2, obj.SampleRate);
         end
         
-        function SetExtRefClock(obj)
+        function setExtRefClock(obj)
             % External 10MHz reference clock from signal generator
             obj.writeToSocket(sprintf('SOUR:ROSC:SOUR EXT'));
         end
         
-        function [err] = SetSampleRate(obj)
+        function [err] = setSampleRate(obj,channel,  sampleRate_Hz)
             err = 0;
-            if obj.SampleRate < obj.MinSampleRate || obj.SampleRate > obj.MaxSampleRate
+            if sampleRate_Hz < obj.MinSampleRate || sampleRate_Hz > obj.MaxSampleRate
                 uiwait(warndlg({'AWG Sample Rate out of range. Aborted.'}));
                 err = 1;
                 return;
             end
-            obj.writeToSocket(sprintf('SOUR1:FREQ %fe9', obj.SampleRate/1e9));
+            obj.writeToSocket(sprintf('SOUR%d:FREQ %fe9', channel, sampleRate_Hz/1e9));
         end
         
         % changes the run mode of the AWG valid inputs are 'S', 'G',
@@ -220,19 +222,19 @@ classdef AWG70002B < Modules.Driver
         
         %%%%% Channels %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
-        function SetChannelOn(obj,channel)
+        function setChannelOn(obj,channel)
             obj.writeToSocket(sprintf('OUTP%d ON',uint32(channel)));
         end
         
-        function SetAllChannelsOn(obj)
+        function setAllChannelsOn(obj)
             obj.writeToSocket('OUTP1 ON; OUTP2 ON; OUTP3 ON; OUTP4 ON');
         end
         
-        function SetChannelOff(obj,channel)
+        function setChannelOff(obj,channel)
             obj.writeToSocket(sprintf('OUTP%d OFF',uint32(channel)));
         end
         
-        function SetAllChannelsOff(obj)
+        function setAllChannelsOff(obj)
             obj.writeToSocket('OUTP1 OFF; OUTP2 OFF; OUTP3 OFF; OUTP4 OFF');
         end
         
@@ -248,6 +250,15 @@ classdef AWG70002B < Modules.Driver
             obj.writeToSocket(sprintf('SOUR%d:MARK%d:VOLT:AMPL %d',channelnum,markernum,amplitude));
         end
         
+        function setResolution(obj, channel, resolution)
+            obj.writeToSocket(sprintf("SOUR%d:DAC:RES %d", channel, resolution));
+            obj.writeToSocket("*OPC?");
+            loadedResolution = obj.writeReadToSocket(sprintf('SOUR%d:DAC:RES?', channel));
+            if resolution ~= str2num(loadedResolution)
+                assert(sprintf("Set resolution failed! Should be %d instead of %d", resolution, loadedResolution))
+            end
+        end
+
         
         %%%%% Waveforms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
@@ -291,11 +302,11 @@ classdef AWG70002B < Modules.Driver
             end
         end
     
-        function [err] = setAmplitude(obj,channel)
+        function [err] = setAmplitude(obj,channel, amplitude)
             err = 0;           
 
             % send the set amplitude command
-            obj.writeToSocket(sprintf('SOUR%d:VOLT %f',channel,obj.Amplitude(channel)));
+            obj.writeToSocket(sprintf('SOUR%d:VOLT %f',channel,amplitude));
         end
         
         function [err] = loadWaveform(obj,channel, waveformName)
@@ -307,13 +318,14 @@ classdef AWG70002B < Modules.Driver
             end
             err = 0;           
             obj.writeToSocket(sprintf('MMEM:OPEN:TXT "%s\\%s.txt",ANAL', obj.PulseFileDir, waveformName))
-            obj.writeToSocket('?OPC');
+            obj.writeToSocket('*OPC?');
             obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',channel,waveformName));
-            obj.writeToSocket('?OPC');
-            loadedName = obj.writeReadToSocket(sprintf("SOUR%d:WAV?", channel));
-            if ~strcmp(waveformName, loadedName(2:end-1))
+            obj.writeToSocket('*OPC?');
+            loadedName = char(obj.writeReadToSocket(sprintf("SOUR%d:WAV?", channel)));
+            if (isempty(loadedName(2:end-1)) || ~strcmp(waveformName, loadedName(2:end-1)))
                 err = 1;
-                uiwait(warndlg({sprintf('AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName)}));
+                assert(false, 'AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName(2:end-1));
+                uiwait(warndlg({sprintf('AWG waveform is not successfully loaded.\n Should be %s, but got %s instead. Aborted', waveformName, loadedName(2:end-1))}));
                 return;
             end
         end
@@ -327,6 +339,7 @@ classdef AWG70002B < Modules.Driver
             end
             obj.writeToSocket(sprintf('SOUR%d:VOLT:OFFS %f',channel,obj.Offset(channel)));
         end
+
         
         %%%%% Sequences %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
@@ -362,6 +375,8 @@ classdef AWG70002B < Modules.Driver
             end
         end
         
+
+
         function binData = shapeToAWGInt(obj,shape,marker1,marker2)
             %Check pulse-in to make sure it is between -1 and 1
             if(max(abs(shape)) > 1)
@@ -379,7 +394,7 @@ classdef AWG70002B < Modules.Driver
             foo=[tVec,dec2bin(binDatatemp)];
             binData =bin2dec(foo(:,:))';
 
-            % Set markers - bits 9 and 10 of each point
+            % set markers - bits 9 and 10 of each point
             % see PDF page 280 ("[SOURce[n]:]DAC:RESolution")
             binData = bitset(binData,9,marker1);
             binData = bitset(binData,10,marker2);
