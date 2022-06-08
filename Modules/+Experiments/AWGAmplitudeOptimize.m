@@ -1,4 +1,4 @@
-classdef AWGOptimize < Modules.Experiment
+classdef AWGAmplitudeOptimize < Modules.Experiment
     properties(SetObservable,AbortSet)
         picoharpH;
         data
@@ -38,7 +38,7 @@ classdef AWGOptimize < Modules.Experiment
         acquiring = false;
     end
     methods(Access=private)
-        function obj = AWGOptimize()
+        function obj = AWGAmplitudeOptimize()
             obj.loadPrefs;
         end
     end
@@ -48,7 +48,7 @@ classdef AWGOptimize < Modules.Experiment
             mlock;
             persistent Object
             if isempty(Object) || ~isvalid(Object)
-                Object = Experiments.AWGOptimize();
+                Object = Experiments.AWGAmplitudeOptimize();
             end
             obj = Object;
         end
