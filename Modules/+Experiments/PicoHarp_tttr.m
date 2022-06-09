@@ -107,7 +107,9 @@ classdef PicoHarp_tttr < Modules.Experiment
                     ax.Children(1).XData = [1:cnt0];
                     ax.Children(2).YData = result1(1:cnt1)*Resolution;
                     ax.Children(2).XData = [1:cnt1];
-                    set(ax, 'XLim', [0,  max(cnt0, cnt1)])
+                    if max(cnt0, cnt1) > 0
+                        set(ax, 'XLim', [0,  max(cnt0, cnt1)])
+                    end
                     drawnow limitrate;
                 else
                     ctcdone = int32(0);

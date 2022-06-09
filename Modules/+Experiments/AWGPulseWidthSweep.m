@@ -45,7 +45,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
 
     end
     properties(GetObservable, SetObservable)
-        AWG_IP =    Prefs.String('None Set','set','set_AWG_IP', ...% 18.25.28.34
+        AWG_IP =    Prefs.String('None Set','set','set_AWG_IP', ...% 18.25.24.255
         'help_text','AWG IP for TCP connection');
         PB_IP =     Prefs.String('None Set','set','set_PB_IP', ... 
         'help_text','Hostname for computer running pulseblaster server');
@@ -62,7 +62,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
     methods(Access=private)
         function obj = AWGPulseWidthSweep()
             obj.loadPrefs;
-            obj.PulseWidths_ns = eval(obj.PulseWidthStr_ns)
+            obj.PulseWidths_ns = eval(obj.PulseWidthStr_ns);
         end
     end
 
@@ -344,10 +344,10 @@ classdef AWGPulseWidthSweep < Modules.Experiment
             if strcmp(val,'None Set') % Short circuit
                 emptyFlag = true;
 
-                val = '18.25.28.34';
+                val = '18.25.24.255';
             end
                 try
-                    % currently '18.25.28.34'; 5/16/2022
+                    % currently '18.25.24.255'; 5/16/2022
                     obj.AWG=Drivers.AWG70002B.instance('visa',val);
                     obj.AWG_IP = val;
                     obj.AWG.reset();
