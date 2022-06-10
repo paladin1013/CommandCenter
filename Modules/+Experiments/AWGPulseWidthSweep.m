@@ -17,10 +17,10 @@ classdef AWGPulseWidthSweep < Modules.Experiment
         PulseRepeat = 10;
         PulseBase = -1;
         AWG_Amplitude_V = 0.5;
-        Ch0_CFDzero = 10;% mV
-        Ch0_CFDlevel = 50;% mV
-        Ch1_CFDzero = 10;% mV
-        Ch1_CFDlevel = 50;% mV
+        Ch0_CFDzero = 20;% mV
+        Ch0_CFDlevel = 20;% mV
+        Ch1_CFDzero = 20;% mV
+        Ch1_CFDlevel = 20;% mV
         Binning = 0;
         Offset = 0; %ms - still not sure what offset is this
         StopAtOverflow = true;

@@ -9,7 +9,7 @@ classdef APDPulseSequence < handle
         ph              % Handle of picoharp300
     end
     properties(SetAccess=private)
-        tasks           % Handles to nidaq tasks (can querry for available samples)
+        tasks           % Handles to nidaq tasks (can query for available samples)
         time            % Expected time for the sequence (sec).
         timeout         % Padded timeout (sec).
     end
@@ -130,7 +130,7 @@ classdef APDPulseSequence < handle
             end
         end
         function stream(obj,varargin)
-
+            
             % Inputs are line objects (one for each counter)
             assert(~isempty(obj.tasks),'Nothing setup!')
             assert(numel(varargin)==numel(obj.tasks),sprintf('%i Counters. Only received %i inputs.',numel(obj.tasks),numel(varargin)))
@@ -164,7 +164,7 @@ classdef APDPulseSequence < handle
                         end
                     end
                 end
-
+                
                 if toc(t) >= obj.timeout
                     error('APDPulseSequence operation timed out without reading samples from DAQ. Make sure that PulseBlaster pulses are reaching the DAQ!')
                 end

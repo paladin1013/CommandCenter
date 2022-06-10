@@ -20,6 +20,8 @@ function run( obj,status,managers,ax)
 assert(numel(obj.nCounterBins)==1 && isnumeric(obj.nCounterBins) && floor(obj.nCounterBins)==obj.nCounterBins,...
     'Property "nCounterBins" should be a single integer');
 assert(~isempty(obj.picoharpH), "PicoHarp300 is not connected");
+obj.SetPHconfig;
+
 if (isempty(obj.AWG)|| ~isvalid(obj.AWG))
     try
         obj.set_AWG_IP;
@@ -69,6 +71,7 @@ f = figure('visible','off','name',mfilename);
 a = axes('Parent',f);
 p = plot(NaN,'Parent',a);
 
+
 try
     obj.PreRun(status,managers,ax);
     
@@ -85,14 +88,18 @@ try
             drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
             pulseWidth_ns = obj.PulseWidths_ns(pulseWidthIdx);
             status.String = [sprintf('Progress (%i/%i averages):\n  ', averageIdx,obj.averages),sprintf('PulseWidth = %g (%i/%i)', pulseWidth_ns,pulseWidthIdx, nPulseWidths)];
-            waveformName = sprintf("%s_%.2f_ns", 'square', pulseWidth_ns);
+            waveformName = sprintf("%s_%.1f_%dns_%d", 'square', pulseWidth_ns, obj.PulsePeriod_ns, obj.PulseRepeat);
             AWGPulseGen(obj.PulseBase, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'square');
+            obj.AWG.writeReadToSocket('SYST:ERR:ALL?');
             obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
             obj.AWG.setAmplitude(obj.AWG_Channel, obj.AWG_Amplitude_V);
             obj.AWG.setResolution(obj.AWG_Channel, 9);
             obj.AWG.setChannelOn(obj.AWG_Channel);
+            obj.AWG.setRunMode(obj.AWG_Channel, 'T');
+            obj.AWG.setTriggerSource(obj.AWG_Channel, obj.AWG_TriggerSource);
             obj.AWG.AWGStart;
 
+            
             
             % BuildPulseSequence must take in vars in the order listed
             pulseSeq = obj.BuildPulseSequence;
@@ -101,26 +108,62 @@ try
                 apdPS.seq = pulseSeq;
                 t = tic;
                 apdPS.start(1000); % hard coded
-                [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
+                % [rawTttrData0,rawTttrData1] = obj.picoharpH.PH_GetTimeTags;
 
-                
+                rawTttrData0 = double(zeros(1, obj.picoharpH.TTREADMAX));
+                rawTttrData1 = double(zeros(1, obj.picoharpH.TTREADMAX));
+                progress = 0;
+                ctcdone = 0;
+                ofl_num = 0;
+                cnt0 = 0;
+                cnt1 = 0;
+                time_bin_result = zeros(1, nBins);
+                photonNum = 0;
+                periodNum = 0;
+                while(ctcdone == 0 && obj.abort_request == false)
+                    [buffer, nactual] = obj.picoharpH.PH_ReadFiFo;
+                    cnt0_prev = cnt0;
+                    cnt1_prev = cnt1;
+                    for k = 1:nactual
+                        chan = bitand(bitshift(buffer(k),-28),15);
+                        cur_time_tag = bitand(buffer(k), 2^28-1);
+                        if (chan==15) % to detect an overflow signal
+                            ofl_num = ofl_num + 1;
+                        elseif (chan == 0)
+                            cnt0 = cnt0 + 1;
+                            rawTttrData0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*obj.PH_BaseResolution;
+                        else % chan == 1
+                            cnt1 = cnt1 + 1;
+                            rawTttrData1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*obj.PH_BaseResolution;
+                        end
+                    end
+                    if(nactual)
+                        progress = progress + nactual;
+                        time_bin_result = time_bin_result + PulsePhotonAnalysis(rawTttrData0(cnt0_prev + 1:cnt0), rawTttrData1(cnt1_prev + 1:cnt1), obj.PulsePeriod_ns, obj.bin_width_ns);
+                    else
+                        ctcdone = int32(0);
+                        ctcdonePtr = libpointer('int32Ptr', ctcdone);
+                        [ret, ctcdone] = calllib('PHlib', 'PH_CTCStatus', obj.picoharpH.DeviceNr, ctcdonePtr); 
+                    end
+                end
+                obj.picoharpH.PH_StopMeas;
                 apdPS.stream(p);
                 
 
                 % Retrieve data from picoharp and process to fit the two APD bins
-                obj.picoharpH.PH_StopMeas;
                 
 
 
-                assert(length(rawTttrData0) == 2*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",2*obj.samples - 3, length(rawTttrData0)))
-
-                for k = 3:(obj.samples)
-                    obj.data.timeTags{averageIdx, pulseWidthIdx, k, 1} = rawTttrData1((rawTttrData1>rawTttrData0(k*2-4)) & (rawTttrData1<rawTttrData0(k*2-3)))-rawTttrData0(k*2-4);
-                    obj.data.timeBinResults(averageIdx, pulseWidthIdx, :) = obj.data.timeBinResults(averageIdx, pulseWidthIdx, :) + PulsePhotonAnalysis(obj.data.timeTags{averageIdx, pulseWidthIdx, k, 1}, [0], obj.PulsePeriod_ns, obj.bin_width_ns);
-                end
-                photonNum = sum(obj.data.timeBinResults(averageIdx, pulseWidthIdx, :));
-                periodNum = obj.samples * obj.PulseRepeat;
-                obj.data.probability(averageInd, pulseWidthInd) = photonNum/periodNum;
+                % assert(length(rawTttrData0) == 2*obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",2*obj.samples - 3, length(rawTttrData0)))
+                % assert(length(rawTttrData0) == obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",obj.samples - 3, length(rawTttrData0)))
+                % for k = 1:(obj.samples-3)
+                %     obj.data.timeTags{averageIdx, pulseWidthIdx, k, 1} = rawTttrData1((rawTttrData1>rawTttrData0(k)) & (rawTttrData1<rawTttrData0(k)+obj.PulseRepeat*obj.PulsePeriod_ns/1e3))-rawTttrData0(k);
+                %     obj.data.timeBinResults(averageIdx, pulseWidthIdx, :) = obj.data.timeBinResults(averageIdx, pulseWidthIdx, :) + PulsePhotonAnalysis(obj.data.timeTags{averageIdx, pulseWidthIdx, k, 1}, [0], obj.PulsePeriod_ns, obj.bin_width_ns);
+                % end
+                obj.data.timeBinResults(averageIdx, pulseWidthIdx, :) = time_bin_result;
+                photonNum = photonNum + cnt1;
+                periodNum = periodNum + cnt0*obj.PulseRepeat;
+                obj.data.probability(averageIdx, pulseWidthIdx) = photonNum/periodNum;
                 ax(2).Children(1).YData = obj.data.timeBinResults(averageIdx, pulseWidthIdx, :)/periodNum;
                 ax(2).Children(1).XData = (1:nBins)*obj.bin_width_ns;
                 yticks(ax(2), 'auto');

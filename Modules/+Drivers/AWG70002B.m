@@ -202,17 +202,17 @@ classdef AWG70002B < Modules.Driver
         % 'T', 'C', 'Continuous', 'Triggered', 'Gated', 'Sequence',
         % 'COnt', 'seq', 'Trig', 'gat'
         % case insensitive
-        function setRunMode(obj, runMode)
-            
+        function setRunMode(obj, channel, runMode)
+            obj.writeReadToSocket('SYST:ERR:ALL?');
             switch lower(runMode)
                 case {'s','sequence', 'seq'}
-                    obj.writeToSocket(sprintf('AWGC:RMOD SEQ'));
+                    obj.writeToSocket(sprintf('SOUR%d:RMOD SEQ', channel));
                 case {'g', 'gated', 'gat'}
-                    obj.writeToSocket(sprintf('AWGC:RMOD GAT'));
+                    obj.writeToSocket(sprintf('SOUR%d:RMOD GAT', channel));
                 case {'t', 'triggered', 'trig'}
-                    obj.writeToSocket(sprintf('AWGC:RMOD TRIG'));
+                    obj.writeToSocket(sprintf('SOUR%d:RMOD TRIG', channel));
                 case {'c', 'continuous', 'cont'}
-                    obj.writeToSocket(sprintf('AWGC:RMOD CONT'));
+                    obj.writeToSocket(sprintf('SOUR%d:RMOD CONT', channel));
                 otherwise
                     error('RunMode can only be C, T, G, S')
             end
@@ -220,6 +220,19 @@ classdef AWG70002B < Modules.Driver
             
         end
         
+        function setTriggerSource(obj, channel, triggerSource)
+            switch lower(triggerSource)
+                case {'a'}
+                    obj.writeToSocket(sprintf('SOUR%d:TINP ATR', channel));
+                case {'b'}
+                    obj.writeToSocket(sprintf('SOUR%d:TINP BTR', channel));
+                case {'i', 'internal'}
+                    obj.writeToSocket(sprintf('SOUR%d:TINP ITR', channel));
+                otherwise
+                    error('triggerSource should only be A, B, I');
+            end
+        end
+
         %%%%% Channels %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
         function setChannelOn(obj,channel)
@@ -319,6 +332,7 @@ classdef AWG70002B < Modules.Driver
             err = 0;           
             retryTimes = 0;
             while true
+                
                 obj.writeToSocket(sprintf('MMEM:OPEN:TXT "%s\\%s.txt",ANAL', obj.PulseFileDir, waveformName))
                 obj.writeReadToSocket('*OPC?');
                 obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',channel,waveformName));

@@ -39,6 +39,7 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         AWG_Amplitude_V = 0.5;
         AWG_Channel = 1;
         AWG_SampleRate_GHz = 10;
+        AWG_TriggerSource = 'B';
         MergeSequence = false;
         PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B\waveforms';
 
@@ -55,10 +56,10 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         PH_Mode         = 2; % 2 for T2 and 3 for T3 and 0 for histogram
         SyncDivider = uint8(1);
         SyncOffset = 0; %ms
-        Ch0_CFDzero = 10;% mV
-        Ch0_CFDlevel = 50;% mV
-        Ch1_CFDzero = 10;% mV
-        Ch1_CFDlevel = 50;% mV
+        Ch0_CFDzero = 20;% mV
+        Ch0_CFDlevel = 20;% mV
+        Ch1_CFDzero = 20;% mV
+        Ch1_CFDlevel = 20;% mV
         SyncChannel = 0;
         PhotonChannel = 1;
         Binning = 0;
@@ -88,7 +89,6 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         AWG_IP =    Prefs.String('None Set','set','set_AWG_IP', ...% 18.25.24.255
         'help_text','AWG IP for TCP connection');
         % PulseShape = Prefs.MultipleChoice('Gaussian', 'choices', {'Gaussian', 'sine', 'square'});
-
     end
 
     methods(Static)
@@ -97,10 +97,10 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
     methods(Access=private)
 
         function obj = LifetimeMeasurement()
-            obj.prefs = [obj.prefs,{ 'UseMW', 'MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline',...
+            obj.prefs = [obj.prefs,{ 'AWG_IP', 'UseMW', 'MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline',...
             'UseAWG', 'PH_serialNr','PH_BaseResolution','connection', 'resLaser','repumpLaser','APDline','repumpTime_us', ...
             'AWGPBline', 'resOffset_us', 'SyncPBLine', 'SyncPulseWidth_us', 'recordAllTimeTags' ...
-            'PulseWidthStr_ns', 'PulsePeriod_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'MergeSequence', 'PulseFileDir'
+            'PulseWidthStr_ns', 'PulsePeriod_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
             }]; %additional preferences not in superclass
             obj.loadPrefs;
             obj.PulseWidths_ns = eval(obj.PulseWidthStr_ns);
@@ -191,7 +191,15 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         end
         
 
- 
+        function SetPHconfig(obj)
+            obj.picoharpH.PH_SetInputCFD(0,obj.Ch0_CFDlevel,obj.Ch0_CFDzero);
+            obj.picoharpH.PH_SetInputCFD(1,obj.Ch1_CFDlevel,obj.Ch1_CFDzero);
+            obj.picoharpH.PH_SetBinning(obj.Binning);
+            obj.picoharpH.PH_SetOffset(obj.Offset);
+            obj.picoharpH.PH_SetStopOverflow(obj.StopAtOverflow,obj.OverflowCounts); %65535 is max value
+            obj.picoharpH.PH_SetSyncOffset(obj.SyncOffset);
+            obj.picoharpH.PH_SetSyncDiv(obj.SyncDivider);
+        end
 
         function set.PulseWidthStr_ns(obj,val)
             tempvals = eval(val);

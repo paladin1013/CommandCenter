@@ -99,10 +99,10 @@ classdef AWGAmplitudeOptimize < Modules.Experiment
                             ofl_num = ofl_num + 1;
                         elseif (chan == 0)
                             cnt0 = cnt0 + 1;
-                            result0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPASample) + double(cur_time_tag))*Resolution;
+                            result0(cnt0) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
                         else % chan == 1
                             cnt1 = cnt1 + 1;
-                            result1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPASample) + double(cur_time_tag))*Resolution;
+                            result1(cnt1) = (double(ofl_num) * double(obj.picoharpH.WRAPAROUND) + double(cur_time_tag))*Resolution;
                         end
                     end
                     if(nactual)
