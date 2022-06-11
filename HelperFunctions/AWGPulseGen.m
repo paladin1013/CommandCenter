@@ -14,8 +14,10 @@ function PulseData = AWGPulseGen(BaseAmplitude, PulseWidth_ns, PulsePeriod_ns, M
             endIdx = (PulseWidth_ns+(cnt-1)*PulsePeriod_ns)*AWG_SampleRate_GHz;
             if (exist("PulseParams", "var"))
                 PulseData(startIdx:endIdx, 1) = BaseAmplitude+(1-BaseAmplitude)*assignData(PulseSampleInd, PulseShape, PulseParams);
+                PulseData(startIdx:endIdx, 3) = 1;
             else
                 PulseData(startIdx:endIdx, 1) = BaseAmplitude+(1-BaseAmplitude)*assignData(PulseSampleInd, PulseShape);
+                PulseData(startIdx:endIdx, 3) = 1;
             end
 
         end
@@ -33,11 +35,12 @@ function PulseData = AWGPulseGen(BaseAmplitude, PulseWidth_ns, PulsePeriod_ns, M
                 end
                 NPulseSamples = PulseWidth_ns(pulseWidthCnt)*AWG_SampleRate_GHz;
                 PulseSampleInd = [1:(NPulseSamples)];
-                PulseData(startIdx:endIdx, 1) = (1-BaseAmplitude)*assignData(PulseSampleInd, PulseShape, PulseParams);   
                 if (exist("PulseParams", "var"))
                     PulseData(startIdx:endIdx, 1) = (1-BaseAmplitude)*assignData(PulseSampleInd, PulseShape, PulseParams);   
+                    PulseData(startIdx:endIdx, 3) = 1;
                 else
                     PulseData(startIdx:endIdx, 1) = (1-BaseAmplitude)*assignData(PulseSampleInd, PulseShape);   
+                    PulseData(startIdx:endIdx, 3) = 1;
                 end
     
             end

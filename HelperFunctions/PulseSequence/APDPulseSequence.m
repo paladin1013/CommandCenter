@@ -7,9 +7,11 @@ classdef APDPulseSequence < handle
         pb              % PulseBlaster handle
         seq             % Handle to sequence object
         ph              % Handle of picoharp300
+        
     end
     properties(SetAccess=private)
         tasks           % Handles to nidaq tasks (can query for available samples)
+        program         % Compiled result of sequence
         time            % Expected time for the sequence (sec).
         timeout         % Padded timeout (sec).
     end
@@ -69,7 +71,8 @@ classdef APDPulseSequence < handle
             assert(nsamples==round(nsamples),'Sequence found with odd number of transitions!')
             nsamples = nsamples*obj.seq.repeat;
         end
-        function start(obj,MaxCounts,overrideMinDuration)
+        function start(obj,MaxCounts,overrideMinDuration, usePrevSeq)
+            t = tic;
             % Max expected counts per gate as input
             % See sequence.compile for overrideMinDuration
             if nargin < 3
@@ -99,27 +102,24 @@ classdef APDPulseSequence < handle
                 end
             end
 
-                t = tic;
             for i = 1:numel(obj.tasks)
                 obj.tasks(i).Start;
             end
             try
-%                 fprintf("time0: %f\n", toc(t));
-                [program, ~, ~, obj.time] = obj.seq.compile(overrideMinDuration);
-%                 fprintf("time1: %f\n", toc(t));
+                if( ~exist('usePrevSeq', 'var') || usePrevSeq == false)
+                    [obj.program, ~, ~, obj.time] = obj.seq.compile(overrideMinDuration);
+                end
                 obj.timeout = 1.5*obj.time + 1;
                 
-                obj.pb.load(program);
-%                 fprintf("time2: %f\n", toc(t));
+                obj.pb.load(obj.program);
+
+
                 if ~isempty(obj.ph)
                     % fprintf("obj.ph exists, run PH_SteartMeas\n");
-                    obj.ph.PH_StartMeas(max(obj.seq.processSequenceN)/1000+1000); % Time unit of obj.seq.processSequenceN is us. Need to convert into ms. (1s extra time for startup)
+                    obj.ph.PH_StartMeas(max(obj.seq.processSequenceN)/1000000*obj.seq.repeat+500); % Time unit of obj.seq.processSequenceN is ns. Need to convert into ms. (1s extra time for startup)
                 end
-%                 fprintf("time3: %f\n", toc(t));
-
                 obj.pb.start;
-%                 fprintf("time4: %f\n", toc(t));
-                fprintf("end\n");
+                % fprintf("end\n");
 
             catch err
                 for j = 1:numel(obj.tasks)

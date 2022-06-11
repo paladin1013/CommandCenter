@@ -70,9 +70,11 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         SyncPulseWidth_us = 0.01;
         syncPulseBias_begin = 0; 
         syncPulseBias_end = 0; 
+        resWindowOffset_us = 0.01;
+        resWindowShift_us = 0.01;
         recordAllTimeTags = false;
         
-        bin_width_ns = 0.256;
+        bin_width_ns = 1;
         LogScale = true;
 
     end    
@@ -99,8 +101,8 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         function obj = LifetimeMeasurement()
             obj.prefs = [obj.prefs,{ 'AWG_IP', 'UseMW', 'MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline',...
             'UseAWG', 'PH_serialNr','PH_BaseResolution','connection', 'resLaser','repumpLaser','APDline','repumpTime_us', ...
-            'AWGPBline', 'resOffset_us', 'SyncPBLine', 'SyncPulseWidth_us', 'recordAllTimeTags' ...
-            'PulseWidthStr_ns', 'PulsePeriod_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
+            'AWGPBline', 'resOffset_us', 'SyncPBLine', 'SyncPulseWidth_us', 'resWindowOffset_us', 'resWindowShift_us', 'recordAllTimeTags' ...
+            'PulseWidthStr_ns', 'PulsePeriod_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'bin_width_ns', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
             }]; %additional preferences not in superclass
             obj.loadPrefs;
             obj.PulseWidths_ns = eval(obj.PulseWidthStr_ns);
