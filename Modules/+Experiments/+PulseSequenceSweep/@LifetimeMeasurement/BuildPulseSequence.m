@@ -31,9 +31,19 @@ resNode = node(r_s1, resChannel, 'units', 'us', 'delta', -obj.resWindowOffset_us
 resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
 
 
-for i = 1:obj.PulseRepeat-1
-    resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowOffset_us);
-    resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
+if obj.MergeSequence == false
+    for i = 1:obj.PulseRepeat-1
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowOffset_us);
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
+    end
+    r_e1 = node(r_s1,APDchannel,'units','us','delta',obj.PulsePeriod_ns*obj.PulseRepeat /1000);
+    
+else
+    for i = 1:(length(obj.pulseWidths_ns)*obj.PulseRepeat-1)
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowOffset_us);
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
+    end
+    r_e1 = node(r_s1,APDchannel,'units','us','delta',obj.PulsePeriod_ns*obj.PulseRepeat*length(obj.PulseWidths_ns) /1000);
 end
 
 node(r_s1,APDchannel,'units','us', 'delta',0);
@@ -48,7 +58,6 @@ node(r_s1_begin_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
 
 
 
-r_e1 = node(r_s1,APDchannel,'units','us','delta',obj.PulsePeriod_ns*obj.PulseRepeat /1000);
 % m = node(r_e1,MWChannel, 'units','us','delta',0);
 
 
