@@ -32,7 +32,10 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         AWG = Drivers.AWG70002B.empty(1, 0);
         PulseWidthStr_ns = 'linspace(20, 40, 21)';
         PulseWidths_ns;
-        PulsePeriod_ns = 100;
+        PulsePeriod_ns = 500;
+        PulseDelay_ns = 750;
+        PulseBound_ns = [200, 300];
+
         MarkerWidth_ns = 10;
         PulseRepeat = 100;
         PulseBase = -1;
@@ -75,7 +78,7 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         recordAllTimeTags = false;
         
         bin_width_ns = 1;
-        LogScale = true;
+        LogScale = false;
 
     end    
     
@@ -102,7 +105,7 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
             obj.prefs = [obj.prefs,{ 'AWG_IP', 'UseMW', 'MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline',...
             'UseAWG', 'PH_serialNr','PH_BaseResolution','connection', 'resLaser','repumpLaser','APDline','repumpTime_us', ...
             'AWGPBline', 'resOffset_us', 'SyncPBLine', 'SyncPulseWidth_us', 'resWindowOffset_us', 'resWindowShift_us', 'recordAllTimeTags' ...
-            'PulseWidthStr_ns', 'PulsePeriod_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'bin_width_ns', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
+            'PulseWidthStr_ns', 'PulsePeriod_ns', 'PulseDelay_ns', 'PulseBound_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'bin_width_ns', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
             }]; %additional preferences not in superclass
             obj.loadPrefs;
             obj.PulseWidths_ns = eval(obj.PulseWidthStr_ns);
@@ -111,6 +114,9 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
 
     methods
         
+
+        runMergedSeq(obj, ax, p, status)
+        runSeparatedSeq(obj, ax, p, status)
         function set.connection(obj,val)
             if val
                 obj.PH_serialNr = 'connecting...';

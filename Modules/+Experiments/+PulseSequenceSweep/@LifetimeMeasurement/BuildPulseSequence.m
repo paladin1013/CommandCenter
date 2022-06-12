@@ -21,7 +21,11 @@ g = node(g,repumpChannel,'units','us','delta',obj.repumpTime_us);
 
 
 PBTriggerTime_us = 0.01;    
-resWindow_us = max(0.01, pulseWidth_ns/1000);
+if obj.MergeSequence
+    resWindow_us = max([0.01, obj.PulseWidths_ns/1000]);
+else
+    resWindow_us = max([0.01, pulseWidth_ns/1000]);
+end
 
 
 r_s1 = node(g,resTriggerChannel,'units','us','delta',obj.resOffset_us);
@@ -39,7 +43,7 @@ if obj.MergeSequence == false
     r_e1 = node(r_s1,APDchannel,'units','us','delta',obj.PulsePeriod_ns*obj.PulseRepeat /1000);
     
 else
-    for i = 1:(length(obj.pulseWidths_ns)*obj.PulseRepeat-1)
+    for i = 1:(length(obj.PulseWidths_ns)*obj.PulseRepeat-1)
         resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowOffset_us);
         resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
     end
