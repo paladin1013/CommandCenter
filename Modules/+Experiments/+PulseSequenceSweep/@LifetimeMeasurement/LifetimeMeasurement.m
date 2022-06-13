@@ -43,7 +43,7 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         AWG_Channel = 1;
         AWG_SampleRate_GHz = 10;
         AWG_TriggerSource = 'B';
-        MergeSequence = false;
+        MergeSequence = true;
         PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B\waveforms';
 
 

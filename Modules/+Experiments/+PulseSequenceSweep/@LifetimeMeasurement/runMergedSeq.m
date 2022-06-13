@@ -35,7 +35,7 @@ function runMergedSeq(obj, ax, p, status)
         for averageIdx = 1:obj.averages
             drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
             status.String = [sprintf('Progress (%i/%i averages):\n  ', averageIdx,obj.averages), sprintf('Time elapsed %.2f', toc(t))];
-
+            relativeTimeTags_ns = zeros(nPulseWidths, 1000000);
             if averageIdx == 1
                 apdPS.start(1000)
             else
@@ -51,15 +51,17 @@ function runMergedSeq(obj, ax, p, status)
 
 
             photonPt = 1;
+            collectedPhotonCnt = zeros(1, nPulseWidths);
             for k = 1:(obj.samples-3)
-                while(k < length(rawTttrData0) &&  photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)))
+                while(k < length(rawTttrData0) &&  photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)+obj.PulseDelay_ns*1000))
                     photonPt = photonPt + 1;
                 end
 
-                while(photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)+obj.PulseRepeat*obj.PulsePeriod_ns*nPulseWidths*1000))
+                while(photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)+obj.PulseRepeat*obj.PulsePeriod_ns*nPulseWidths*1000+obj.PulseDelay_ns*1000))
                     relativeToSync_ns = (rawTttrData1(photonPt)-rawTttrData0(k))/1000-obj.PulseDelay_ns;
                     pwIdx = mod(floor(relativeToSync_ns/obj.PulsePeriod_ns), nPulseWidths)+1;
-
+                    collectedPhotonCnt(pwIdx) = collectedPhotonCnt(pwIdx) + 1;
+                    relativeTimeTags_ns(pwIdx, collectedPhotonCnt(pwIdx)) = relativeToSync_ns;
 
 
                     bin = ceil(mod(relativeToSync_ns, obj.PulsePeriod_ns)/obj.bin_width_ns);
@@ -69,12 +71,12 @@ function runMergedSeq(obj, ax, p, status)
 
                     photonPt = photonPt + 1;
                 end
-                % obj.data.timeTags{pulseWidthIdx, averageIdx, k, 1} = rawTttrData1(photonPtStart:photonPt);
             end
             periodNum = periodNum + (obj.PulseRepeat * (obj.samples-3));
-
-
             
+            for pwIdx = 1:nPulseWidths
+                obj.data.timeTags{pwIdx, averageIdx} = relativeTimeTags_ns(pwIdx, 1:collectedPhotonCnt(pwIdx));
+            end
             totalPhotonNum = sum(timeBinResults, 2);
             sectionPhotonNum = sum(timeBinResults(:, cntStartBin:cntEndBin), 2);
 

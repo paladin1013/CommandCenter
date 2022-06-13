@@ -60,6 +60,9 @@ node(r_s1_begin_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
 
 
 
+delay = node(r_e1, repumpChannel,'units','us','delta',obj.PulseDelay_ns/1000);
+node(delay, repumpChannel,'units','us','delta', 0);
+
 
 
 % m = node(r_e1,MWChannel, 'units','us','delta',0);

@@ -6,6 +6,8 @@ function runSeparatedSeq(obj, ax, p, status)
     cntEndBin = ceil(mod(obj.PulseBound_ns(2), obj.PulsePeriod_ns)/obj.bin_width_ns);
     line([cntStartBin, cntStartBin], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
     line([cntEndBin, cntEndBin], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
+
+
     for pulseWidthIdx = 1:nPulseWidths
         drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
         periodNum = 0;
@@ -42,33 +44,41 @@ function runSeparatedSeq(obj, ax, p, status)
                 apdPS.stream(p);
 
                 obj.picoharpH.PH_StopMeas;
-                photonPt = 1;
 
+
+                % Count photon time tags
+                photonPt = 1;
+                collectedPhotonCnt = 0;
+                relativeTimeTags_ns = zeros(1, 1000000);
                 assert(length(rawTttrData0) == obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",obj.samples - 3, length(rawTttrData0)))
                 for k = 1:(obj.samples-3)
                     while(k < length(rawTttrData0) &&  photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)))
                         photonPt = photonPt + 1;
                     end
                     while(photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)+obj.PulseRepeat*obj.PulsePeriod_ns*1000))
+                        collectedPhotonCnt = collectedPhotonCnt + 1;
+                        relativeTimeTags_ns(collectedPhotonCnt) = (rawTttrData1(photonPt)-rawTttrData0(k)-obj.PulseDelay_ns*1000)/1000;
                         bin = ceil(mod((rawTttrData1(photonPt)-rawTttrData0(k)-obj.PulseDelay_ns*1000)/1000, obj.PulsePeriod_ns)/obj.bin_width_ns);
                         if bin > 0
                             timeBinResult(bin) = timeBinResult(bin) + 1;
                         end
                         photonPt = photonPt + 1;
                     end
-                    % obj.data.timeTags{pulseWidthIdx, averageIdx, k, 1} = rawTttrData1(photonPtStart:photonPt);
                         
 
                 end
 
+                % Update figures
                 periodNum = periodNum + (obj.PulseRepeat*(obj.samples-3));
-                ax(2).Children(1).YData = timeBinResult/periodNum;
-                ax(2).Children(1).XData = (1:nBins)*obj.bin_width_ns;
+                ax(2).Children(3).YData = timeBinResult/periodNum;
+                ax(2).Children(3).XData = (1:nBins)*obj.bin_width_ns;
+                ax(2).YLim = [0, max(timeBinResult/periodNum, [], 'all')];
                 yticks(ax(2), 'auto');
                 
-
+                % Record all data
                 dat = reshape(p.YData,obj.nCounterBins,[])';
                 obj.data.counts(averageIdx, pulseWidthIdx,:,:) = dat;
+                obj.data.timeTags{pulseWidthIdx, averageIdx} = relativeTimeTags_ns(1:collectedPhotonCnt);
                 if obj.recordAllTimeTags
                     obj.data.rawTimeTags0{pulseWidthIdx, averageIdx} = rawTttrData0;
                     obj.data.rawTimeTags1{pulseWidthIdx, averageIdx} = rawTttrData1;
