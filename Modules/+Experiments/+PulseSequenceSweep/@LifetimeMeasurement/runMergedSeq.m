@@ -4,8 +4,8 @@ function runMergedSeq(obj, ax, p, status)
     line([0], [-2], 'Parent', ax(2), 'Color', 'm');
     cntStartBin = ceil(mod(obj.PulseBound_ns(1), obj.PulsePeriod_ns)/obj.bin_width_ns);
     cntEndBin = ceil(mod(obj.PulseBound_ns(2), obj.PulsePeriod_ns)/obj.bin_width_ns);
-    line([cntStartBin, cntStartBin], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
-    line([cntEndBin, cntEndBin], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
+    line([obj.PulseBound_ns(1), obj.PulseBound_ns(1)], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
+    line([obj.PulseBound_ns(2), obj.PulseBound_ns(2)], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
     t = tic;
     nPulseWidths = length(obj.PulseWidths_ns);
     nBins = ceil(obj.PulsePeriod_ns/obj.bin_width_ns);
@@ -35,7 +35,7 @@ function runMergedSeq(obj, ax, p, status)
         for averageIdx = 1:obj.averages
             drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
             status.String = [sprintf('Progress (%i/%i averages):\n  ', averageIdx,obj.averages), sprintf('Time elapsed %.2f', toc(t))];
-            relativeTimeTags_ns = zeros(nPulseWidths, 1000000);
+            relativeTimeTags_ns = zeros(nPulseWidths, 10000);
             if averageIdx == 1
                 apdPS.start(1000)
             else
@@ -83,9 +83,15 @@ function runMergedSeq(obj, ax, p, status)
             if obj.LogScale == 1
                 set(ax(2), 'YScale', 'log')
             end
-            ax(2).Children(3).YData = timeBinResults(1, :)/periodNum;
+            if (obj.PulseWidths_ns(1) < obj.PulseWidths_ns(end))
+                ax(2).Children(3).YData = timeBinResults(1, :)/periodNum;
+                ax(2).Children(4).YData = timeBinResults(end, :)/periodNum;
+            else
+                ax(2).Children(4).YData = timeBinResults(1, :)/periodNum;
+                ax(2).Children(3).YData = timeBinResults(end, :)/periodNum;
+            end
+
             ax(2).Children(3).XData = (1:nBins)*obj.bin_width_ns;
-            ax(2).Children(4).YData = timeBinResults(end, :)/periodNum;
             ax(2).Children(4).XData = (1:nBins)*obj.bin_width_ns;
             ax(2).YLim = [0, max(timeBinResults/periodNum, [], 'all')];
             yticks(ax(2), 'auto')
@@ -97,14 +103,15 @@ function runMergedSeq(obj, ax, p, status)
             ax(1).Children(2).YData = totalPhotonNum/periodNum;
             ax(1).Children(2).XData = obj.PulseWidths_ns;
             yticks(ax(1), 'auto');
+            legend(ax(1), {'Within dashed-line window', 'Total probability',  'Shortest pulsewidth distribution', 'Longest pulsewidth distribution'}, 'Location', 'northwest');
             drawnow('limitrate');
             
 
+            obj.data.timeBinResults = timeBinResults;
+            obj.data.sectionProbability = sectionPhotonNum'/periodNum;
+            obj.data.totalProbability = totalPhotonNum'/periodNum;
         end % End calculating averages
 
-        obj.data.timeBinResults = timeBinResults;
-        obj.data.sectionProbability = sectionPhotonNum'/periodNum;
-        obj.data.totalProbability = totalPhotonNum'/periodNum;
     end
     
 end % End checking pulse sequence

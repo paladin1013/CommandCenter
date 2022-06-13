@@ -49,7 +49,7 @@ function runSeparatedSeq(obj, ax, p, status)
                 % Count photon time tags
                 photonPt = 1;
                 collectedPhotonCnt = 0;
-                relativeTimeTags_ns = zeros(1, 1000000);
+                relativeTimeTags_ns = zeros(1, 10000);
                 assert(length(rawTttrData0) == obj.samples - 3, sprintf("Number of time tag from PB should be exactly %d, but now got %d",obj.samples - 3, length(rawTttrData0)))
                 for k = 1:(obj.samples-3)
                     while(k < length(rawTttrData0) &&  photonPt <= length(rawTttrData1) && (rawTttrData1(photonPt) < rawTttrData0(k)))
@@ -77,7 +77,7 @@ function runSeparatedSeq(obj, ax, p, status)
                 
                 % Record all data
                 dat = reshape(p.YData,obj.nCounterBins,[])';
-                obj.data.counts(averageIdx, pulseWidthIdx,:,:) = dat;
+                % obj.data.counts(averageIdx, pulseWidthIdx,:,:) = dat;
                 obj.data.timeTags{pulseWidthIdx, averageIdx} = relativeTimeTags_ns(1:collectedPhotonCnt);
                 if obj.recordAllTimeTags
                     obj.data.rawTimeTags0{pulseWidthIdx, averageIdx} = rawTttrData0;
@@ -105,6 +105,7 @@ function runSeparatedSeq(obj, ax, p, status)
             ax(1).Children(2).YData = [ax(1).Children(2).YData, totalPhotonNum/periodNum];
             ax(1).Children(2).XData = [ax(1).Children(2).XData, pulseWidth_ns];
         end
+        legend('Within dashed-line window', 'Total probability', '', '', 'Photon count distribution');
         yticks(ax(1), 'auto');
         drawnow('limitrate');
     end

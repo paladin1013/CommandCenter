@@ -56,7 +56,7 @@ function run( obj,status,managers,ax)
     obj.abort_request = false;
     drawnow;
     
-    obj.data.counts = NaN([nPulseWidths, obj.averages, obj.samples,obj.nCounterBins]);
+    % obj.data.counts = NaN([nPulseWidths, obj.averages, obj.samples,obj.nCounterBins]);
     obj.data.timeTags = cell([nPulseWidths, obj.averages]);
     obj.data.timeBinResults = zeros([nPulseWidths, nBins]);
     obj.data.sectionProbability = zeros([1, nPulseWidths]);
