@@ -79,7 +79,11 @@ classdef hwserver < handle
                         rethrow(handshake_err)
                     end
                 end
-                fprintf(obj.connection,'%s\n',msg);
+                while length(msg) > 0
+                    fprintf(obj.connection,'%s',msg(1:min(length(msg), obj.connection.OutputBufferSize-1)));
+                    msg = msg(min(length(msg)+1, obj.connection.OutputBufferSize):end);
+                end
+                fprintf(obj.connection, "\n");
                 response = obj.receive;
             catch err
                 % For future use in more parallel hwserver;

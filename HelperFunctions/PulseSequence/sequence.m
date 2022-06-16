@@ -568,7 +568,11 @@ classdef sequence < handle
                 else
                     notes = sprintf('// %s',strjoin(notes,','));
                 end
-                instructionSet{i} = sprintf('%s0b %s, %0.2f ns%s%s',indent,num2str(instInfo(i).flag,'%i'),instInfo(i).dt,append,notes);
+                first1 = find(instInfo(i).flag, 1, 'first');
+                if length(first1) == 0
+                    first1 = 24;
+                end
+                instructionSet{i} = sprintf('%s0b %s, %0.2f ns%s%s',indent,num2str(instInfo(i).flag(first1:end),'%i'),instInfo(i).dt,append,notes);
                 indent = '       ';  % Just to align nicely with the Start
             end
             % Take care of last instruction depending on repeat
@@ -583,7 +587,11 @@ classdef sequence < handle
             if length(instructionSet)==2
                 i = 1; % Because for loop above would have set this to []
             end
-            instructionSet{i+1} = sprintf('%s0b %s, %0.2f ns%s',indent,num2str(instInfo(i+1).flag,'%i'),instInfo(i+1).dt,append);
+            first1 = find(instInfo(i+1).flag, 1, 'first');
+            if length(first1) == 0
+                first1 = 24
+            end
+            instructionSet{i+1} = sprintf('%s0b %s, %0.2f ns%s',indent,num2str(instInfo(i+1).flag(first1:end),'%i'),instInfo(i+1).dt,append);
             instructionSet{end+1} = sprintf('%s0x000000, 100ms',indent);
             instructionSet{end+1} = sprintf('%sSTOP',indent);
             if obj.repeat > 1 && obj.repeat < Inf && strcmp(instInfo(1).msn.type,'start')
