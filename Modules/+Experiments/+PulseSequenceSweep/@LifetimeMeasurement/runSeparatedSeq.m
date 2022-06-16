@@ -6,6 +6,7 @@ function runSeparatedSeq(obj, ax, p, status)
     cntEndBin = ceil(mod(obj.PulseBound_ns(2), obj.PulsePeriod_ns)/obj.bin_width_ns);
     line([cntStartBin, cntStartBin], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
     line([cntEndBin, cntEndBin], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
+    line([0], [-2], 'Parent', ax(1), 'Color', 'c');
 
 
     for pulseWidthIdx = 1:nPulseWidths

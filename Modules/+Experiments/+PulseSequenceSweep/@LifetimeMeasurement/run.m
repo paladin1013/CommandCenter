@@ -37,7 +37,7 @@ function run( obj,status,managers,ax)
     %prepare axes for plotting
     ax = plotyy(ax,[0], [-1], [0], [0]);
     
-    line([0], [-2], 'Parent', ax(1), 'Color', 'c');
+
     
     set(ax(2),'YLim',[0 inf])
     set(ax(2), 'XLim', [0 obj.PulsePeriod_ns])
@@ -77,8 +77,7 @@ function run( obj,status,managers,ax)
     a = axes('Parent',f);
     p = plot(NaN,'Parent',a);
     
-    
-    try
+    if (obj.sweepResParams == false)
         obj.PreRun(status,managers,ax);
         
         % Construct APDPulseSequence once, and update apdPS.seq
@@ -92,16 +91,14 @@ function run( obj,status,managers,ax)
             % Enabling merge sequence option. This will compile all pulsewidths into the same waveform. 
             
             obj.runMergedSeq(ax, p, status);
-                    
-    
-    
-    
         end
-    
         obj.picoharpH.PH_StopMeas;
-    
-    catch err
+    elseif (length(obj.PulseWidths_ns) == 1)
+        obj.sweepWindowParams(ax, p, status)
+    else
+        assert(false, "Only support sweeping either pulse width or resonant laser window parameters")
     end
+
     delete(f);
 
     if exist('err','var')

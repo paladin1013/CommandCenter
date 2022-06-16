@@ -21,31 +21,34 @@ g = node(g,repumpChannel,'units','us','delta',obj.repumpTime_us);
 
 
 PBTriggerTime_us = 0.01;    
-if obj.MergeSequence
-    resWindow_us = max([0.01, obj.PulseWidths_ns/1000]);
-else
-    resWindow_us = max([0.01, pulseWidth_ns/1000]);
-end
-
+% if obj.MergeSequence
+%     resWindow_us = max([0.01, obj.PulseWidths_ns/1000]);
+% else
+%     resWindow_us = max([0.01, pulseWidth_ns/1000]);
+% end
+resWindow_us = 0;	
 
 r_s1 = node(g,resTriggerChannel,'units','us','delta',obj.resOffset_us);
 node(r_s1,resTriggerChannel,'units','us','delta',PBTriggerTime_us);
 
-resNode = node(r_s1, resChannel, 'units', 'us', 'delta', -obj.resWindowOffset_us+obj.resWindowShift_us);
-resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
+
+% resNode = node(r_s1, resChannel, 'units', 'us', 'delta', 0);
+% resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns*obj.PulseRepeat*length(obj.PulseWidths_ns) /1000);
+resNode = node(r_s1, resChannel, 'units', 'us', 'delta', -obj.resWindowSpan_us+obj.resWindowOffset_us);
+resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowSpan_us);
 
 
 if obj.MergeSequence == false
     for i = 1:obj.PulseRepeat-1
-        resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowOffset_us);
-        resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowSpan_us);
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowSpan_us);
     end
     r_e1 = node(r_s1,APDchannel,'units','us','delta',obj.PulsePeriod_ns*obj.PulseRepeat /1000);
     
 else
     for i = 1:(length(obj.PulseWidths_ns)*obj.PulseRepeat-1)
-        resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowOffset_us);
-        resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowOffset_us);
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', obj.PulsePeriod_ns/1000-resWindow_us-2*obj.resWindowSpan_us);
+        resNode = node(resNode, resChannel, 'units', 'us', 'delta', resWindow_us+2*obj.resWindowSpan_us);
     end
     r_e1 = node(r_s1,APDchannel,'units','us','delta',obj.PulsePeriod_ns*obj.PulseRepeat*length(obj.PulseWidths_ns) /1000);
 end

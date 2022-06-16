@@ -1,13 +1,14 @@
 function runMergedSeq(obj, ax, p, status)
 
 
-    line([0], [-2], 'Parent', ax(2), 'Color', 'm');
     cntStartBin = ceil(mod(obj.PulseBound_ns(1), obj.PulsePeriod_ns)/obj.bin_width_ns);
     cntEndBin = ceil(mod(obj.PulseBound_ns(2), obj.PulsePeriod_ns)/obj.bin_width_ns);
-    line([obj.PulseBound_ns(1), obj.PulseBound_ns(1)], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
-    line([obj.PulseBound_ns(2), obj.PulseBound_ns(2)], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
+    
+    % line([obj.PulseBound_ns(1), obj.PulseBound_ns(1)], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
+    % line([obj.PulseBound_ns(2), obj.PulseBound_ns(2)], [0, 1], 'Parent', ax(2), 'Color', 'k', 'LineStyle', '--');
     t = tic;
     nPulseWidths = length(obj.PulseWidths_ns);
+    
     nBins = ceil(obj.PulsePeriod_ns/obj.bin_width_ns);
     periodNum = 0;
     pws = obj.PulseWidths_ns;
@@ -26,10 +27,16 @@ function runMergedSeq(obj, ax, p, status)
     pulseSeq.repeat = obj.samples;
     apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder'), obj.picoharpH); %create an instance of apdpulsesequence to avoid recreating in loop
     apdPS.seq = pulseSeq;
+    obj.data.peakPos = zeros(1, nPulseWidths);
 
 
+    cmap = jet(nPulseWidths);
 
-
+    for k = 1:nPulseWidths
+        line([0], [0], 'Parent', ax(2), 'Color', cmap(k, :));
+        ax(2).Children(1).XData = (cntStartBin:cntEndBin)*obj.bin_width_ns;
+        line([0], [0], 'Parent', ax(1));
+    end
     if pulseSeq ~= false % Interpret a return of false as skip this one (leaving in NaN)
 
         for averageIdx = 1:obj.averages
@@ -83,30 +90,35 @@ function runMergedSeq(obj, ax, p, status)
             if obj.LogScale == 1
                 set(ax(2), 'YScale', 'log')
             end
-            if (obj.PulseWidths_ns(1) < obj.PulseWidths_ns(end))
-                ax(2).Children(3).YData = timeBinResults(1, :)/periodNum;
-                ax(2).Children(4).YData = timeBinResults(end, :)/periodNum;
-            else
-                ax(2).Children(4).YData = timeBinResults(1, :)/periodNum;
-                ax(2).Children(3).YData = timeBinResults(end, :)/periodNum;
+            [maxCnt, maxPt] = max(timeBinResults, [], 2); % Get peak position
+            lineNum = 6;
+            for k = 1:floor(nPulseWidths/lineNum):nPulseWidths
+                ax(2).Children(k).YData = timeBinResults(k, cntStartBin:cntEndBin)/periodNum;
             end
 
-            ax(2).Children(3).XData = (1:nBins)*obj.bin_width_ns;
-            ax(2).Children(4).XData = (1:nBins)*obj.bin_width_ns;
             ax(2).YLim = [0, max(timeBinResults/periodNum, [], 'all')];
             yticks(ax(2), 'auto')
+            ax(2).XLim = [obj.PulseBound_ns(1), obj.PulseBound_ns(2)];
 
             drawnow('limitrate');
 
-            ax(1).Children(1).YData = sectionPhotonNum/periodNum;
-            ax(1).Children(1).XData = obj.PulseWidths_ns;
-            ax(1).Children(2).YData = totalPhotonNum/periodNum;
-            ax(1).Children(2).XData = obj.PulseWidths_ns;
+            for k = 1:nPulseWidths
+                ax(1).Children(k).YData = sectionPhotonNum(k)/periodNum;
+                ax(1).Children(k).XData = obj.PulseWidths_ns(k);
+                ax(1).Children(k).Color = cmap(k, :);
+                ax(1).Children(k).MarkerSize = 20;
+                ax(1).Children(k).Marker = '.';
+            end
+            ax(1).Children(end).YData = sectionPhotonNum/periodNum;
+            ax(1).Children(end).XData = obj.PulseWidths_ns;
+            ax(1).Children(end).Color = 'k';
+            % ax(1).Children(2).YData = totalPhotonNum/periodNum;
+            % ax(1).Children(2).XData = obj.PulseWidths_ns;
             yticks(ax(1), 'auto');
-            legend(ax(1), {'Within dashed-line window', 'Total probability',  'Shortest pulsewidth distribution', 'Longest pulsewidth distribution'}, 'Location', 'northwest');
+            % legend(ax(1), {'Within dashed-line window', 'Total probability',  'Shortest pulsewidth distribution', 'Longest pulsewidth distribution'}, 'Location', 'northwest');
             drawnow('limitrate');
             
-
+            obj.data.peakPos = maxPt;
             obj.data.timeBinResults = timeBinResults;
             obj.data.sectionProbability = sectionPhotonNum'/periodNum;
             obj.data.totalProbability = totalPhotonNum'/periodNum;
