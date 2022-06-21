@@ -33,7 +33,7 @@ function runMergedSeq(obj, ax, p, status)
     cmap = jet(nPulseWidths);
 
     for k = 1:nPulseWidths
-        line([0], [0], 'Parent', ax(2), 'Color', cmap(k, :));
+        line([0], [0], 'Parent', ax(2));
         ax(2).Children(1).XData = (cntStartBin:cntEndBin)*obj.bin_width_ns;
         line([0], [0], 'Parent', ax(1));
     end
@@ -94,6 +94,7 @@ function runMergedSeq(obj, ax, p, status)
             lineNum = 6;
             for k = 1:floor(nPulseWidths/lineNum):nPulseWidths
                 ax(2).Children(k).YData = timeBinResults(k, cntStartBin:cntEndBin)/periodNum;
+                ax(2).Children(k).Color = cmap(k, :);
             end
 
             ax(2).YLim = [0, max(timeBinResults/periodNum, [], 'all')];

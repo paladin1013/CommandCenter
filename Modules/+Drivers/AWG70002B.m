@@ -335,7 +335,15 @@ classdef AWG70002B < Modules.Driver
                 
                 obj.writeToSocket(sprintf('MMEM:OPEN:TXT "%s\\%s.txt",ANAL', obj.PulseFileDir, waveformName))
                 obj.writeReadToSocket('*OPC?');
+                if(channel == 1 || channel == 2)
                 obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',channel,waveformName));
+                elseif (channel == 0)
+                    obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',1,waveformName));
+                    obj.writeToSocket(sprintf('SOUR%d:WAV "%s"',2,waveformName));
+                    obj.writeToSocket("RCC 1");
+                else
+                    assert(false, "Channel should be 0(for both channels) 1 or 2.");
+                end
                 obj.writeReadToSocket('*OPC?');
                 pause(0.5);
                 loadedName = char(obj.writeReadToSocket(sprintf("SOUR%d:WAV?", channel)));
