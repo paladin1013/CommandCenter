@@ -1,14 +1,17 @@
 classdef VoltageSweep < Modules.Experiment
     % Runs an experiment at every point in a voltage sweep.
     properties(SetObservable, GetObservable)
-        keithley_gpib   = Prefs.Integer(16, 'min', 1);
+        keithley_gpib_addr   = Prefs.Integer(16, 'min', 1);
+        keithley_gpib_num   = Prefs.Integer(0, 'min', 0);
 
-        begin_voltage   = Prefs.Double(0);
-        step_voltage    = Prefs.Double(.1, 'min', 0);
-        end_voltage     = Prefs.Double(1);
+        % begin_voltage   = Prefs.Double(0);
+        % step_voltage    = Prefs.Double(.1, 'min', 0);
+        % end_voltage     = Prefs.Double(1);
+        voltage_list_str = '[0, 50, 100, 100, 50, 0, -50]';
+        voltage_list = [];
 
         record_currents = Prefs.Boolean(true);
-
+        
         experiment      = Prefs.ModuleInstance(Modules.Experiment.empty(0), 'inherits', {'Modules.Experiment'});
     end
 
@@ -19,7 +22,7 @@ classdef VoltageSweep < Modules.Experiment
     properties
         data = [] % subclasses should not set this; it can be manipulated in GetData if necessary
         meta = [] % Store experimental settings
-        prefs = {'keithley_gpib','begin_voltage','step_voltage','end_voltage','record_currents','experiment'};
+        prefs = {'keithley_gpib_addr', 'keithley_gpib_num','voltage_list_str', 'record_currents','experiment'};
     end
 
     methods(Static)
@@ -80,15 +83,16 @@ classdef VoltageSweep < Modules.Experiment
         function obj = VoltageSweep()
             obj.experiment = Experiments.SlowScan.Open.instance;
             obj.loadPrefs;
+            obj.voltage_list = eval(obj.voltage_list_str);
         end
     end
     methods
         function run(obj, status, managers, ax)
-            step = sign(obj.end_voltage - obj.begin_voltage) * abs(obj.step_voltage);
-            obj.data.volt = obj.begin_voltage:step:obj.end_voltage;
+            % step = sign(obj.end_voltage - obj.begin_voltage) * abs(obj.step_voltage);
+            obj.data.volt = obj.voltage_list;
             
-            if obj.begin_voltage == obj.end_voltage
-                obj.data.volt = obj.begin_voltage
+            if length(obj.voltage_list) == 1
+                obj.data.volt = obj.voltage_list(1);
             end
             
             if obj.record_currents
@@ -96,7 +100,7 @@ classdef VoltageSweep < Modules.Experiment
             end
             obj.data.result = cell(1,length(obj.data.volt));
 
-            obj.keithley = Drivers.Keithley2400.instance(obj.keithley_gpib);
+            obj.keithley = Drivers.Keithley2400.instance(obj.keithley_gpib_num, obj.keithley_gpib_addr);
             obj.keithley.mode = 'VOLT';
             obj.keithley.output = true;
            
@@ -106,7 +110,8 @@ classdef VoltageSweep < Modules.Experiment
                 if obj.record_currents
                     obj.data.curr(ii) = obj.keithley.measureCurrent();
                 end
-
+                status.String = sprintf("Current voltage: %d (%d/%d)\n", obj.data.volt(ii), ii, length(obj.data.volt));
+                fprintf("Current voltage: %d (%d/%d)\n", obj.data.volt(ii), ii, length(obj.data.volt));
                 obj.experiment.run(status, managers, ax);
                 dat = obj.experiment.GetData();
                 obj.data.result{ii} = dat;
@@ -125,6 +130,11 @@ classdef VoltageSweep < Modules.Experiment
             % Callback for saving methods (note, lots more info in the two managers input!)
             dat.data = obj.data;
             dat.meta = obj.meta;
+        end
+        function set.voltage_list_str(obj,val)
+            tempvals = eval(val);
+            obj.voltage_list = tempvals;
+            obj.voltage_list_str = val;
         end
     end
 end

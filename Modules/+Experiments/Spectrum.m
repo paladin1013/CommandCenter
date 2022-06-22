@@ -59,8 +59,17 @@ classdef Spectrum < Modules.Experiment
             obj.data = [];
             drawnow;
             obj.data = obj.WinSpec.acquire(@(t)set(status,'string',sprintf('Elapsed Time: %0.2f',t)),obj.over_exposed_override); %user can cause abort error during this call
+            wavelength = obj.data.x(465:549);
+            intensity = obj.data.y(465:549);
+            xx = linspace(wavelength(1),wavelength(end),501);
+            [yprime, params, resnorm, residual] = lorentzfit(wavelength,intensity,[150,619,0.01,100]);
+
+            amplitude_fit = params(1)./((xx-params(2)).^2+params(3))+params(4);
+            fprintf("  Fit peak: %d\n", params(2));
+            obj.data.lorentzParams = params;
             if ~isempty(obj.data)
                 plot(ax,obj.data.x,obj.data.y)
+                line(xx, amplitude_fit, 'parent', ax, 'Color', 'red')
                 xlabel(ax,'Wavelength (nm)')
                 ylabel(ax,'Intensity (AU)')
                 set(status,'string','Complete!')
@@ -127,6 +136,7 @@ classdef Spectrum < Modules.Experiment
                 dat.diamondbase.data_type = 'local';
                 dat.wavelength = obj.data.x;
                 dat.intensity = obj.data.y;
+                dat.LorentzianParams = obj.data.lorentzParams;
                 dat.meta = rmfield(obj.data,{'x','y'});
             end
         end
