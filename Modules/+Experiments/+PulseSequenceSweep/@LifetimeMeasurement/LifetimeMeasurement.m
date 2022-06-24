@@ -151,10 +151,9 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
             if strcmp(val,'None Set') % Short circuit
                 emptyFlag = true;
 
-                val = '18.25.24.255';
+                val = '18.25.28.214';
             end
                 try
-                    % currently '18.25.24.255'; 5/16/2022
                     obj.AWG=Drivers.AWG70002B.instance('visa',val);
                     obj.AWG_IP = val;
                     obj.AWG.reset();

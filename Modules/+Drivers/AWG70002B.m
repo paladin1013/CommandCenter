@@ -114,7 +114,7 @@ classdef AWG70002B < Modules.Driver
                 disp('TCP/IP Protocol Initialized for AWG70002B');
             catch exception
                 % disp('Error to init TCP/IP Protocol for AWG70002B');
-                assert('Error to init TCP/IP Protocol for AWG70002B');
+                assert(false, 'Error to init TCP/IP Protocol for AWG70002B');
             end
         end
         
