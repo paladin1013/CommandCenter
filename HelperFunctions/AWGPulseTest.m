@@ -17,9 +17,9 @@ AWG_SampleRate_GHz = 10;
 % pulsePeriod_ns, sampleFreq_GHz, pulseAmp, t1, tau1, t2, compRatio, delayTau, prolong_ns
 pulseData = genPulse(1000,... % pulsePeriod_ns
      10, ... % sampleFreq_GHz
-     1, ... % pulseAmp
-     20, ... % t1
-     0.3, ... % tau1
+     0.5, ... % pulseAmp
+     10, ... % t1
+     2, ... % tau1
      20, ... % t2
      -0.1, ... % compRatio
      0.5, ... % compTau
@@ -68,11 +68,12 @@ function pulseData = genPulse(pulsePeriod_ns, sampleFreq_GHz, pulseAmp, t1, tau1
 
         t = (1/sampleFreq_GHz):(1/sampleFreq_GHz):t1;
 
-        pulseData(1:t1*sampleFreq_GHz, 1) = exp(-t/tau1)*0.3+0.8;
+        pulseData(1:t1*sampleFreq_GHz, 1) = exp(-t/tau1)*0.8+0.8;
         pulseData(t1*sampleFreq_GHz: t2*sampleFreq_GHz, 1) = 0.8;
         
-        pulseData(t2*sampleFreq_GHz+1:(t2+t1)*sampleFreq_GHz, 1) = -exp(-t/tau1)*0.3-0.8;
-        pulseData((t2+t1)*sampleFreq_GHz: 2*t2*sampleFreq_GHz, 1) = -0.8;
+        
+         pulseData(t2*sampleFreq_GHz+1:(t2+t1/4)*sampleFreq_GHz, 1) = -0.05;
+         pulseData((t2+t1/4)*sampleFreq_GHz: 2*t2*sampleFreq_GHz, 1) = 0.05;
         % t1 = 10;
         % risingT = (1/sampleFreq_GHz):(1/sampleFreq_GHz):t1;
         % pulseData(1:t1*sampleFreq_GHz, 1) = 0.5*log((risingT)/t1*(exp(5)-1)+1)/5;
