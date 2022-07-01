@@ -1,7 +1,11 @@
 function s = BuildPulseSequence(obj, pulseWidth_ns)
 s = sequence('LifetimeMeasurement');
 repumpChannel = channel('repump','color','g','hardware',obj.repumpLaser.PB_line-1);
-resTriggerChannel = channel('resonant trigger','color','r','hardware',obj.AWGPBline-1);
+if obj.UseAWG
+    resTriggerChannel = channel('resonant trigger','color','r','hardware',obj.AWGPBline-1);
+else
+    resTriggerChannel = channel('resonant trigger','color','r','hardware',obj.DGPBline-1);
+end
 resChannel = channel('resonant', 'color', 'r', 'hardware', obj.resLaser.PB_line-1);
 APDchannel = channel('APDgate','color','b','hardware',obj.APDline-1,'counter','APD1');
 % MWChannel = channel('MW', 'color', 'k', 'hardware', obj.MWline - 1);
@@ -67,56 +71,5 @@ delay = node(r_e1, repumpChannel,'units','us','delta',obj.PulseDelay_ns/1000);
 node(delay, repumpChannel,'units','us','delta', 0);
 
 
-
-% m = node(r_e1,MWChannel, 'units','us','delta',0);
-
-
-% r_s1_end_sync = node(r_e1,SyncChannel,'units','us', 'delta',obj.syncPulseBias_end);
-% node(r_s1_end_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
-% node(r_e1,APDchannel,'units','us','delta',-obj.CounterLength_us);
-% node(r_e1,APDchannel,'units','us','delta',0);
-% r_s2 = node(r_e1,resTriggerChannel,'units','us','delta',obj.readoutPulseDelay_us);
-% node(r_s2,APDchannel,'units','us','delta',0);
-
-% r_s2_begin_sync = node(r_s2,SyncChannel,'units','us', 'delta',obj.syncPulseBias_begin);
-% node(r_s2_begin_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
-
-% node(r_s2,APDchannel,'units','us','delta',obj.CounterLength_us);
-
-
-% r_e2 = node(r_s2,resTriggerChannel,'units','us','delta',obj.readoutPulseTime_us);
-
-
-% r_s2_end_sync = node(r_e2,SyncChannel,'units','us', 'delta',obj.syncPulseBias_end);
-% node(r_s2_end_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
-% % node(r_e2,APDchannel,'units','us','delta',0);
-% % node(r_e2,APDchannel,'units','us','delta',-obj.CounterLength_us);
-
-% % m = node(r_e0,MWChannel, 'units','us','delta',obj.readoutPulseDelay_us/2);
-
-
-% if obj.UseMW
-%     m = node(r_e2,MWChannel, 'units','us','delta',0);
-% end
-
-% % 
-
-% r_s3 = node(r_e2, resTriggerChannel, 'units', 'us', 'delta', obj.readoutPulseDelay_us);
-% node(r_s3,APDchannel,'units','us','delta',0);
-
-% r_s3_begin_sync = node(r_s3,SyncChannel,'units','us', 'delta',obj.syncPulseBias_begin);
-% node(r_s3_begin_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
-
-
-% r_e3 = node(r_s3, resTriggerChannel, 'units', 'us', 'delta', obj.readoutPulseTime_us);
-% node(r_e3, APDchannel,'units','us','delta',0);
-
-% r_s3_end_sync = node(r_e3,SyncChannel,'units','us', 'delta',obj.syncPulseBias_end);
-% node(r_s3_end_sync,SyncChannel,'units','us', 'delta',obj.SyncPulseWidth_us);
-% m = node(r_e3,MWChannel, 'units','us','delta',0);
-
-
-% g = node(r_e3,repumpChannel,'units','us','delta',0);
-% s.draw
 end
 

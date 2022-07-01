@@ -20,7 +20,7 @@ function sweepWindowParams(obj, ax, p, status)
     obj.data.timeBinResults = zeros(nOffsets, nSpans, nBins);
 
     waveformName = sprintf("%s_%.1f_%dns_%d", 'square', pulseWidth_ns, obj.PulsePeriod_ns, obj.PulseRepeat);
-    AWGPulseGen(obj.PulseBase, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'square');
+    AWGPulseGen(obj.PulseBase, obj.MaxAmplitude, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'square');
     obj.AWG.writeReadToSocket('SYST:ERR:ALL?');
     obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
     obj.AWG.setAmplitude(obj.AWG_Channel, obj.AWG_Amplitude_V);

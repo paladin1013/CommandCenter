@@ -110,7 +110,7 @@ classdef AWG70002B < Modules.Driver
 %                 set(obj.SocketHandle,'InputBufferSize',obj.InputBufferSize); %units? bytes?
 %                 set(obj.SocketHandle,'OutputBufferSize',obj.OutputBufferSize); %units? bytes?
                 
-                obj.SocketHandle=visadev("TCPIP0::"+ obj.IPAddress+"::INSTR");
+                obj.SocketHandle=visadev("TCPIP0::"+ obj.IPAddress +"::INSTR");
                 disp('TCP/IP Protocol Initialized for AWG70002B');
             catch exception
                 % disp('Error to init TCP/IP Protocol for AWG70002B');

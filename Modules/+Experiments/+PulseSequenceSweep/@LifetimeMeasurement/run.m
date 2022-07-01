@@ -24,11 +24,18 @@ function run( obj,status,managers,ax)
     assert(~isempty(obj.picoharpH), "PicoHarp300 is not connected");
     obj.SetPHconfig;
     
-    if (isempty(obj.AWG)|| ~isvalid(obj.AWG))
+    if (obj.UseAWG && (isempty(obj.AWG)|| ~isvalid(obj.AWG)))
         try
             obj.set_AWG_IP;
         catch exception
             assert(false, 'AWG driver is not intialized properly.');
+        end
+    end
+    if (~obj.UseAWG && (isempty(obj.DG) || ~isvalid(obj.DG)))
+        try
+            obj.set_DG_IP(obj.DG_IP);
+        catch exception
+            assert(false, 'Delay Generator driver is not initialized properly.')
         end
     end
     assert(~isempty(obj.pbH)&&isvalid(obj.pbH),'PulseBluster driver is not intialized properly.');

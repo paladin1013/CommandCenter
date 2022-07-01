@@ -12,8 +12,9 @@ function runMergedSeq(obj, ax, p, status)
     nBins = ceil(obj.PulsePeriod_ns/obj.bin_width_ns);
     periodNum = 0;
     pws = obj.PulseWidths_ns;
+    assert(obj.UseAWG == true, 'Only AWG is allowed in Merged sequence mode.')
     waveformName = sprintf("%s_%.1f_%.1f_%.1f_%dns_%d", 'square', pws(1), pws(2)-pws(1), pws(end), obj.PulsePeriod_ns, obj.PulseRepeat);
-    AWGPulseGen(obj.PulseBase, pws, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'square');
+    AWGPulseGen(obj.PulseBase, obj.MaxAmplitude, pws, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'square');
     obj.AWG.writeReadToSocket('SYST:ERR:ALL?');
     obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
     obj.AWG.setAmplitude(obj.AWG_Channel, obj.AWG_Amplitude_V);

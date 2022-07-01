@@ -25,29 +25,35 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
         % resTime_us = 10;
         % tauTimesStr_us = 'linspace(0,100,101)'; %eval(tauTimesStr_us) will define sweepTimes
 
-
-        % AWG related
-        UseAWG = true;
-        AWGPBline = 8;
-        AWG = Drivers.AWG70002B.empty(1, 0);
-        PulseWidthStr_ns = 'linspace(20, 40, 21)';
+        PulseWidthStr_ns = 'linspace(20, 20, 1)';
         PulseWidths_ns;
+        MaxAmplitude = 1;
         PulsePeriod_ns = 500;
         PulseDelay_ns = 750;
         PulseBound_ns = [200, 300];
-
-        MarkerWidth_ns = 10;
         PulseRepeat = 20;
+        MergeSequence = true;
+
+        % AWG related
+        UseAWG = false; % If set to false, will use Delay Generator instead
+        AWGPBline = 8;
+        AWG = Drivers.AWG70002B.empty(1, 0);
         PulseBase = -1;
+        MarkerWidth_ns = 10;
         AWG_Amplitude_V = 0.5;
         AWG_Channel = 1;
         AWG_SampleRate_GHz = 10;
         AWG_TriggerSource = 'B';
-        MergeSequence = true;
         PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B\waveforms';
 
 
-
+        % Delay Generator parameters
+        DG_IP = 'localhost';
+        DGPBline = 8;
+        DG = Drivers.DG645.empty(1, 0);
+        DG_Level_V = 2.5;
+        DG_Channel = 'AB';
+    
 
 
         % PicoHarp configs
@@ -105,10 +111,10 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
     methods(Access=private)
 
         function obj = LifetimeMeasurement()
-            obj.prefs = [obj.prefs,{ 'AWG_IP', 'UseMW', 'MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline',...
-            'UseAWG', 'PH_serialNr','PH_BaseResolution','connection', 'resLaser','repumpLaser','APDline','repumpTime_us', ...
+            obj.prefs = [obj.prefs,{ 'UseAWG','AWG_IP', 'DG_IP', 'DG_Level_V', 'DG_Channel', 'DGPBline', 'UseMW', 'MWSource_init', 'MWSource_read','MW_freq_MHz_init', 'MW_freq_MHz_read','MW_power_dBm_init','MW_power_dBm_read','MWline',...
+             'PH_serialNr','PH_BaseResolution','connection', 'resLaser','repumpLaser','APDline','repumpTime_us', ...
             'AWGPBline', 'resOffset_us', 'SyncPBLine', 'SyncPulseWidth_us', 'sweepResParams', 'resWindowSpanStr_us', 'resWindowOffsetStr_us', 'resWindowSpan_us', 'resWindowOffset_us', 'recordAllTimeTags' ...
-            'PulseWidthStr_ns', 'PulsePeriod_ns', 'PulseDelay_ns', 'PulseBound_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'bin_width_ns', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
+            'PulseWidthStr_ns', 'PulsePeriod_ns', 'PulseDelay_ns', 'PulseBound_ns', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'MaxAmplitude', 'bin_width_ns', 'AWG_Amplitude_V', 'AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_TriggerSource', 'MergeSequence', 'PulseFileDir'
             }]; %additional preferences not in superclass
             obj.loadPrefs;
             obj.PulseWidths_ns = eval(obj.PulseWidthStr_ns);
@@ -168,6 +174,28 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
                         end
                 end
         end
+        
+        function val = set_DG_IP(obj,val,~)
+            emptyFlag = false;
+
+            if strcmp(val,'None Set') % Short circuit
+                emptyFlag = true;
+
+                val = 'localhost';
+            end
+            try
+                obj.DG=Drivers.DG645.instance(val);
+                obj.DG_IP = val;
+                obj.DG.reset();
+            catch err
+                rmfield(obj,'DG');
+                obj.DG = [];
+                obj.DG_IP = 'None Set';
+                if emptyFlag == false
+                    rethrow(err);
+                    end
+            end
+        end
 
 
         % function val = set_PB_IP(obj,val,~)
@@ -217,5 +245,7 @@ classdef LifetimeMeasurement < Experiments.PulseSequenceSweep.PulseSequenceSweep
             obj.PulseWidths_ns = tempvals;
             obj.PulseWidthStr_ns = val;
         end
+
+
     end
 end

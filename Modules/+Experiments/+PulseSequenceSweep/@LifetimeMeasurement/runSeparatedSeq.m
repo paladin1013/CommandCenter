@@ -13,16 +13,29 @@ function runSeparatedSeq(obj, ax, p, status)
         drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
         periodNum = 0;
         pulseWidth_ns = obj.PulseWidths_ns(pulseWidthIdx);
-        waveformName = sprintf("%s_%.1f_%dns_%d", 'square', pulseWidth_ns, obj.PulsePeriod_ns, obj.PulseRepeat);
-        AWGPulseGen(obj.PulseBase, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'square');
-        obj.AWG.writeReadToSocket('SYST:ERR:ALL?');
-        obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
-        obj.AWG.setAmplitude(obj.AWG_Channel, obj.AWG_Amplitude_V);
-        obj.AWG.setResolution(obj.AWG_Channel, 8);
-        obj.AWG.setChannelOn(obj.AWG_Channel);
-        obj.AWG.setRunMode(obj.AWG_Channel, 'T');
-        obj.AWG.setTriggerSource(obj.AWG_Channel, obj.AWG_TriggerSource);
+        if obj.UseAWG
+            waveformName = sprintf("%s_%.1f_%dns_%d", 'square', pulseWidth_ns, obj.PulsePeriod_ns, obj.PulseRepeat);
+            AWGPulseGen(obj.PulseBase, obj.MaxAmplitude, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), 'linear', [1, 0.9]);
+            obj.AWG.writeReadToSocket('SYST:ERR:ALL?');
+            obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
+            obj.AWG.setAmplitude(obj.AWG_Channel, obj.AWG_Amplitude_V);
+            obj.AWG.setResolution(obj.AWG_Channel, 8);
+            obj.AWG.setChannelOn(obj.AWG_Channel);
+            obj.AWG.setRunMode(obj.AWG_Channel, 'T');
+            obj.AWG.setTriggerSource(obj.AWG_Channel, obj.AWG_TriggerSource);
         obj.AWG.AWGStart;
+        else 
+            % Use Delay Generator
+            obj.DG.go_to_remote;
+            obj.DG.set_level(obj.DG_Channel, obj.DG_Level_V);
+            obj.DG.set_level('CD', obj.DG_Level_V);
+            obj.DG.set_trigger_source(1);
+            obj.DG.set_burst(obj.DG_Channel,  pulseWidth_ns/1e9, obj.PulseRepeat, obj.PulsePeriod_ns/1e9);
+            obj.DG.set_burst('CD', pulseWidth_ns/1e9, obj.PulseRepeat, obj.PulsePeriod_ns/1e9); % Use channel CD for debug
+            obj.DG.set_level(obj.DG_Channel, obj.DG_Level_V);
+            obj.DG.set_level('CD', obj.DG_Level_V);
+            obj.DG.go_to_local;
+        end
         timeBinResult = zeros(1, nBins);
         pulseSeq = obj.BuildPulseSequence(pulseWidth_ns);
         pulseSeq.repeat = obj.samples;

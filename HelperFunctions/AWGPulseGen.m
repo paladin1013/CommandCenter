@@ -1,4 +1,4 @@
-function PulseData = AWGPulseGen(BaseAmplitude, PulseWidth_ns, PulsePeriod_ns, MarkerWidth_ns, PulseRepeat, AWG_SampleRate_GHz, file_path, PulseShape, PulseParams)
+function PulseData = AWGPulseGen(BaseAmplitude, MaxAmplitude, PulseWidth_ns, PulsePeriod_ns, MarkerWidth_ns, PulseRepeat, AWG_SampleRate_GHz, file_path, PulseShape, PulseParams)
     if length(PulseWidth_ns) == 1
         NSamples = PulsePeriod_ns*PulseRepeat*AWG_SampleRate_GHz;
         PulseData = zeros(NSamples, 3);
@@ -46,7 +46,7 @@ function PulseData = AWGPulseGen(BaseAmplitude, PulseWidth_ns, PulsePeriod_ns, M
             end
         end
     end
-
+    PulseData = PulseData * MaxAmplitude;
     if exist('file_path', 'var')
         % file = fopen(file_path, 'w');
         writematrix(PulseData, file_path);
@@ -75,6 +75,15 @@ function data = assignData(PulseSampleInd, PulseShape, PulseParams)
         else
             data = exp(-(PulseSampleInd-1)'/(NPulseSamples/5));
         end
+    elseif PulseShape == "linear"
+        if exist("PulseParams", "var")
+            assert(length(PulseParams) == 2, "There should be two parameter (start, end) for linear changing pulse");
+            data = PulseParams(1)+(PulseSampleInd-1)/NPulseSamples*(PulseParams(2)-PulseParams(1));
+        else
+            PulseParams = [1, 1];
+            data = PulseParams(1)+(PulseSampleInd-1)/NPulseSamples*(PulseParams(2)-PulseParams(1));
+        end
+
     end
 
 

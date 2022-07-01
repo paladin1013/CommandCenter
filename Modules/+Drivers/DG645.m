@@ -61,16 +61,24 @@ classdef DG645 < Modules.Driver
             obj.com('reset');
         end
         function calibrate(obj)
-            obj.com('calibrate')
+            obj.com('calibrate');
         end
         function set_trigger_source(obj, sourceNum)
-            obj.com('set_trigger_source', sourceNum)
+            % Source Numbers:
+            % 0 Internal
+            % 1 External rising edges
+            % 2 External falling edges
+            % 3 Single shot external rising edges
+            % 4 Single shot external falling edges
+            % 5 Single shot
+            % 6 Line 
+            obj.com('set_trigger_source', sourceNum);
         end
         function get_trigger_source(obj)
-            obj.com('get_trigger_source')
+            obj.com('get_trigger_source');
         end
         function set_trigger_rate(obj, rateHz)
-            obj.com('set_trigger_rate', rateHz)
+            obj.com('set_trigger_rate', rateHz);
         end
         function trigger(obj,N,delay)
             if ~exist('N', 'var')
@@ -79,12 +87,12 @@ classdef DG645 < Modules.Driver
             if ~exist('delay', 'var')
                 delay = 0;
             end
-            obj.com('trigger', N, delay)
+            obj.com('trigger', N, delay);
         end
         function set_delay(obj,channel,ref,delay)
-            obj.com('set_delay', channel, ref, delay)
+            obj.com('set_delay', channel, ref, delay);
         end
-        function set_burst(obj, pulselength, number, period)
+        function set_burst(obj, channel, pulselength, number, period)
             if ~exist("pulselength", 'var')
                 pulselength = 100e-9;
             end
@@ -94,22 +102,30 @@ classdef DG645 < Modules.Driver
             if ~exist("period", 'var')
                 period = 2e-6;
             end
-            obj.com('set_burst', pulselength, number, period)
+            obj.com('set_burst', channel, pulselength, number, period);
         end
         function set_positive_polarity(obj, output, polarity)
-            obj.com('set_positive_polarity', output, polarity)
+            obj.com('set_positive_polarity', output, polarity);
         end
         function get_polarity(obj, output)
-            obj.com('get_polarity', output)
+            obj.com('get_polarity', output);
         end
         function check_channel(obj, channel)
-            obj.com('check_channel', channel)
+            obj.com('check_channel', channel);
         end
         function check_output(obj, output)
-            obj.com('check_output', output)
+            obj.com('check_output', output);
         end
         function set_level(obj, channel, amp)
-            obj.com('set_level', channel, amp)
+            assert(amp <= 5 && amp >= 0.5, "Amplitude should be set between 0.5 and 5");
+            obj.com('set_level', channel, amp);
         end
+        function go_to_local(obj)
+            obj.com('go_to_local');
+        end
+        function go_to_remote(obj)
+            obj.com('go_to_remote');
+        end
+
     end
 end
