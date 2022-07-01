@@ -31,7 +31,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
         SyncChannel = 0;
         PhotonChannel = 1;
         LogScale = true;
-
+        MaxAmplitude = 1;
         AWG;
         PB;
         AWG_Channel = 1;
@@ -39,7 +39,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
         MergeSequence = false;
         PulseFileDir = '\\houston.mit.edu\qpgroup\Experiments\AWG70002B\waveforms';
         show_prefs = {'PB_IP','AWG_IP','AWG_Channel', 'AWG_SampleRate_GHz', 'AWG_Amplitude_V', 'PulseFileDir', 'PH_serialNr','PH_BaseResolution','connection','PH_Mode','SyncChannel', 'PhotonChannel', ...
-        'PulsePeriod_ns','PulseWidthStr_ns', 'PulseShape', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'bin_width_ns',  'SampleTime_ms', 'SampleNum', 'LogScale', 'MergeSequence'};
+        'PulsePeriod_ns','PulseWidthStr_ns', 'PulseShape', 'MarkerWidth_ns', 'PulseRepeat', 'PulseBase', 'MaxAmplitude', 'bin_width_ns',  'SampleTime_ms', 'SampleNum', 'LogScale', 'MergeSequence'};
         
         readonly_prefs = {'PH_serialNr','PH_BaseResolution'};
 
@@ -120,7 +120,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
                     pulseWidth_ns = obj.PulseWidths_ns(widthCnt);
                     waveformName = sprintf("PulseWidth_%s_%.2f_ns", obj.PulseShape, pulseWidth_ns);
                     % if ~isfile(sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName))
-                        AWGPulseGen(obj.PulseBase, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), obj.PulseShape);
+                        AWGPulseGen(obj.PulseBase, obj.MaxAmplitude, pulseWidth_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), obj.PulseShape);
                     % end
 
 
@@ -202,7 +202,7 @@ classdef AWGPulseWidthSweep < Modules.Experiment
                 % Merged Sequence
                 waveformName = sprintf("PulseWidth_%s_ns", obj.PulseWidthStr_ns);
                 % if ~isfile(sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName))
-                    AWGPulseGen(obj.PulseBase, obj.PulseWidths_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), obj.PulseShape);
+                    AWGPulseGen(obj.PulseBase, obj.MaxAmplitude, obj.PulseWidths_ns, obj.PulsePeriod_ns, obj.MarkerWidth_ns, obj.PulseRepeat, obj.AWG_SampleRate_GHz, sprintf('%s\\%s.txt', obj.PulseFileDir, waveformName), obj.PulseShape);
                 % end
                 obj.AWG.loadWaveform(obj.AWG_Channel, waveformName);
                 obj.AWG.setAmplitude(obj.AWG_Channel, obj.AWG_Amplitude_V);
