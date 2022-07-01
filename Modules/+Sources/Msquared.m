@@ -377,9 +377,14 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         
         function val = set_resonator_percent(obj, val, ~)
             if isnan(val); return; end % Short circuit on NaN
-            obj.getFrequency();
+            t = tic;
+            obj.getFrequency(); % costs ~1s
+            
+
             obj.do_wavelength_lock = false;
-            obj.com('set_resonator_val', 'solstis', val);
+
+            obj.com('set_resonator_val', 'solstis', val); % costs ~0.5s
+
         end
         function val = set_resonator_percent_limitrate(obj, val, ~)
             if isnan(val); return; end % Short circuit on NaN
@@ -435,9 +440,12 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
             percent = obj.resonator_percent;
         end
         function freq = getFrequency(obj)
-            obj.getWavemeterWavelength();
+            obj.getWavemeterWavelength(); % ~1s
+
             obj.callStatus();
-            wavelength = obj.determineResultingWavelength();
+
+            wavelength = obj.determineResultingWavelength(); % ~0.5s
+
             freq = obj.c/wavelength;    % Not sure if this should be used; imprecise.
             obj.setpoint = freq;
         end

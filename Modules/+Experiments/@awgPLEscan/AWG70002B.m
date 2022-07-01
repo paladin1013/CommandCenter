@@ -201,7 +201,7 @@ classdef AWG70002B < handle
         
         function [err] = SetSampleRate(obj)
             err = 0;
-            if obj.SampleRate < obj.MinSampleRate || obj.SampleRate > obj.MaxSampleRate
+            if obj.SampleRate*1e09 < obj.MinSampleRate || obj.SampleRate*1e09 > obj.MaxSampleRate
                 uiwait(warndlg({'AWG Sample Rate out of range. Aborted.'}));
                 err = 1;
                 return;

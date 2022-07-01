@@ -28,7 +28,8 @@
                     % This is the AWG run mode setup code
                     obj.AWG.writeToSocket(sprintf('SOURCE:RCCOUPLE 1'));
                     obj.AWG.writeToSocket(sprintf('AWGC:RUN:IMM'));%Sets it to the play mode; waiting for trigger
-                    
+                 indicator1=0;% to by pass main experiment; remove after debuggi
+                if indicator1 ~=0 
                 for j = 1:obj.averages % ABOVE AWG SCRIPT ASSUMED AVERAGE=1
                     drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
                     status.String = sprintf('\nProgress (%i/%i averages):\n  ',j,obj.averages);
@@ -152,6 +153,7 @@
                     obj.AWG.writeToSocket(sprintf('AWGC:STOP:IMM'));
                 end
                 
+                end
                 obj.PostRun(status,managers,ax);
 
             catch err

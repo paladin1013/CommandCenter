@@ -139,7 +139,7 @@ classdef awgPLEscan < Modules.Experiment
         function PreRun(obj,~,~,ax)
             % Load program to AWG
             obj.data.freqs = linspace(obj.freq_start, obj.freq_end, obj.points);
-%             obj.setupAWG(); % Comment out for now, debugging APD-related
+             obj.setupAWG(); % Comment out for now, debugging APD-related
                 
             %prepare axes for plotting
             hold(ax,'off');
@@ -186,6 +186,7 @@ classdef awgPLEscan < Modules.Experiment
             name = sprintf('PLE_fs=%f_fe=%f_n=%i_%s', obj.freq_start, obj.freq_end, obj.points, obj.ple_type);
         end
         
+        %setupAWG(obj) %Code segment moved to separated file for ease of debugging
         function sequenceList = setupAWG(obj)
             % Setting up AWG parameters
             obj.AWG.Amplitude = obj.Amplitude; % Vpp
@@ -199,14 +200,14 @@ classdef awgPLEscan < Modules.Experiment
             obj.AWG.setRunMode('c');
 
             % define time durations in AWG units
-            repumpTime = ceil(obj.repumpTime*sampling);
-            resTime = ceil(obj.resTime*sampling);
-            resDuration = linspace(0,obj.resTime-1,obj.resTime);
-            paddingTime = ceil(obj.paddingTime*sampling);    % delay between repump and res
+            repumpTime = ceil(obj.repumpTime*sampling*1e-06);
+            resTime = ceil(obj.resTime*sampling*1e-06);
+            resDuration = linspace(0,obj.resTime*1e-06,1/sampling);
+            paddingTime = ceil(obj.paddingTime*sampling*1e-06);    % delay between repump and res
 
             % initialize sequence
             SeqName = obj.sequenceName();
-            obj.AWG.initSequence(SeqName,obj.points+1);
+            %obj.AWG.initSequence(SeqName,obj.points+1);
 
             % Basic waveform compiling setting - change to compile only
             % otherwise, the for loop chokes up and errors
@@ -233,7 +234,10 @@ classdef awgPLEscan < Modules.Experiment
                     disp(['"' SeqName '" already exists!']);
                 end
             end
-
+            
+            savePath='H:\\AWG70002B\\';% for local computer to save to Houston
+            load_dir='Z:\\Experiments\\AWG70002B\\'; % for AWG to retrieve the data from
+            
             if ~seq_exists
                 if strcmp(obj.ple_type,'fast') % one long waveform, looping "samples" times
                     obj.AWG.initSequence(SeqName,1);
@@ -268,11 +272,13 @@ classdef awgPLEscan < Modules.Experiment
                         fName{1}=[ timeId '_chn1.txt'];
                         fName{2}=[ timeId '_chn2.txt'];
 
-                        writeWavHouston([savePath obj.ple_type '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
-                        writeWavHouston([savePath obj.ple_type '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
-
-                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1},'", "' load_dir fName{1}, '",TXT8']));
-                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2},'", "' load_dir fName{2}, '",TXT8']));
+                        obj.writeWavHouston([savePath obj.ple_type '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
+                        obj.writeWavHouston([savePath obj.ple_type '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
+                           
+                       
+                        
+                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1},'", "' load_dir  obj.ple_type '\\' fName{1}, '",TXT8']));
+                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2},'", "' load_dir  obj.ple_type '\\' fName{2}, '",TXT8']));
                         % Loads from .txt file on Houston 
 
                         %obj.AWG.create_waveform(sequenceList{1},channel1,c1m1,c1m2);
@@ -281,7 +287,7 @@ classdef awgPLEscan < Modules.Experiment
                         obj.AWG.addWaveformToSequence(1, 1, SeqName, sequenceList{1});
                         obj.AWG.addWaveformToSequence(1, 2, SeqName, sequenceList{2});
 
-                        obj.AWG.addLoopToSequenceStep(obj,SeqName,1,obj.samples);
+                        obj.AWG.addLoopToSequenceStep(SeqName,1,ceil(obj.samples/obj.points));
 
                     elseif strcmp(obj.repump_type,'Every Sweep')
                         obj.AWG.initSequence(SeqName,1);
@@ -316,12 +322,13 @@ classdef awgPLEscan < Modules.Experiment
                         fName{1}=[ timeId '_chn1.txt'];
                         fName{2}=[ timeId '_chn2.txt'];
 
-                        writeWavHouston([savePath obj.ple_type '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
-                        writeWavHouston([savePath obj.ple_type '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
+                        obj.writeWavHouston([savePath obj.ple_type '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
+                        obj.writeWavHouston([savePath obj.ple_type '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
 
-
-                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1},'", "' load_dir fName{1}, '",TXT8']));
-                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2},'", "' load_dir fName{2}, '",TXT8']));
+                        
+                        
+                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1},'", "' load_dir  obj.ple_type '\\' fName{1}, '",TXT8']));
+                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2},'", "' load_dir  obj.ple_type '\\' fName{2}, '",TXT8']));
                         % Loads from .txt file on Houston 
 
                         %obj.AWG.create_waveform(sequenceList{1},channel1,c1m1,c1m2);
@@ -332,7 +339,7 @@ classdef awgPLEscan < Modules.Experiment
                         obj.AWG.addWaveformToSequence(1, 1, SeqName, sequenceList{1});
                         obj.AWG.addWaveformToSequence(1, 2, SeqName, sequenceList{2});
 
-                        obj.AWG.addLoopToSequenceStep(SeqName,1,obj.samples);
+                        obj.AWG.addLoopToSequenceStep(SeqName,1,ceil(obj.samples/obj.points));
                     else
                         fprintf('Defined repump type incorrectly!');
                         err;
@@ -365,11 +372,13 @@ classdef awgPLEscan < Modules.Experiment
                         fName{1}=[ timeId '_chn1.txt'];
                         fName{2}=[ timeId '_chn2.txt'];
 
-                        writeWavHouston([savePath obj.ple_type '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
-                        writeWavHouston([savePath obj.ple_type '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
-
-                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1,i},'", "' load_dir fName{1}, '",TXT8']));
-                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2,i},'", "' load_dir fName{2}, '",TXT8']));
+                        obj.writeWavHouston([savePath obj.ple_type '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
+                        obj.writeWavHouston([savePath obj.ple_type '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
+                        
+                       
+                        
+                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1,i},'", "' load_dir  obj.ple_type '\\' fName{1}, '",TXT8']));
+                        obj.AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2,i},'", "' load_dir  obj.ple_type '\\' fName{2}, '",TXT8']));
                         % Loads from .txt file on Houston 
 
                         pause(1);
@@ -377,7 +386,7 @@ classdef awgPLEscan < Modules.Experiment
                         obj.AWG.addWaveformToSequence(i, 1, SeqName, sequenceList{1,i});
                         obj.AWG.addWaveformToSequence(i, 2, SeqName, sequenceList{2,i});
 
-                        obj.AWG.addLoopToSequenceStep(SeqName,i,obj.samples);
+                        obj.AWG.addLoopToSequenceStep(SeqName,i,obj.samples/obj.points);
                         % Set wait behavior to OFF
                         obj.AWG.writeToSocket(sprintf('SLIS:SEQ:STEP%d:WINP "%s", %s',...
                             i, SeqName, 'OFF'));
@@ -391,6 +400,7 @@ classdef awgPLEscan < Modules.Experiment
             end
         end
         
+        %writeWavHouston(obj,fileName,channel,mrk1,mrk2)
         function writeWavHouston(obj,fileName,channel,mrk1,mrk2)
             if isfile(fileName)
                 disp('Warning! Existing file will be overwritten!');
@@ -401,8 +411,5 @@ classdef awgPLEscan < Modules.Experiment
             end
             fclose(fid);
         end
-        
-       
-
     end
 end
