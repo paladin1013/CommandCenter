@@ -82,9 +82,9 @@ classdef Line < Modules.Driver
     methods
         function [response, numeric] = com(obj, command, varargin)
             if nargout == 2
-                [response, numeric] = obj.parent.com(command, obj.parent.serialNo, obj.line, varargin{:});
+                [response, numeric] = obj.parent.com(command, obj.parent.serialNo, obj.line-1, varargin{:});
             else
-                response = obj.parent.com(command, obj.parent.serialNo, obj.line, varargin{:});
+                response = obj.parent.com(command, obj.parent.serialNo, obj.line-1, varargin{:});
             end
         end
         function delete(~)
@@ -94,10 +94,10 @@ classdef Line < Modules.Driver
     
     methods(Hidden)
         function stepu(obj, steps)
-            obj.com('moveSteps', steps, true); % The last params is for [forward:bool] in python
+            obj.com('moveSteps', true, steps); % The second param is for [forward:bool] in python
         end
         function stepd(obj, steps)
-            obj.com('moveSteps', steps, false);
+            obj.com('moveSteps', false, steps);
         end
         function val = set_step(obj, val, ~)
             val = round(val);   % Only integer steps. (change to clean?)
@@ -167,7 +167,7 @@ classdef Line < Modules.Driver
         
         function val = get_capacitance(obj, ~)
 
-            val = obj.parent.getInfo(obj.line, 'Capacitance');
+            val = obj.parent.getInfo(obj.line-1, 'Capacitance');
         end
     end
 end

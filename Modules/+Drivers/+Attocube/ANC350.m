@@ -3,7 +3,9 @@ classdef ANC350 < Modules.Driver
     % Use hwserver as an intermediate controller, instead of controlling by Matlab directly 
     properties(Constant)
         hwname = 'Attocube';
-        axisNo = containers.Map({'x', 'y', 'z'}, {0, 1, 2})
+        axisNo = containers.Map({'x', 'y', 'z'}, {1, 2, 3})
+                    % Note that the axis no in hwserver start from 0 (i.e. 0, 1, 2 represent x, y, z respectively)
+                    % This conversion is done in Line.com()
         maxSteps = 100;
     end
     properties(SetAccess=private,Hidden)
@@ -56,8 +58,7 @@ classdef ANC350 < Modules.Driver
             end
         end
         function spawnLines(obj)
-            for ii = 0:6    % Max number of possible lines according to manual
-                    % Note that the axis no in hwserver start from 0 (i.e. 0, 1, 2 represent x, y, z respectively)
+            for ii = 1:7    % Max number of possible lines according to manual
 
                 try         % Try to make a line; an expected error will occur if the line does not exist.
                     obj.lines = [obj.lines Drivers.Attocube.ANC350.Line.instance(obj, ii)]; 
