@@ -48,7 +48,7 @@ classdef ANC300 < Modules.Driver
     % <TNUM>  : trigger num (1, 2, 3, 4)
     
     properties (Constant)
-        maxsteps = 100;
+        maxSteps = 100;
     end
     properties (SetAccess=immutable)
         port;
@@ -68,7 +68,7 @@ classdef ANC300 < Modules.Driver
             mlock;
             persistent Objects
             if isempty(Objects)
-                Objects = Drivers.Attocubes.ANC300.empty(1,0);
+                Objects = Drivers.Attocube.ANC300.empty(1,0);
             end
             for i = 1:length(Objects)
                 if isvalid(Objects(i)) && isequal(port, Objects(i).singleton_id)
@@ -76,7 +76,7 @@ classdef ANC300 < Modules.Driver
                     return
                 end
             end
-            obj = Drivers.Attocubes.ANC300(port);
+            obj = Drivers.Attocube.ANC300(port);
             obj.singleton_id = port;
             Objects(end+1) = obj;
         end
@@ -97,14 +97,14 @@ classdef ANC300 < Modules.Driver
         function spawnLines(obj)
             for ii = 1:7    % Max number of possible lines according to manual
                 try         % Try to make a line; an expected error will occur if the line does not exist.
-                    obj.lines = [obj.lines Drivers.Attocubes.ANC300.Line.instance(obj, ii)];
+                    obj.lines = [obj.lines Drivers.Attocube.ANC300.Line.instance(obj, ii)];
                 catch        % Do something error-specfic?
                     % Do nothing.
                 end
             end
             
             if isempty(obj.lines)
-                warning(['Could not find any lines in Drivers.Attocubes.ANC300(''' obj.port ''').'])
+                warning(['Could not find any lines in Drivers.Attocube.ANC300(''' obj.port ''').'])
             end
         end
         function killLines(obj)
@@ -117,13 +117,13 @@ classdef ANC300 < Modules.Driver
             if strcmp(command, 'stepu') || strcmp(command, 'stepd')
                 assert(length(varargin) == 2)
                 if ischar(varargin{2}) && strcmp(varargin{2}, 'c')
-                    warning('Continuous mode is dangerous and disabled in this MATLAB interface. Truncating to maxsteps.')
-                    varargin{2} = Drivers.Attocubes.ANC300.maxsteps;
+                    warning('Continuous mode is dangerous and disabled in this MATLAB interface. Truncating to maxSteps.')
+                    varargin{2} = Drivers.Attocube.ANC300.maxSteps;
                 elseif isnumeric(varargin{2}) 
                     assert(varargin{2} > 0, ['Expected positive integer steps. Received ' num2str(varargin{2})])
-                    if varargin{2} > Drivers.Attocubes.ANC300.maxsteps
-                        warning([num2str(varargin{2}) ' steps is greater than maxsteps = ' num2str(Drivers.Attocubes.ANC300.maxsteps) '. Truncating to maxsteps.'])
-                        varargin{2} = Drivers.Attocubes.ANC300.maxsteps;
+                    if varargin{2} > Drivers.Attocube.ANC300.maxSteps
+                        warning([num2str(varargin{2}) ' steps is greater than maxSteps = ' num2str(Drivers.Attocube.ANC300.maxSteps) '. Truncating to maxSteps.'])
+                        varargin{2} = Drivers.Attocube.ANC300.maxSteps;
                     end
                 end
             end
