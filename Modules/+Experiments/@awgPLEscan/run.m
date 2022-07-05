@@ -19,25 +19,25 @@
             %%%% ATTEMPT AT BYPASSING APDPulseSequence
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             try
-%               name = obj.sequenceName(); % UNCERTAIN WHAT THIS IS; this is the linked list created by the APD Pulse Sequence Command
+               name = obj.sequenceName(); % UNCERTAIN WHAT THIS IS; this is the linked list created by the APD Pulse Sequence Command
                 obj.PreRun(status,managers,ax);
-%                 apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder')); %create an instance of apdpulsesequence to avoid recreating in loop
-%                 pulseSeq = obj.BuildPulseSequence();
+                 apdPS = APDPulseSequence(obj.nidaqH,obj.pbH,sequence('placeholder')); %create an instance of apdpulsesequence to avoid recreating in loop
+%              pulseSeq = obj.BuildPulseSequence();
 
                     % INSERT RUN AWG here so triggers can be sent to tasks
                     % This is the AWG run mode setup code
                     obj.AWG.writeToSocket(sprintf('SOURCE:RCCOUPLE 1'));
                     obj.AWG.writeToSocket(sprintf('AWGC:RUN:IMM'));%Sets it to the play mode; waiting for trigger
-                 indicator1=0;% to by pass main experiment; remove after debuggi
+                 indicator1=1;% to by pass main experiment; remove after debuggi
                 if indicator1 ~=0 
                 for j = 1:obj.averages % ABOVE AWG SCRIPT ASSUMED AVERAGE=1
                     drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
                     status.String = sprintf('\nProgress (%i/%i averages):\n  ',j,obj.averages);
 
 %                     % NEED TO CHANGE, FIND LINE NAMES AUTOMATICALLY
-                    trigger_line = obj.nidaqH.InLines(2).name; % from AWG (PFI8 'APDgate' on M4)
-                    counter_line = obj.nidaqH.InLines(1).name; % from APD (PFI0 'APD1' on M4)
-%                     
+                   
+                   counter_line = obj.nidaqH.InLines(1).name; % from APD (PFI0 'APD1' on M4)
+                   trigger_line = obj.nidaqH.InLines(2).name; % from AWG (PFI8 'APDgate' on M4)  
                     %%%%%%% APDPulseSequence 'Start' equivalent
 %                     % Get the gate channels
 %                     gate_chans = obj.seq.getSequenceChannels;

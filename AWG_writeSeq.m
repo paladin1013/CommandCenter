@@ -2,7 +2,7 @@
 %%
 AWG=AWG70002B('visa',"18.25.28.214");
 %% Setting up AWG parameters
-AWG.Amplitude = 1;   %Normalized units
+AWG.Amplitude = 0.5;   %Normalized units
 AWG.SampleRate =1*1e9;
 AWG.phaseOffset = 0;
 sampling = AWG.SampleRate;
@@ -13,7 +13,7 @@ AWG.SetSampleRate();
 AWG.setRunMode('c');
 freq_start = 0.01;  % in GHz
 freq_end = 0.3;    % in GHz
-points=15;
+points=10;
 loops=1000;
 %
 repumpTime_set= 0.5 % in us

@@ -139,7 +139,7 @@ classdef awgPLEscan < Modules.Experiment
         function PreRun(obj,~,~,ax)
             % Load program to AWG
             obj.data.freqs = linspace(obj.freq_start, obj.freq_end, obj.points);
-             obj.setupAWG(); % Comment out for now, debugging APD-related
+            % obj.setupAWG(); % Comment out for now, debugging APD-related
                 
             %prepare axes for plotting
             hold(ax,'off');
