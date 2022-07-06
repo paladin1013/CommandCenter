@@ -2,7 +2,7 @@ classdef Cobolt_PB < Modules.Source
     % Cobolt_PB controls the Cobolt via USB and fast diode modulation via pulseblaster
 
     properties(SetObservable, GetObservable)
-        cobolt_host =   Prefs.String(Sources.Cobolt_PB.noserver, 'set', 'set_cobolt_host', 'help', 'IP/hostname of computer with hwserver for the Cobolt laser');
+        cobolt_host =   Prefs.String(Sources.Cobolt_PB.noserver, 'set', 'set_host', 'help', 'IP/hostname of computer with hwserver for the Cobolt laser');
         power =         Prefs.Double(NaN, 'set', 'set_power', 'min', 0, 'unit', 'mW');
 
         diode_sn =      Prefs.Double(NaN, 'allow_nan', true, 'readonly', true, 'help', 'Serial number for the diode');
@@ -54,14 +54,16 @@ classdef Cobolt_PB < Modules.Source
         end
 
         function val = set_source_on(obj, val, ~)
-            obj.PulseBlaster.lines(obj.PB_line).state = val;
+            if ~isempty(obj.PulseBlaster)
+                obj.PulseBlaster.lines(obj.PB_line).state = val;
+            end
         end
         function val = set_armed(obj, val, ~)   % Turn the diode on or off.
             if obj.isConnected()
                 if val
                     errorIfNotOK(obj.serial.com('Cobolt', '@cobas', 0));    % No autostart
                     errorIfNotOK(obj.serial.com('Cobolt', 'em'));           % Enter Modulation Mode
-                    errorIfNotOK(obj.serial.com('Cobolt', 'l1'));
+                    errorIfNotOK(obj.serial.com('Cobolt', 'l1'));           % Laser on
                 else
                     errorIfNotOK(obj.serial.com('Cobolt', 'l0'));           % Laser off
                 end
@@ -69,9 +71,12 @@ classdef Cobolt_PB < Modules.Source
                 val = NaN;
             end
         end
-        function val = set_power(obj, val, ~)
-            if obj.isConnected && ~isnan(val)
+        
+        function val = set_power(obj, val, pref)
+            if obj.isConnected
                 errorIfNotOK(obj.serial.com('Cobolt', 'slmp', val));    % Set laser modulation power (mW)
+            elseif ~isnan(val) && isnan(pref.value)
+                error('Cannot set power without a connection.');
             else
                 val = NaN;
             end
@@ -95,7 +100,7 @@ classdef Cobolt_PB < Modules.Source
         function val = get_diode_age(obj, ~)
             val = obj.com('hrs?');
         end
-        
+
         function val = com(obj, str, varargin)
             if obj.isConnected()
                 val = obj.serial.com('Cobolt', str);
@@ -125,7 +130,7 @@ classdef Cobolt_PB < Modules.Source
                 val = Sources.Cobolt_PB.noserver;
             end
         end
-        function val = set_cobolt_host(obj,val,~) %this loads the hwserver driver
+        function val = set_host(obj,val,~) %this loads the hwserver driver
             delete(obj.serial);
 
             try

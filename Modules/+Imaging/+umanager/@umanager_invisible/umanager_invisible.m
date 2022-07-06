@@ -14,17 +14,18 @@ classdef umanager_invisible < Modules.Imaging
     %         number returned by obj.core.(function_name)
     %
     % TODO: Dynamically fetch devices capable settings
-    
+
     properties(Abstract) % Used in init
         dev           % Device label for camera (from the cfg file)
-        config_file   % Config file full path or relative to classdef
+        config_file;  % Config file full path or relative to classdef
     end
     properties(SetObservable,GetObservable)
-        exposure = Prefs.Double('min',0,'units','ms','set','set_exposure');
-        binning = Prefs.Integer(1,'min',1,'units','px','set','set_binning',...
-            'help_text','Not all integers will be available for your camera.');
+        exposure = Prefs.Double('min', 0, 'unit', 'ms', 'set', 'set_exposure',...
+            'help_text', 'How long each frame is integrated for.');
+        binning = Prefs.Integer(1, 'min', 1, 'unit', 'px', 'set', 'set_binning',...
+            'help_text', 'Hardware binning of the camera. For instance, binning = 2 ==> 2x2 superpixels. Note that not all integers will be available for your camera.');
     end
-    
+
     properties
         buffer_images = 2 % Size of buffer (images): buffer_images*core.getImageBufferSize
         maxROI           % Set in constructor
@@ -44,7 +45,7 @@ classdef umanager_invisible < Modules.Imaging
     properties(Hidden)
         focusPeaks;             % Stores relative pos of "significant" peaks in contrast detection
     end
-    properties(Access=private)
+    properties%(Access=private)
         core            % The Micro-Manager core utility (java); Access through mmc method
         videoTimer       % Handle to video timer object for capturing frames
     end
@@ -53,7 +54,7 @@ classdef umanager_invisible < Modules.Imaging
             obj.path = 'camera';
         end
     end
-    methods(Sealed,Access=protected)
+    methods%(Sealed,Access=protected)
         function varargout = mmc(obj,function_name,varargin)
             % Provide access to obj.core (micromanager core interface)
             assert(obj.initialized,'UMANAGER:not_initialized','"%s" has not initialized the core yet.',class(obj))
@@ -65,10 +66,18 @@ classdef umanager_invisible < Modules.Imaging
             end
         end
         function init(obj)
-            % Initialize Java Core
+            % Initialize Java Core.
             obj.initializing = true;
-            import mmcorej.*;
-            obj.core = CMMCore;
+            try
+                import mmcorej.*;
+                obj.core = CMMCore;
+            catch err
+                warning(['Follow the instructions (for the correct version; this has been tested to work for 1.4) at https://micro-manager.org/wiki/Matlab_Configuration to install Micromananger for MATLAB!' 13 ...
+                        '    This process asks you to append to MATLAB files such as librarypath.txt. You might not have adminstrative privledges to save these files directly; try modifying externally and move and replace as a workaround.']);
+                rethrow(err);
+            end
+            
+            % Load config file.
             config_file_full = obj.config_file;
             if ~(  (length(obj.config_file)>1 && obj.config_file(2) == ':') ||... % PC
                    (~isempty(obj.config_file) && obj.config_file(1) == '/')  )    % Unix-based
@@ -79,7 +88,8 @@ classdef umanager_invisible < Modules.Imaging
                 error('Could not find config file: "%s"',config_file_full);
             end
             obj.core.loadSystemConfiguration(config_file_full);
-            % Load preferences
+            
+            % Load preferences.
             nbytes = obj.core.getBytesPerPixel;
             switch nbytes
                 case 1
@@ -96,6 +106,7 @@ classdef umanager_invisible < Modules.Imaging
             single_image = obj.core.getImageBufferSize/1024^2; % MB
             obj.core.setCircularBufferMemoryFootprint(single_image*obj.buffer_images);
             obj.initialized = true;
+
             
             obj.exposure = obj.core.getExposure();
             obj.binning = str2double(obj.core.getProperty(obj.dev,'Binning'));
@@ -106,6 +117,10 @@ classdef umanager_invisible < Modules.Imaging
                 -obj.resolution(2)/2 obj.resolution(2)/2]*obj.binning;
             obj.maxROI = new_ROI;
             obj.ROI = new_ROI;
+            
+            measname = split(obj.dev, [" ", ":"]);
+            obj.measurements = Base.Meas('size', obj.resolution, 'field', 'img', 'name', measname{1}, 'unit', 'cts');
+            
             obj.initializing = false;
         end
     end
@@ -139,7 +154,7 @@ classdef umanager_invisible < Modules.Imaging
                 end
             end
         end
-        
+
         function metric = focus(obj,ax,Managers)
             stageManager = Managers.Stages;
             stageManager.update_gui = 'off';
@@ -177,6 +192,9 @@ classdef umanager_invisible < Modules.Imaging
             end
             % Take Image
             obj.mmc('snapImage');
+            if obj.exposure >= 100
+                pause(obj.exposure/2000)    % Allow other parts of CC to update while camera is working.
+            end
             dat = obj.mmc('getImage');
             width = obj.mmc('getImageWidth');
             height = obj.mmc('getImageHeight');
@@ -191,6 +209,9 @@ classdef umanager_invisible < Modules.Imaging
             % This function calls snapImage and applies to hImage.
             im = obj.snapImage;
             set(hImage,'cdata',im)
+        end
+        function data = measure(obj)
+            data = obj.snapImage;
         end
         function startVideo(obj,hImage)
             obj.continuous = true;
@@ -237,7 +258,7 @@ classdef umanager_invisible < Modules.Imaging
             delete(obj.videoTimer)
             obj.continuous = false;
         end
- 
+
         % Set methods for prefs
         function val = set_exposure(obj,val,~)
             if val == obj.mmc('getExposure')
@@ -318,4 +339,3 @@ classdef umanager_invisible < Modules.Imaging
         end
     end
 end
-

@@ -3,10 +3,11 @@ classdef SG_Source_invisible < Modules.Source
   
     properties (GetObservable, SetObservable)
         frequency =     Prefs.Double(1e9/Sources.SignalGenerators.SG_Source_invisible.freqUnit2Hz, ... % Default of 1 GHz is immeditely overwritten by hardware.
-                                    'units', Sources.SignalGenerators.SG_Source_invisible.freqUnit, ...
+                                    'min', 0,...
+                                    'unit', Sources.SignalGenerators.SG_Source_invisible.freqUnit, ...
                                     'set', 'set_frequency', ...
                                     'help', 'The frquency tone that the signal generator is set at');
-        power =         Prefs.Double(-30, 'units', 'dBm', 'set', 'set_power', ...
+        power =         Prefs.Double(-30, 'unit', 'dBm', 'set', 'set_power', ...
                                     'help', ['The power that the signal generator outputs. dBm stands ' ...
                                             'for "dB mW", i.e. 30 dBm == 1 W.']);
         
@@ -40,14 +41,14 @@ classdef SG_Source_invisible < Modules.Source
             obj.serial.setFreqCW(val * obj.freqUnit2Hz);
             val = obj.get_frequency();  % This probably doubles the response time. Remove? Or make asyncronous?
         end
-        function val = get_frequency(obj)
+        function val = get_frequency(obj, ~)
             val = obj.serial.getFreqCW / obj.freqUnit2Hz;
         end
         function val = set_power(obj, val, ~)
             obj.serial.setPowerCW(val);
             val = obj.get_power();      % This probably doubles the response time. Remove? Or make asyncronous?
         end
-        function val = get_power(obj)
+        function val = get_power(obj, ~)
             val = obj.serial.getPowerCW;
         end
     end

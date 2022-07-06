@@ -87,6 +87,7 @@ try
     
 catch err
 end
+obj.CleanUp(status,managers,ax);
 delete(f);
 if exist('err','var')
     rethrow(err)

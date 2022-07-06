@@ -20,19 +20,18 @@ classdef Manager < handle
     %   A manager can subclass this as a "simple" manager as well in which
     %   all module related methods will error
     
-    properties(Hidden)
-        prefs = {'settings_vertical_pad_px','settings_horizontal_margin_px'};
-    end
     properties
-        settings_vertical_pad_px = 5; % pixels between setting UIs
-        settings_horizontal_margin_px = 20 % Additional pixels on left & right margins*
+        prefs = {};
+    end
+    properties(Constant)
+        settings_vertical_pad_px = 4; % pixels between setting UIs
+        settings_horizontal_margin_px = 10 % Additional pixels on left & right margins*
         % * NOTE: this can be easily extended to 1x2 if Base.propedit gains support for that
     end
     properties(Access=protected)
         no_module_str = 'No Modules Loaded';
     end
     properties(SetAccess=private)
-        disabled = 0;                    % Number disabled calls. Also to prevent disabling "twice"
         namespace
         last_sandboxed_fn_eval_success = false;  % Set after each sandboxed_function eval
     end
@@ -51,6 +50,7 @@ classdef Manager < handle
         popupHandle     % Only if it is not single.
     end
     properties(Access=protected)
+        disabled = 0;                    % Number disabled calls. Also to prevent disabling "twice"
         blockOnLoad     % Handle to things to deactive on module load
         handles         % All handles to GUI
         type            % Specify type to have separate namespaces in prefs
@@ -59,43 +59,54 @@ classdef Manager < handle
     end
     
     methods(Static)
-        function getAvailModules(package,parent_menu,fun_callback,fun_in_use)
+        function getAvailModules(package, parent_menu, fun_callback, fun_in_use)
             path = fileparts(fileparts(mfilename('fullpath'))); % Root CommandCenter/
-            [prefix,module_strs,packages] = Base.GetClasses(path,'Modules',package);  % Returns name without package name
+            [prefix, module_strs, packages] = Base.GetClasses(path, 'Modules', package);  % Returns name without package name
+            
             % Alphabetic order
             packages = sortrows(packages');
             module_strs = sortrows(module_strs');
-            remove = findall(parent_menu,'tag','module');
+            
+            remove = findall(parent_menu, 'tag', 'module');
             for i = 1:length(remove)
                 if remove ~= parent_menu
                     delete(remove(i));
                 end
             end
+            
             previousStuff = allchild(parent_menu); % Push these down to bottom
             if isempty(module_strs)
-                uimenu(parent_menu,'label','No Modules found','enable','off','tag','module');
+                uimenu(parent_menu, 'label', 'No Modules found', 'enable', 'off', 'tag', 'module');
             end
+            
             for i = 1:numel(packages)
-                package = fullfile(['+' strrep(prefix(1:end-1),'.','/+')],['+' packages{i}]);
-                h = uimenu(parent_menu,'label',packages{i},'tag','module');
-                Base.Manager.getAvailModules(package,h,fun_callback,fun_in_use); % Recursively call to populate
+                package = fullfile(['+' strrep(prefix(1:end-1),'.','/+')], ['+' packages{i}]);
+                h = uimenu(parent_menu, 'label', packages{i}, 'tag', 'module');
+                Base.Manager.getAvailModules(package, h, fun_callback, fun_in_use); % Recursively call to populate
             end
+            
             for i = 1:numel(module_strs)
-                module_str = module_strs{i};
-                module_fullstr = [prefix module_str];
-                checked = 'off';
-                if fun_in_use([prefix module_str])
-                    checked = 'on';
-                    if strcmp(parent_menu.Tag,'module') && ~startswith(parent_menu.Label,'<html>')
-                        % Make bold
-                        parent_menu.Label = sprintf('<html><font style="font-weight:bold">%s</font></html>',...
-                            parent_menu.Label);
+                try
+                    module_str = module_strs{i};
+                    module_fullstr = [prefix module_str];
+                    checked = 'off';
+                    nargin([module_fullstr '.instance']);
+                    if fun_in_use([prefix module_str])
+                        checked = 'on';
+                        if strcmp(parent_menu.Tag,'module') && ~startswith(parent_menu.Label,'<html>')
+                            % Make bold
+                            parent_menu.Label = sprintf('<html><font style="font-weight:bold">%s</font></html>',...
+                                parent_menu.Label);
+                        end
                     end
+                    h = uimenu(parent_menu, 'label', module_str, 'checked', checked,...
+                        'callback', fun_callback, 'tag', 'module');
+                    h.UserData = module_fullstr;
+                catch err
+                    warning("%s is not a Module with .instance method!\n %s", module_str, err.message);
                 end
-                h = uimenu(parent_menu,'label',module_str,'checked',checked,...
-                    'callback',fun_callback,'tag','module');
-                h.UserData = module_fullstr;
             end
+            
             for i = 1:length(previousStuff)
                 previousStuff(i).Position = h.Position + i - 1;
             end
@@ -174,7 +185,7 @@ classdef Manager < handle
                         singular_type = obj.type(1:end-1);
                     end
                     assert(ismember(sprintf('Modules.%s',singular_type),super),'Superclass of %s must be Modules.%s',class_str{i},singular_type)
-                    modules_temp{end+1} = eval(sprintf('%s.instance',class_str{i}));
+                    modules_temp{end+1} = eval(sprintf('%s.instance',class_str{i})); %#ok<AGROW>
                     addlistener(modules_temp{end},'ObjectBeingDestroyed',@obj.moduleBeingDestroyed);
                     obj.log('Initialized <a href="matlab: opentoline(''%s'',1)">%s</a>',which(class_str{i}),class_str{i})
                 catch err
@@ -197,7 +208,7 @@ classdef Manager < handle
                     elseif mislocked([class_str{i} '.instance'])
                         munlock([class_str{i} '.instance'])
                     end
-                    errors{end+1} = sprintf('Error loading %s:\n%s',class_str{i},err.message);
+                    errors{end+1} = sprintf('Error loading %s:\n%s',class_str{i},err.message); %#ok<AGROW>
                     msg = sprintf('Following error caught in <a href="matlab: opentoline(''%s'',%i)">%s (line %i)</a>:\n%s',err.stack(1).file,err.stack(1).line,err.stack(1).name,err.stack(1).line,err.message);
                     obj.log(msg,Base.Logger.ERROR) % This part of the log keeps the traceback
                 end
@@ -254,7 +265,7 @@ classdef Manager < handle
         function update_settings(obj)
             scrollPanel = obj.panelHandle;
             % Clear all but default
-            oldPanels = allchild(scrollPanel.content);
+            oldPanels = scrollPanel.content.Children;
             for i = 1:numel(oldPanels)
                 tag = get(oldPanels(i),'tag');
                 if ~strcmp(tag,'default')
@@ -263,11 +274,13 @@ classdef Manager < handle
             end
             if ~isempty(obj.active_module)
                 width = get(scrollPanel.content,'position'); width = width(3);
+                
                 temp = figure('visible','off');
                 settings_panel = uipanel(temp,'BorderType','None',...
                     'units','characters','position',[0 0 width 0]);
                 obj.sandboxed_function({obj.active_module,'settings'},...
                         settings_panel,obj.settings_vertical_pad_px,[0 0] + obj.settings_horizontal_margin_px);
+                
                 % Make sure width wasn't changed
                 set(settings_panel,'units','characters')
                 w = get(settings_panel,'position');
@@ -278,7 +291,7 @@ classdef Manager < handle
                     obj.error(msg);
                 else
                     % Adjust length of panel to fit contents.
-                    contents = allchild(settings_panel);
+                    contents = settings_panel.Children;
                     ncontents = numel(contents);
                     set(contents,'units','characters')
                     positions = [0, NaN(1,ncontents)]; % 0, bottom1, top1, bottom2, top2, ...
@@ -287,26 +300,34 @@ classdef Manager < handle
                         positions(2*i-1) = contents_pos(2);
                         positions(2*i) = positions(2*i-1) + contents_pos(4);
                     end
+                    
                     bottom = min(positions);
                     top = max(positions);
                     if bottom < 0
                         obj.warning('MANAGER:settings','Detected some panels with negative positions, this may cause display errors.')
                     end
                     set(settings_panel,'position',[0 0 w(3) top])
-                    dividing_p = uipanel(temp,'units','pixels','Position',[0 0 wpx(3) 21],'BorderType','none');
-                    uicontrol(dividing_p,'style','push','units','pixels','position',[wpx(3)-35 1 20 20],...
-                              'callback',@(~,~)obj.update_settings,'CData',obj.handles.reload_CData,'tooltip','Refresh Settings');
+                    
+                    m = 20;
+                    h = 20;
+                    dividing_p = uipanel(temp,'units','pixels','Position',[0 0 wpx(3) h+2],'BorderType','none');
+                    uicontrol(dividing_p,   'string', char(0x21BB),...
+                                            'style', 'push',...
+                                            'units', 'pixels',...
+                                            'position', [m 2 h h],...
+                                            'callback', @(~,~)obj.update_settings,...
+                                            'tooltip', 'Refresh Settings');
                     if ~isempty(contents)
-                        uipanel(dividing_p,'units','pixels','Position',[wpx(3)/16 9 wpx(3)*3/4 2],...
-                                'BackgroundColor','black','BorderType','none');
+                        uipanel(dividing_p, 'units', 'pixels', 'Position', [1.5*m+h h/2+1 wpx(3)-(3*m+h) 1],...
+                                'BackgroundColor', [.5 .5 .5], 'BorderType', 'none');
                     end
                     scrollPanel.addPanel(dividing_p,'Divider');
+                    
                     % Adjust Callbacks
                     obj.SettingsCallbackOverride(contents)
                     scrollPanel.addPanel(settings_panel,'Settings');
                 end
                 delete(temp)
-                
             end
         end
         % Redefines all uicontrol elements in contents to go through sandbox
@@ -327,7 +348,6 @@ classdef Manager < handle
                 end
             end
         end
-
     end
     methods
         function tasks = inactive(obj)
@@ -340,7 +360,7 @@ classdef Manager < handle
                  obj.modules{i}.savePrefs;
                 task = obj.sandboxed_function({obj.modules{i} ,'inactive'});
                 if ~isempty(task)
-                    tasks{end+1} = sprintf('%s: %s',class(obj.modules{i}),task);
+                    tasks{end+1} = sprintf('%s: %s',class(obj.modules{i}),task); %#ok<AGROW>
                 end
             end
         end
@@ -492,6 +512,7 @@ classdef Manager < handle
             addlistener(obj,'modules','PostSet',@obj.master_modules_changed);
             addlistener(obj,'active_module','PostSet',@obj.master_active_module_changed);
         end
+        
         % Destructor
         function delete(obj)
             obj.savePrefs;
@@ -538,13 +559,14 @@ classdef Manager < handle
                 obj.handles.logger.log(msg,level);
             end
         end
+        
         % Use to call methods in active_module (takes care of error handling)
         function varargout = sandboxed_function(obj,fn_specs,varargin)
             % sandboxed_function(fun_handle,input1,input2,...)
             % sandboxed_function({instance,method_name},input1,input2,...)
-            
             % The most general sandboxed function
             obj.last_sandboxed_fn_eval_success = true;
+            
             % Stop inactivity timer during execution
             timerH = obj.handles.inactivity_timer;
             managers = timerH.UserData;
@@ -554,11 +576,9 @@ classdef Manager < handle
                 restart = true;
                 stop(timerH);
             end
+            
             % Execute function/method
             if iscell(fn_specs) % method
-                mmc = metaclass(fn_specs{1});
-                method_meta = mmc.MethodList(ismember({mmc.MethodList.Name},fn_specs{2}));
-                nout = numel(method_meta.OutputNames);
                 varargout = cell(1,nargout);
                 try
                     [varargout{:}] = fn_specs{1}.(fn_specs{2})(varargin{:});
@@ -567,7 +587,6 @@ classdef Manager < handle
                     obj.error(err.message,err.stack)
                 end
             else % fn
-                nout = abs(nargout(fn_specs)); % The max of nargout method basically ignores varargout
                 varargout = cell(1,nargout);
                 try
                     [varargout{:}] = feval(fn_specs,varargin{:});
@@ -577,6 +596,7 @@ classdef Manager < handle
                 end
             end
             varargout = varargout(1:nargout); % Cut down to requested number
+            
             % Reset inactivity timer (if this was the call that stopped it)
             if restart
                 timerH.StartDelay = obj.handles.Managers.timeout; % Maybe user changed
@@ -588,13 +608,13 @@ classdef Manager < handle
                 obj.disabled = obj.disabled + 1;
                 return
             end
-            default = findall(obj.panelHandle.content,'tag','default');
-            obj.frozen_state = get(allchild(default),'enable');
+            default = findall(obj.panelHandle.content, 'tag', 'default');
+            obj.frozen_state = get(default.Children, 'enable');
             if ~iscell(obj.frozen_state)
                 % Takes care of only having a single child
                 obj.frozen_state = {obj.frozen_state};
             end
-            set(allchild(default),'enable','off')
+            set(default.Children,'enable','off')
             obj.disabled = true;
         end
         function enable(obj)
@@ -602,11 +622,15 @@ classdef Manager < handle
                 obj.disabled = obj.disabled - 1;
                 return
             end
-            default = findall(obj.panelHandle.content,'tag','default');
+            default = findall(obj.panelHandle.content, 'tag', 'default');
             % Restore frozen state
-            children = allchild(default);
+            children = default.Children;
             for i = 1:numel(children)
-                set(children(i),'enable',obj.frozen_state{i})
+                try
+                    set(children(i), 'enable', obj.frozen_state{i})
+                catch
+                    
+                end
             end
             obj.disabled = false;
         end
@@ -659,9 +683,9 @@ classdef Manager < handle
             else
                 pos = false;
             end
-            assert(logical(pos),'When setting active module, input must be a valid index, or name of loaded module.')
-            i = get(obj.popupHandle,'value');
-            set(obj.popupHandle,'value',pos)
+            assert(logical(pos), 'When setting active module, input must be a valid index, or name of loaded module.')
+            i = get(obj.popupHandle, 'value');
+            set(obj.popupHandle, 'value', pos)
             obj.module_selected;
             drawnow expose;
         end

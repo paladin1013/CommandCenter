@@ -36,4 +36,3 @@ node(r_e2,APDchannel,'units','us','delta',-obj.CounterLength_us);
 g = node(r_e2,repumpChannel,'units','us','delta',0);
 
 end
-

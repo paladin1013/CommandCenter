@@ -147,7 +147,7 @@ classdef PulseBlaster < Modules.Driver & Drivers.PulseTimer_invisible
             s.channelOrder = ch;
 
             n = s.StartNode;
-            
+
             for jj = 1:2
                 t = jj*1e6/rate/2;
                 for ii = indices

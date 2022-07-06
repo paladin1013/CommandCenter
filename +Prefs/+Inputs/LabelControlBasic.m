@@ -1,4 +1,4 @@
-classdef LabelControlBasic < Base.input
+classdef LabelControlBasic < Base.Input
     % LABELCONTROLBASIC provides functionality for preparing a common input type
     %   of a right justified label (text) and a left justified input uicontrol element
     %   It stores the label uicontrol element in "label" and the input element
@@ -13,19 +13,6 @@ classdef LabelControlBasic < Base.input
         uistyle;   % uicontrol style argument
     end
 
-    methods % Overload by subclass
-        % Provide function to get the label (without the ": " part)
-        % Important to do it this way to allow MATLAB to make the proper extent
-        %   when generating the label uicontrol for "label_width_px"
-        function labeltext = get_label(~,pref)
-            if ~isempty(pref.units)
-                labeltext = sprintf('%s (%s)',pref.name,pref.units);
-            else
-                labeltext = pref.name;
-            end
-        end
-    end
-
     methods % Satisfy all abstract methods
         function tf = isvalid(obj)
             tf = isgraphics(obj.ui) && isvalid(obj.ui);
@@ -35,6 +22,11 @@ classdef LabelControlBasic < Base.input
             % Here, widths will all be taken care of in adjust_UI
             tag = strrep(pref.name,' ','_');
             labeltext = obj.get_label(pref);
+
+            if strcmp(obj.uistyle, 'checkbox') && strcmp(pref.unit, '0/1')
+                labeltext = labeltext(1:end-6);
+            end
+
             enabled = 'on';
             if pref.readonly
                 enabled = 'off';
@@ -55,9 +47,9 @@ classdef LabelControlBasic < Base.input
                         'UserData', pref.readonly);   % UserData field contains another copy of readonly for inputs which overwrite Enable
             obj.ui.Position(2) = yloc_px;
 
-            if ~isempty(pref.help_text)
-                set(obj.label, 'Tooltip', pref.help_text);
-            end
+%             if ~isempty(pref.help_text)
+            set(obj.label, 'Tooltip', pref.get_help_text);
+%             end
             height_px = obj.ui.Position(4);
         end
         function link_callback(obj,callback)

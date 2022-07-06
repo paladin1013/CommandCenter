@@ -1,8 +1,7 @@
 classdef FileField < Prefs.Inputs.LabelControlBasic
     %FILEFIELD displays a file on a pushbutton
 
-    properties % Add units in
-        units = gobjects(1)
+    properties
         empty_string = '';
     end
     properties(Hidden)
@@ -24,6 +23,9 @@ classdef FileField < Prefs.Inputs.LabelControlBasic
             else
                 [~,name,ext] = fileparts(val);
                 obj.ui.String = [name, ext];
+            end
+            if ~isstruct(obj.ui.UserData)
+                obj.ui.UserData = struct();
             end
             obj.ui.UserData.value = val;
             obj.ui.TooltipString = val;

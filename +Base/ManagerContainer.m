@@ -7,6 +7,7 @@ classdef ManagerContainer < handle
         DB
         Experiment
         Sources
+        MetaStage
         Stages
         Imaging
         Logger
@@ -19,7 +20,7 @@ classdef ManagerContainer < handle
     
     methods
         function delete(obj)
-            things = {obj.DB,obj.Experiment,obj.Sources,obj.Stages,obj.Imaging,obj.Path};
+            things = {obj.DB,obj.Experiment,obj.Sources,obj.Stages,obj.Imaging,obj.Path,obj.MetaStage};
             for i = 1:numel(things)
                 if isobject(things{i}) && isvalid(things{i})
                     delete(things{i})

@@ -35,7 +35,7 @@ function varargout = CommandCenter(varargin)
 
 % Edit the above text to modify the response to help CommandCenter
 
-% Last Modified by GUIDE v2.5 19-Mar-2020 14:37:10
+% Last Modified by GUIDE v2.5 28-Apr-2021 20:31:58
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -91,7 +91,7 @@ if exist(fullfile(path,'.lock'),'file')
     lock = fullfile(path,'.lock');
     
     answer = questdlg(sprintf('Found a lock file, are you sure there is no other CommandCenter instance running?\n%s', lock),...
-                                '.lock File Found', 'Continue With This Instance', 'Oops, An Instance Exists', 'Oops, An Instance Exists');
+                                '.lock File Found', 'Continue With This New Instance', 'Oops, An Old Instance Is Running', 'Oops, An Instance Exists');
                             
     switch answer
         case 'Continue With This Instance'
@@ -132,6 +132,7 @@ try
             rethrow(err);
         end
     end
+    
     % Parse inputs flags
     assert(all(cellfun(@ischar,varargin)),'All inputs provided to CommandCenter must be strings')
     [debug,varargin] = parseInput(varargin,'debug');
@@ -162,7 +163,7 @@ try
     end
     [loading_fig, textH] = Base.loadingFigure(fullfile(path, 'static', 'load.png'),...
         'CommandCenter Loading');
-    set(textH,'String','Adding Paths'); drawnow;
+    set(textH,'String', 'Adding Paths'); drawnow;
     addpath(path)
     addpath(genpath(fullfile(path,'overload_builtin')))
     addpath(genpath(fullfile(path,'HelperFunctions')))
@@ -172,11 +173,11 @@ try
     addpath(fullfile(path,'Modules','Managers'))
     
     % Check Git
-    set(textH,'String','Checking Git'); drawnow;
+    set(textH,'String', 'Checking Git'); drawnow;
     handles.GitPanel = Base.GitPanel(handles.panelGit, handles.figure1);
     
     % Prepare Key
-    set(textH,'String','Checking Key'); drawnow;
+    set(textH,'String', 'Checking Key'); drawnow;
     if exist(fullfile(path,'.unique_key.mat'),'file')
         unique_key = load(fullfile(path,'.unique_key.mat'));
         unique_key = unique_key.unique_key;
@@ -189,7 +190,7 @@ try
     end
     
     % Setup Logging
-    set(textH,'String','Setting Up Logger'); drawnow;
+    set(textH,'String', 'Setting Up Logger'); drawnow;
     handles.logger = Base.Logger(mfilename,loggerStartState);
     handles.logger.logLevel = [debugLevel, debugLevel]; % [listbox,textfile]
     handles.logger.URL = sprintf('https://commandcenter-logger.mit.edu/new-log/%s/%s/',key,unique_key); % Set destination URL
@@ -199,23 +200,21 @@ try
     handles.logger.log(['Using namespace prefix: "',...
         getappdata(hObject,'namespace_prefix') '"'],handles.logger.DEBUG)
     
+    if ismac
+        handles.panelData.Position(1) = 400;
+        handles.LeftPanel.Position(3) = 390;
+    end
+    
     % Convert panels to scrollPanels
-    set(textH,'String','Making Panels'); drawnow;
-    loaded_vars = load(fullfile(path,'static','reload_icon.mat'));
-    handles.reload_CData = loaded_vars.im;
-    handles.panelStage = Base.UIscrollPanel(handles.panelStage);
-    handles.panelImage = Base.UIscrollPanel(handles.panelImage);
-    handles.panelSource = Base.UIscrollPanel(handles.panelSource);
-    handles.panelExperiment = Base.UIscrollPanel(handles.panelExperiment);
-    handles.panelSave = Base.UIscrollPanel(handles.panelSave);
-    controls = {handles.panelStage, handles.panelImage, handles.panelSource,...
-        handles.panelExperiment, handles.panelSave, handles.panelGit};
-    Base.UIScrollPanelContainer(handles.LeftPanel,controls,5);
-    Base.Resizable(handles.panelStage);
-    Base.Resizable(handles.panelImage);
-    Base.Resizable(handles.panelSource);
-    Base.Resizable(handles.panelExperiment);
-    Base.Resizable(handles.panelSave);
+    set(textH,'String', 'Making Panels'); drawnow;
+    handles.panelStage =        Base.UIscrollPanel(handles.panelStage);
+    handles.panelMetaStage =    Base.UIscrollPanel(handles.panelMetaStage);
+    handles.panelImage =        Base.UIscrollPanel(handles.panelImage);
+    handles.panelSource =       Base.UIscrollPanel(handles.panelSource);
+    handles.panelSweeping =     Base.UIscrollPanel(handles.panelSweeping);
+    handles.panelExperiment =   Base.UIscrollPanel(handles.panelExperiment);
+    handles.panelDrivers =      Base.UIscrollPanel(handles.panelDrivers);
+    handles.panelSave =         Base.UIscrollPanel(handles.panelSave);
     
     % Convert Axes panels to Split panels
     handles.AxesPanels = Base.SplitPanel(handles.panel_im,handles.panel_exp,'horizontal');
@@ -224,7 +223,7 @@ try
     handles.AxesPanelsH = pos(4);  % Necessary to allow GlobalPosition to hang out up there.
     axes_im_only_Callback(hObject,[],handles)  % Set default to just image
     
-    set(textH,'String','Loading Managers'); drawnow;
+    set(textH,'String', 'Loading Managers'); drawnow;
     handles.Managers = Base.ManagerContainer;   % So every Manager has same access to other managers
     handles.Managers.Logger = handles.logger;   % Make more accessible
     handles.Managers.handles = handles;         % Give the manager container a handle to figure handles
@@ -237,29 +236,55 @@ try
     handles.inactivity_timer.UserData = handles.Managers;
     
     % Init managers
-    set(textH,'String','Loading StageManager'); drawnow;
+    set(textH,'String', 'Loading StageManager'); drawnow;
     handles.Managers.Stages = StageManager(handles);
+
+
     
-    set(textH,'String','Loading Experiment Modules');
+    set(textH,'String', 'Loading Experiment Modules');
     handles.Managers.Experiment = ExperimentManager(handles);
     
-    set(textH,'String','Loading Imaging Modules'); drawnow;
-    handles.Managers.Imaging = ImagingManager(handles);
-    set(handles.(handles.Managers.Imaging.set_colormap),'checked','on') % Tags correspond to colormaps
-    set(allchild(handles.menu_colormap),'callback',...
-        @(hObject,eventdata)CommandCenter('colormap_option_set',hObject,eventdata,guidata(hObject)));
-    
-    set(textH,'String','Loading Database Modules'); drawnow;
-    handles.Managers.DB = DBManager(handles);
-    
-    set(textH,'String','Loading Source Modules'); drawnow;
+
+    set(textH,'String', 'Loading Source Modules'); drawnow;
     handles.Managers.Sources = SourcesManager(handles);
     
-    set(textH,'String','Loading Paths'); drawnow;
+    set(textH,'String', 'Loading Paths'); drawnow;
     handles.Managers.Path = PathManager(handles); % Generates its own menu item
+
     
-    set(textH,'String','Preparing GUI'); drawnow;
-    set(textH,'String','Done.'); drawnow;
+    set(textH,'String', 'Loading Imaging Modules'); drawnow;
+    handles.Managers.Imaging = ImagingManager(handles);
+    
+    
+    set(handles.(handles.Managers.Imaging.set_colormap),'checked','on') % Tags correspond to colormaps
+    set(allchild(handles.menu_colormap),'callback',...
+    @(hObject,eventdata)CommandCenter('colormap_option_set',hObject,eventdata,guidata(hObject)));
+    
+    % MetaStageManager has to be the last to load, since it relies on other preferences.
+    set(textH,'String', 'Loading MetaStageManager'); drawnow;
+    handles.Managers.MetaStage = MetaStageManager(handles);
+    
+    set(textH,'String', 'Loading Database Modules'); drawnow;
+    handles.Managers.DB = DBManager(handles);
+    
+
+    set(textH,'String', 'Preparing GUI'); drawnow;
+    set(textH,'String', 'Done'); drawnow;
+    
+%     controls = {handles.panelStage, handles.panelMetaStage, handles.panelImage, handles.panelSource,...
+%         handles.panelSweeping, handles.panelExperiment, handles.panelDrivers, handles.panelSave, handles.panelGit};
+    controls = {handles.panelGit, handles.panelStage, handles.panelMetaStage, handles.panelImage, handles.panelSource,...
+        handles.panelSweeping, handles.panelExperiment, handles.panelDrivers, handles.panelSave};
+    Base.UIScrollPanelContainer(handles.LeftPanel, controls, 4);
+    
+    Base.Resizable(handles.panelStage);
+    Base.Resizable(handles.panelMetaStage);
+    Base.Resizable(handles.panelImage);
+    Base.Resizable(handles.panelSource);
+    Base.Resizable(handles.panelSweeping);
+    Base.Resizable(handles.panelExperiment);
+    Base.Resizable(handles.panelDrivers);
+    Base.Resizable(handles.panelSave);
 catch err
     delete(loading_fig)
     delete(handles.inactivity_timer)
@@ -277,6 +302,10 @@ if exist(MATLAB_prefs,'file')
     [msg,msgID] = copyfile(MATLAB_prefs,fullfile(path,'.matlabprefs.mat.backup'));
     if ~isempty(msg)
         warning(msgID,msg);
+        warning([   'If you recently installed a new version of matlab, you can copy your old prefs from:' 13 ...
+                    '    C:\Users\<username>\AppData\Roaming\MathWorks\MATLAB\R20<XXx old version>' 13 ...
+                    'To:' 13 ...
+                    '    C:\Users\<username>\AppData\Roaming\MathWorks\MATLAB\R20<XXx new version>']);
     end
 else
     warning('CC:pref_backup_failed','Unable to locate matlabprefs.mat, no backup was made.');
@@ -302,7 +331,23 @@ if strcmp(handles.inactivity_timer.Running,'off')
     start(handles.inactivity_timer);
 end
 
+handles.panelStage.minimize();
+handles.panelMetaStage.minimize();
+handles.panelImage.minimize();
+handles.panelSource.minimize();
+handles.panelSweeping.minimize();
+handles.panelExperiment.minimize();
+handles.panelDrivers.minimize();
+handles.panelSave.minimize();
+handles.panelMetaStage.setMaximizedHeight(30);
+handles.panelImage.setMaximizedHeight(20);
+
+
+drawnow
+
 function inactivity(timerH,~)
+error('Bootstrap to disable inactivity timer.');
+
 [path,~,~] = fileparts(mfilename('fullpath'));
 if ~exist(fullfile(path,'dbquit.m'),'file')
     copyfile(fullfile(path,'dbquit_disabled.m'),fullfile(path,'dbquit.m'));
@@ -354,6 +399,9 @@ wait = msgbox('Please Wait, CommandCenter is saving modules','help','modal');
 delete(findall(wait,'tag','OKButton'))
 drawnow
 h_list = {handles.Managers};
+if (isprop(handles.Managers, 'MetaStage'))
+    delete(handles.Managers.MetaStage)
+end
 for i = 1:numel(h_list)
     for j = 1:numel(h_list{i})
     h = h_list{i}(j);
@@ -363,19 +411,23 @@ for i = 1:numel(h_list)
     end
 end
 % Now delete, any leftover modules (drivers usually)
-mods = getappdata(hObject,'ALLmodules');
-for i = 1:numel(mods)
-    if isvalid(mods{i})
-        handles.logger.log(sprintf('(Unmanaged) - Destroying <a href="matlab: opentoline(%s,1)">%s</a>',which(class(mods{i})),class(mods{i})))
-        delete(mods{i})
+try
+    mods = getappdata(hObject,'ALLmodules');
+    for i = 1:numel(mods)
+        if isvalid(mods{i})
+            handles.logger.log(sprintf('(Unmanaged) - Destroying <a href="matlab: opentoline(%s,1)">%s</a>',which(class(mods{i})),class(mods{i})))
+            delete(mods{i})
+        end
     end
-end
+catch err
+    warning(sprintf("Failed to delete handles %s", err.message));
+end 
 stop(handles.inactivity_timer);
 delete(handles.inactivity_timer)
 handles.logger.sendLogs;  % Send logs to server
-delete(handles.logger)
 delete(wait)
 delete(hObject)
+delete(handles.logger)
 [path,~,~] = fileparts(mfilename('fullpath'));
 if exist(fullfile(path,'dbquit.m'),'file') % Disable override
     delete(fullfile(path,'dbquit.m'));
@@ -915,3 +967,25 @@ function ui_module_build_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 Base.Module.uibuild;
+
+
+% --------------------------------------------------------------------
+function menu_metastage_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_metastage (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles.Managers.MetaStage.getAvail(hObject);
+
+
+% --------------------------------------------------------------------
+function menu_sweeping_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_sweeping (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --------------------------------------------------------------------
+function menu_drivers_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_drivers (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)

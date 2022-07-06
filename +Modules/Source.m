@@ -1,21 +1,21 @@
 classdef Source < Base.Module
     % SOURCE abstracts hardware objects that emit signal.
-    
+
     % Required signal control prefs source_on (fast modulation) and armed (preparation for fast modulation).
     %    display_only means the Prefs will not be saved (or accidentally loaded at startup).
     %    This is important for the prevention of unscheduled explosions.
-    properties(GetObservable,SetObservable,Hidden)     
+    properties(GetObservable,SetObservable,Hidden)
         source_on = Prefs.Boolean(false, 'display_only', true, 'allow_nan', true, 'set', 'set_source_on', ...
                         'help', ['source_on is usually the "fast" method for modulating the source, such as an AOM. ' ...
                                 'If no fast method exists, this usually simply wraps armed. The user must define the ' ...
                                 'Abstract method set_source_on to interface with the hardware. Is wrapped by on()/off().']);
     end
-    properties(GetObservable,SetObservable)  
+    properties(GetObservable,SetObservable)
         armed =     Prefs.Boolean(false, 'display_only', true, 'allow_nan', true, 'set', 'set_armed', ...
                         'help', ['armed prepares the source for fast modulation such as turning the diode on. If armed is ' ...
                                 'false, the source should not emit signal at all. Is wrapped by arm()/blackout().']);
     end
-    
+
     properties(SetAccess={?SourcesManager},GetAccess=private)
         % CC_dropdown.h = Handle to dropdown in CommandCenter
         % CC_dropdown.i = index for this module in CC manager list
@@ -30,7 +30,7 @@ classdef Source < Base.Module
             addlistener(obj, 'armed',       'PostSet', @obj.updateCommandCenter);
         end
     end
-    
+
     % source_on methods
     methods(Abstract)   % For the user to set to interface with the "fast" hardware.
         val = set_source_on(obj, val, ~)
@@ -44,10 +44,10 @@ classdef Source < Base.Module
             obj.source_on = false;
         end
     end
-    
+
     % armed methods
     methods             % For the user to overwrite if arming or preparing the laser can be automated.
-        function val = set_armed(obj, val, pref)    
+        function val = set_armed(obj, val, pref)
             if pref.value ~= val
                 if val
                     %this method should "arm" the source, doing whatever is
@@ -79,6 +79,7 @@ classdef Source < Base.Module
             end
         end
     end
+    
     methods(Sealed)     % Methods for backwards compatibility with code that uses the old arm() and blackout() methods. Now simply wraps armed.
         function arm(obj)
             obj.armed = true;
@@ -92,16 +93,16 @@ classdef Source < Base.Module
         function updateCommandCenter(obj,~,~)
             if isstruct(obj.CC_dropdown) && isvalid(obj.CC_dropdown.h)
                 i = obj.CC_dropdown.i;
-                
+
                 name = strsplit(class(obj),'.');
                 short_name = strjoin(name(2:end),'.');
-                
+
                 if isnan(obj.source_on) || isnan(obj.armed)
                     color = 'rgb(255,0,255)';               % NaN is used when connectivity is certain to be *unknown* (i.e. no com connection).
                 elseif obj.source_on && obj.armed
                     color = 'rgb(0,200,0)';                 % Green ==> all good.
                 elseif obj.armed
-                    color = 'rgb(255,128,0)';               % Orange ==> ready for source_on 
+                    color = 'rgb(255,128,0)';               % Orange ==> ready for source_on
                 elseif obj.source_on
                     color = 'rgb(255,69,0)';                % Dark-orange ==> not armed.
                 else
@@ -112,5 +113,5 @@ classdef Source < Base.Module
             end
         end
     end
-    
+
 end

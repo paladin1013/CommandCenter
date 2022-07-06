@@ -3,7 +3,7 @@ classdef Singleton < handle
     %  Ensures a class only has one instance and provide a global point of
     %  access to it.
     %
-    properties(Access=protected)
+    properties(SetAccess=protected)
         singleton_id
     end
     
@@ -52,7 +52,6 @@ classdef Singleton < handle
                 warning('SINGLETON:delete','Was not able to purge function from memory!')
             end
         end
-        
     end
     
 end

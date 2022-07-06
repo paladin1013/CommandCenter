@@ -6,8 +6,12 @@ classdef Counter < Modules.Driver
         dwell = 1;              % ms (clock speed of PulseTrain).  Takes effect at start.
         update_rate = 0.1;      % s (time between Matlab reading DAQ).  Takes effect at start.
         WindowMax = 60;         % Max axes width in seconds
-        prefs = {'dwell','update_rate','WindowMax'};
-        pltH;
+        prefs = {'dwell','update_rate','WindowMax', 'count'};
+        readonly_prefs = {'count'};
+    end
+    properties(SetObservable, GetObservable)
+        count = Prefs.Double(0, 'readonly', true);                % Counts per second. For other modules to inspect.
+
     end
     properties(Access=private)
         timerH                  % Handle to timer
@@ -51,6 +55,7 @@ classdef Counter < Modules.Driver
                 error('Add lines below, and load again.\n%s',strjoin(msg,'\n'))
             end
             obj.loadPrefs;
+
         end
         function stopTimer(obj,varargin)
             if isvalid(obj)
@@ -74,6 +79,7 @@ classdef Counter < Modules.Driver
                 counts = counts/(obj.dwell/1000);
                 obj.callback(counts,nsamples)
             end
+            obj.count = counts;
         end
         function updateView(obj,counts,samples)
             % Default GUI callback
@@ -100,7 +106,9 @@ classdef Counter < Modules.Driver
     methods(Static)
         function obj = instance(lineIn,lineOut)
             mlock;
-            id = {lineIn,lineOut};
+            id = [lineIn,lineOut]; 
+            % Using cell `id` directly may lead to numerous problems in encoding preferences. 
+            % Should use char array concatenation instead.
             persistent Objects
             if isempty(Objects)
                 Objects = Drivers.Counter.empty(1,0);
@@ -112,7 +120,7 @@ classdef Counter < Modules.Driver
                 end
             end
             obj = Drivers.Counter(lineIn,lineOut);
-            obj.singleton_id = id;
+            obj.singleton_id = id; 
             Objects(end+1) = obj;
         end
     end
@@ -181,7 +189,21 @@ classdef Counter < Modules.Driver
                 'period',obj.update_rate,'timerfcn',@obj.cps);
             obj.callback = Callback;
             dwell = obj.dwell/1000; % ms to s
-            obj.PulseTrainH = obj.nidaq.CreateTask('Counter PulseTrain');
+            try
+                obj.PulseTrainH = obj.nidaq.CreateTask('Counter PulseTrain');
+            catch
+                err = [];
+                
+               try
+                   obj.PulseTrainH = obj.nidaq.GetTaskByName('Counter PulseTrain');
+               catch err
+                   
+               end
+               
+               if ~isempty(err)
+                   rethrow(err)
+               end
+            end
             f = 1/dwell; %#ok<*PROP>
             try
                 obj.PulseTrainH.ConfigurePulseTrainOut(obj.lineOut,f);
@@ -189,7 +211,7 @@ classdef Counter < Modules.Driver
                 obj.reset
                 rethrow(err)
             end
-            obj.CounterH = obj.nidaq.CreateTask('Counter CounterObj');
+            obj.CounterH = obj.nidaq.CreateTask(['Counter CounterObj ' obj.lineIn]);
             try
                 continuous = true;
                 buffer = f*obj.update_rate;

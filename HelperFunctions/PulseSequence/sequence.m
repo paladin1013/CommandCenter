@@ -410,6 +410,7 @@ classdef sequence < handle
             %   argument is given, all unmodulated channels are set to off.
             if nargin < 2
                 overrideMinDuration = false;
+                defaultLines_ = zeros(1,24);
             end
             if nargin < 3
                 defaultLinesUser = zeros(1,24);    % No default if no argument is given.
@@ -666,4 +667,3 @@ classdef sequence < handle
     end
     
 end
-

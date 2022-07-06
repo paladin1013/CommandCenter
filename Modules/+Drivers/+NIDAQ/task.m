@@ -65,7 +65,7 @@ classdef task < handle
             end
         end
     end
-    methods(Access=private)
+    methods
         function delete(obj)
             if ~isempty(obj.timerH)
                 stop(obj.timerH)
@@ -74,11 +74,15 @@ classdef task < handle
             obj.LibraryFunction('DAQmxClearTask',obj);
             % Clean up any counters if necessary
             for i = 1:numel(obj.lines)
-                line = obj.lines{i};
-                if length(line.line)>3
-                    if sum(strcmpi(line.line(end-3:end),obj.dev.Counters))
-                        obj.dev.returnCtr(line)
+                try
+                    line = obj.lines{i};
+                    if length(line.line)>3
+                        if sum(strcmpi(line.line(end-3:end),obj.dev.Counters))
+                            obj.dev.returnCtr(line)
+                        end
                     end
+                catch
+                    
                 end
             end
             if obj.dev.CurrentTask == obj
@@ -86,6 +90,8 @@ classdef task < handle
             end
             obj.dev.Tasks(strcmp({obj.dev.Tasks.name},obj.name)) = [];
         end
+    end
+    methods(Access=private)
         function addLines(obj,lines)
             for i = 1:length(lines)
                 obj.lines{end+1} = lines(i);
@@ -165,7 +171,7 @@ classdef task < handle
             end
             
             if isnan(fIndex)
-                error(['Drivers.NIDAQ: ' FunctionName ' not found in library']);
+                error(['Drivers.NIDAQ: ' FunctionName ' not found in library. Valid functiibs are:' 13 strjoin(FunctionProto, char(13))]);
             end
             
             % use regexp to get the number of args, given as [a, b, c, d]
@@ -383,7 +389,7 @@ classdef task < handle
             % Find an open ctr, if there is one
             ctr = obj.dev.getAvailCtr;
             obj.CreateChannels('DAQmxCreateCICountEdgesChan',ctr,'', obj.dev.DAQmx_Val_Rising,0, obj.dev.DAQmx_Val_CountUp);
-            obj.LibraryFunction('DAQmxSetCICountEdgesTerm',obj,ctr,ctrLine);
+            obj.LibraryFunction('DAQmxSetCICountEdgesTerm',obj,ctr,ctrLine.line);
             % Route the output terminal to the PhysicalLine Spec'd in the Configuration
             obj.LibraryFunction('DAQmxCfgSampClkTiming',obj, clkLine.line,Freq, obj.dev.DAQmx_Val_Rising,mode,NSamples);
             obj.clock = struct('src',clkLine,'freq','ext');
@@ -469,6 +475,10 @@ classdef task < handle
             obj.Verify
         end
 
+        function ConfigureMultiInMultiOut(obj, in, out, NSamples, continuous)
+            
+        end
+        
         %% Read
         function count = AvailableSamples(obj)
             count = uint32(0);

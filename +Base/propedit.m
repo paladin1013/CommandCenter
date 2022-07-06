@@ -1,4 +1,4 @@
-function fig = propedit( obj )
+function fig = propedit(obj, no_substitution)
 %PROPEDIT - open property manager for obj for SetAccess=public properties
 
 meta = metaclass(obj);
@@ -10,11 +10,21 @@ props = props(map);
 % Filter on Hidden
 props = props(~[props.Hidden]);
 nprops = length(props);
-d = cell(nprops,2);
+d = cell(1,2);
+
+k = 1;
 for i = 1:nprops
-    d(i,:) = {strrep(props(i).Name,'_',' '), obj.(props(i).Name)};
+    val = obj.(props(i).Name);
+    if (isnumeric(val) || islogical(val) || ischar(val)) && all(size(val) == [1 1])
+        if (~exist('no_substitution', 'var') || no_substitution == false)
+            d(k,:) = {strrep(props(i).Name,'_',' '), val};
+        else
+            d(k,:) = {props(i).Name, val};
+        end
+        k = k + 1;
+    end
 end
-fig = figure('name','Manager Property Editor','HandleVisibility','Callback',...
+fig = figure('name',['Property Editor (' class(obj) ')'],'HandleVisibility','Callback',...
           'IntegerHandle','off','menu','none','numbertitle','off',...
           'Resize','off','visible','off');
 % Calculate desired columnwidths

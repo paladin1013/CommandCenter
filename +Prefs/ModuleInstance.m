@@ -1,4 +1,4 @@
-classdef ModuleInstance < Base.pref
+classdef ModuleInstance < Base.Pref
     %MODULE Allow particular types of module arrays
     %   NOTE: The UI will interpret whatever array size as an Nx1 when displaying
     %   If remove_on_delete is set to true, then the actual data value will 
@@ -16,7 +16,7 @@ classdef ModuleInstance < Base.pref
     %       empty_val: The value displayed is the dropdown menu when no
     %           module instances exist.
     
-    properties(Hidden) % Satisfy abstract
+    properties (Hidden) % Satisfy abstract
         default = Base.Module.empty(0);
         ui = Prefs.Inputs.ModuleSelectionField;
     end
@@ -37,11 +37,44 @@ classdef ModuleInstance < Base.pref
     
     methods
         function obj = ModuleInstance(varargin)
-            obj = obj@Base.pref(varargin{:});
+            obj = obj@Base.Pref(varargin{:});
             % Saving prefs don't support reloading with input params, so leave out drivers
             obj.ui.module_types = {'Experiment','Stage','Imaging','Source','Database'};
         end
-        function set_ui_value(obj,val)
+        
+        function tosave = encodeValue(~, data)
+            if ismember('Base.Pref',superclasses(data))
+                % THIS SHOULD NOT HAPPEN, but haven't figured
+                % out why it does sometimes yet
+                data = data.value;
+%                 warning('Listener for %s seems to have been deleted before savePrefs!',obj.prefs{i});
+            end
+                        
+            if ismember('Base.Module',superclasses(data))
+                tosave = {};
+                
+                for j = 1:length(data)
+%                     tosave{end+1} = class(data(j)); %#ok<AGROW>
+                    tosave{end+1} = data(j).encode(); %#ok<AGROW>
+                end
+            else
+                error('Data was not a Base.Module.')
+            end
+        end
+        function [data, obj] = decodeValue(obj, saved)
+            if obj.HasDefault && any(ismember([{class(obj.DefaultValue)}; superclasses(obj.DefaultValue)], {'Base.Module','Prefs.ModuleInstance'}))
+                if isempty(saved)               % Means it should be the default value, and we want to avoid setting.
+                    error('No saved data.')     % Error to prevent setting the value.
+                end
+                
+                for j = 1:length(saved)
+%                     data(j) = eval(sprintf('%s.instance', saved{j})); % Grab instance(s) from string
+                    data(j) = Base.Module.decode(saved{j}); % Grab instance(s) from string
+                end
+            end
+        end
+        
+        function obj = set_ui_value(obj,val)
             obj.ui.set_value(val);
         end
         function val = get_ui_value(obj)

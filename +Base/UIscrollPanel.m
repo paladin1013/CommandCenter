@@ -32,7 +32,8 @@ classdef UIscrollPanel < handle
             end
             obj.minimizable = minimizable;
             
-            children = allchild(base);
+%             children = allchild(base);
+            children = base.Children;
             tag = get(base,'tag');
             tempBase = get(base,'units');
             set(base,'tag',[tag '_Base'],'units','characters');
@@ -234,10 +235,11 @@ classdef UIscrollPanel < handle
                 bottom = min(lengths);
             end
             if pos(3) > posContent(3)
-                error('newPanel is wider than content panel!')
+                warning('newPanel is wider than content panel!')
             end
             % Add the necessary lenght, then add to the origin!
-            delta = bottom-pos(4)-0.25;
+%             delta = bottom-pos(4)-0.25;
+            delta = bottom-pos(4);
             if delta < 0
                 obj.addLength(abs(delta))
                 delta = 0;
@@ -255,6 +257,12 @@ classdef UIscrollPanel < handle
             pos = get(panel,'position');
             delete(panel)
             obj.addLength(-pos(4))
+        end
+        function setMaximizedHeight(obj, height)
+            obj.minimized_pos(4) = height;
+        end
+        function val = getMaximizedPos(obj)
+            val = obj.minimized_pos;
         end
     end
 end
