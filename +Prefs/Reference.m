@@ -151,8 +151,16 @@ classdef Reference < Base.Pref
                         obj.record_array{end+1} = record;
                     end
 
-                    [max_val, max_k] = max(val_list);
-                    fixed_pos = pos_list(max_k); % Set the best position to be the fixed point
+                        
+                    max_val = 0;
+                    for l = length(obj.record_array)
+                        record = obj.record_array{l};
+                        if record.val >= max_val
+                            max_pos = record.pos;
+                            max_val = record.val;
+                        end
+                    end
+                    fixed_pos = max_pos; % Set the best position to be the fixed point
                     fixed_val = max_val;
                     % fixed_val = obj.get_avg_val;
 
