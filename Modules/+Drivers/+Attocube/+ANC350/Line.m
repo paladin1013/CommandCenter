@@ -11,7 +11,6 @@ classdef Line < Modules.Driver
 %                                             'help', 'Various operation modes available to each line. See manual for details.');
         name = Prefs.String('', 'readonly', true, 'help', 'Physical alias of this line');
 
-        position = Prefs.Double(0, 'set', 'set_position', 'help', 'Actual position of ANC350 line.');
 
 
         % Stepping-related prefs.
@@ -25,8 +24,9 @@ classdef Line < Modules.Driver
                                             'help', 'Voltage amplitude for stepping sawtooth.');
         
         % UI stuff to allow the user to step up and down. Future: replace with pref-based metastage.
-        steps =     Prefs.Integer(Drivers.Attocube.ANC350.maxSteps, 'max', Drivers.Attocube.ANC350.maxSteps, 'unit', '#',...
-                                            'help', 'Number of steps to use when using the Step Up and Step Down buttons.');
+        steps_moved =     Prefs.Integer(0, 'max', Drivers.Attocube.ANC350.maxSteps, 'min', -Drivers.Attocube.ANC350.maxSteps, 'unit', '#',...
+                                            'set', 'set_steps_moved', ...
+                                            'help', 'Number of steps moved from the initial position.'); % Use this pref instead.
         step_up =   Prefs.Boolean(false, 'set', 'set_step_up',...
                                             'help', 'Button to command the atto to step up by `steps` steps.');
         step_down = Prefs.Boolean(false, 'set', 'set_step_down',...
@@ -46,14 +46,17 @@ classdef Line < Modules.Driver
     properties(SetAccess=immutable)
         line;   % Index of the physical line of the parent that this D.A.Line controls.
     end
-    
+    properties(Access=private)
+        steps_moved_prev =   0; % To calculate how many steps it should move under the current command.
+    end
     
     methods(Static)
         function obj = instance(parent, line)
-            parent.getInfo(line, 'LutName'); % Error if the parent does not possess this line
+            parent.getInfo(line-1, 'LutName'); % Error if the parent does not possess this line
+            % indexes of 'X', 'Y', 'Z' in hwserver are 0, 1, 2
             
-            name_array = {'X', 'Y', 'Z'};
-            obj.name = name_array(line);
+            name_array = ['X', 'Y', 'Z'];
+           
             mlock;
             persistent Objects
             if isempty(Objects)
@@ -68,6 +71,8 @@ classdef Line < Modules.Driver
             end
             obj = Drivers.Attocube.ANC350.Line(parent, line);
             obj.singleton_id = id;
+            obj.loadPrefs;
+            obj.name = name_array(line);
             Objects(end+1) = obj;
         end
     end
@@ -124,6 +129,18 @@ classdef Line < Modules.Driver
             obj.step = -obj.steps;
             val = false;    % Turn button back off.
         end
+        function val = set_steps_moved(obj, val, ~)
+            val = round(val);
+            if abs(val) > Drivers.Attocube.ANC350.maxSteps
+                error("Error moving ANC350: steps (%d) out of range (%d)!\n", val, Drivers.Attocube.ANC350.maxSteps);
+            end
+            if val > obj.steps_moved_prev
+                obj.stepu(val-obj.steps_moved_prev);
+            elseif val < obj.steps_moved_prev
+                obj.stepd(obj.steps_moved_prev-val);
+            end
+            obj.steps_moved_prev = val;
+        end
     end
     
     methods(Hidden)
@@ -140,7 +157,7 @@ classdef Line < Modules.Driver
             obj.com('setOutput', val);
         end
         
-        function getInfo(obj)
+        function info = getInfo(obj)
             info = 0;
             for retryTime = 1:5
                 try
