@@ -259,6 +259,10 @@ try
     set(handles.(handles.Managers.Imaging.set_colormap),'checked','on') % Tags correspond to colormaps
     set(allchild(handles.menu_colormap),'callback',...
     @(hObject,eventdata)CommandCenter('colormap_option_set',hObject,eventdata,guidata(hObject)));
+
+
+    set(textH,'String', 'Loading Driver Modules'); drawnow;
+    handles.Managers.Drivers = DriverManager(handles);
     
     % MetaStageManager has to be the last to load, since it relies on other preferences.
     set(textH,'String', 'Loading MetaStageManager'); drawnow;
@@ -870,6 +874,14 @@ function reset_Callback(hObject, eventdata, handles)
 close(handles.figure1);
 CommandCenter;
 
+% --------------------------------------------------------------------
+function drivers_Callback(hObject, eventdata, handles)
+% hObject    handle to reset (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+close(handles.figure1);
+CommandCenter;
+
 
 % --------------------------------------------------------------------
 function new_experiment_Callback(hObject, eventdata, handles)
@@ -989,3 +1001,4 @@ function menu_drivers_Callback(hObject, eventdata, handles)
 % hObject    handle to menu_drivers (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+handles.Managers.Drivers.getAvail(hObject);

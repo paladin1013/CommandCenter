@@ -9,6 +9,7 @@ classdef ManagerContainer < handle
         Sources
         MetaStage
         Stages
+        Drivers
         Imaging
         Logger
         handles
