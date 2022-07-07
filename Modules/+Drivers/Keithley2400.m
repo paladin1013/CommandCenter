@@ -107,7 +107,7 @@ classdef Keithley2400 < Modules.Driver
             val = logical(val);
             obj.cmd(['outp:stat ' num2str(val)]);
         end
-        function output = get_output(obj)
+        function output = get_output(obj, ~)
             output = str2double(obj.query('outp:stat?'));
             obj.output = output;
         end
@@ -123,7 +123,7 @@ classdef Keithley2400 < Modules.Driver
         function val = set_voltage(obj, val, ~)
             obj.cmd(['sour:volt:lev:imm:ampl ' num2str(val)]);
         end
-        function voltage = get_voltage(obj)
+        function voltage = get_voltage(obj, ~)
             voltage = str2double(obj.query('sour:volt?'));
         end
         
@@ -131,7 +131,7 @@ classdef Keithley2400 < Modules.Driver
         function val = set_current(obj, val, ~)
             obj.cmd(['sour:curr:lev:imm:ampl ' num2str(val)]);
         end
-        function current = get_current(obj)
+        function current = get_current(obj, ~)
             current = str2double(obj.query('sour:curr?'));
         end
         
