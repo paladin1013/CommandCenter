@@ -406,6 +406,10 @@ h_list = {handles.Managers};
 if (isprop(handles.Managers, 'MetaStage'))
     delete(handles.Managers.MetaStage)
 end
+if (isprop(handles.Managers, 'Drivers'))
+    delete(handles.Managers.Drivers)
+end
+
 for i = 1:numel(h_list)
     for j = 1:numel(h_list{i})
     h = h_list{i}(j);
