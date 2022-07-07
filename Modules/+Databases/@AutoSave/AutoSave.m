@@ -60,9 +60,6 @@ classdef AutoSave < Modules.Database
         first_save_rel_path = ''; % Relative path from exp_dir if force_save used in experiment
         prefs = {'im_dir','exp_dir','im_enable','exp_enable','n_history','formatspec'};
     end
-    properties(Access=private)
-        prop_listeners;     % Keep track of preferences in the GUI to keep updated
-    end
     properties(Constant)
         default_formatspec = {'Image\date_\time',...
                       '\mod\date_\time'};    % To reset

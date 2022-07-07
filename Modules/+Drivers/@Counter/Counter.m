@@ -8,6 +8,7 @@ classdef Counter < Modules.Driver
         WindowMax = 60;         % Max axes width in seconds
         prefs = {'dwell','update_rate','WindowMax', 'count'};
         readonly_prefs = {'count'};
+        pltH;
     end
     properties(SetObservable, GetObservable)
         count = Prefs.Double(0, 'readonly', true);                % Counts per second. For other modules to inspect.

@@ -128,7 +128,7 @@ classdef Reference < Base.Pref
                     step = base_step;
 
                     % Record all tried positions and values
-                    obj.record_array = {}
+                    obj.record_array = {};
                     record = struct;
 
 
@@ -142,10 +142,10 @@ classdef Reference < Base.Pref
                     sweep_num = 0;
                     % Sweep [-5:5]*base_step to find a starting point of optimization
                     for k = -sweep_num:sweep_num
-                        temp_pos = fixed_pos + k*base_step;
-                        obj.writ(temp_pos);
+                        test_pos = fixed_pos + k*base_step;
+                        obj.writ(test_pos);
                         [avg, st] = obj.get_avg_val;
-                        record.pos = temp_pos;
+                        record.pos = test_pos;
                         record.val = avg;
                         record.st = st;
                         obj.record_array{end+1} = record;
@@ -153,7 +153,7 @@ classdef Reference < Base.Pref
 
                         
                     max_val = 0;
-                    for l = length(obj.record_array)
+                    for l = 1:length(obj.record_array)
                         record = obj.record_array{l};
                         if record.val >= max_val
                             max_pos = record.pos;
@@ -189,7 +189,7 @@ classdef Reference < Base.Pref
                         test_pos = fixed_pos + step;
                         obj.writ(test_pos);
                         [avg, st] = obj.get_avg_val;
-                        record.pos = temp_pos;
+                        record.pos = test_pos;
                         record.val = avg;
                         record.st = st;
                         obj.record_array{end+1} = record;
@@ -221,7 +221,7 @@ classdef Reference < Base.Pref
                             end
                         end
                     end % End while loop
-                    obj.plot_record(1, 1, obj.name);
+                    obj.plot_records(1, 1, obj.name);
                     
                 end
             else % src.Value == false
@@ -311,7 +311,7 @@ classdef Reference < Base.Pref
                     record.val = avg;
                     record.st = st;
                     obj.record_array{end+1} = record;
-                    sweep_num = 0;
+                    sweep_num = 3;
 
                     % Do sweep along all avaliable axes
                     for k = 1:3
@@ -323,14 +323,14 @@ classdef Reference < Base.Pref
                                 continue; % This origin point is aready tested
                             end
                             % Assign values
-                            temp_pos = start_pos;
-                            temp_pos(k) = temp_pos(k) + l*base_step(k);
-                            set_pos(temp_pos);
+                            test_pos = start_pos;
+                            test_pos(k) = test_pos(k) + 2*l*base_step(k);
+                            set_pos(test_pos);
 
                             [avg, st] = obj.get_avg_val;
 
                             % Record results
-                            record.pos = temp_pos;
+                            record.pos = test_pos;
                             record.val = avg;
                             record.st = st;
                             obj.record_array{end+1} = record;
@@ -339,7 +339,7 @@ classdef Reference < Base.Pref
 
                     % Find the maximum within the sweep results to be a starting point
                     max_val = 0;
-                    for l = length(obj.record_array)
+                    for l = 1:length(obj.record_array)
                         record = obj.record_array{l};
                         if record.val >= max_val
                             max_pos = record.pos;
@@ -397,7 +397,7 @@ classdef Reference < Base.Pref
                             if diff > 0
                                 direction_changed = zeros(1, 3); % Clear all flags
                                 fixed_val = avg;
-                                fixed_pos = fixed_pos+step;
+                                fixed_pos(k) = fixed_pos(k)+step(k);
                                 % How to persistently optimize along this axis?
                             else
                                 if direction_changed(k)
@@ -444,7 +444,7 @@ classdef Reference < Base.Pref
             fig = figure;
             ax = axis;
             record_dim = sum(~isnan(obj.record_array{1}.pos));
-            assert(dim == record_dim, sprintf("Input dimension (%d) is not consistent with recorded position dimension (%d).", length(find(available_axis)), optimize_dim));
+            assert(dim == record_dim, sprintf("Input dimension (%d) is not consistent with recorded position dimension (%d).", length(find(axis_available)), dim));
             
             switch dim
                 case 1
@@ -459,22 +459,32 @@ classdef Reference < Base.Pref
                         val(k) = record.val;
                         st(k) = record.st;
                     end
-                    fig = figure;
-                    ax = axes;
-                    errorbar(ax, x, val, st, '.');
+                    errorbar(x, val, st, '.');
+                    maxval = max(val);
+                    minval = min(val);
+                    hold on;
+                    colors = flip(hot(n));
+                    for k = 1:n
+                        line(x(k), val(k), 'Color', colors(k, :), 'Marker', '.', 'MarkerSize', ceil(50*(val(k)-minval+1)/(maxval-minval)));
+                    end
+
                     if exist('axis_name', 'var')
-                        ax.XLabel = axis_name(x_axis);
+                        set(get(gca, 'XLabel'), 'String', axis_name(x_axis));
                     end
                     if ~isempty(obj.parent.get_meta_pref('Target').reference)
-                        ax.YLabel = obj.parent.get_meta_pref('Target').reference.name;
+                        set(get(gca, 'YLabel'), 'String', obj.parent.get_meta_pref('Target').reference.name);
+                        
                     end
                     
                 case 2
                     n = length(obj.record_array);
                     x = zeros(1, n);
+                    y = zeros(1, n);
                     val = zeros(1,n);
                     st = zeros(1, n);
-                    [x_axis, y_axis] = find(axis_available);
+                    ax_idx = find(axis_available);
+                    x_axis = ax_idx(1);
+                    y_axis = ax_idx(2);
                     for k = 1:n
                         record = obj.record_array{k};
                         x(k) = record.pos(x_axis);
@@ -482,17 +492,21 @@ classdef Reference < Base.Pref
                         val(k) = record.val;
                         st(k) = record.st;
                     end
-                    fig = figure;
-                    % ax = axes;
-                    plot3(x, y, val);
+                    maxval = max(val);
+                    minval = min(val);
+                    plot3([x;x], [y;y], [val-st; val+st], 'b-');
                     hold on;
-                    plot3([x,x], [y,y], [val-st, val+st], '-');
+                    colors = flip(hot(n));
+                    for k = 1:n
+                        line(x(k), y(k), val(k), 'Color', colors(k, :), 'Marker', '.', 'MarkerSize', ceil(50*(val(k)-minval+1)/(maxval-minval)));
+                    end
+%                     plot3(x, y, val, '-');
                     if exist('axis_name', 'var')
-                        ax.XLabel = axis_name(x_axis);
-                        ax.YLabel = axis_name(y_axis);
+                        set(get(gca, 'XLabel'), 'String', axis_name(x_axis));
+                        set(get(gca, 'YLabel'), 'String', axis_name(y_axis));
                     end
                     if ~isempty(obj.parent.get_meta_pref('Target').reference)
-                        ax.ZLabel = obj.parent.get_meta_pref('Target').reference.name;
+                        set(get(gca, 'ZLabel'), 'String', obj.parent.get_meta_pref('Target').reference.name);
                     end
                 otherwise
                     fprintf("Plotting records of dimision %d is not supported", dim);
