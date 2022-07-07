@@ -10,7 +10,7 @@ classdef UC480 < Modules.Imaging
         MemId = []
     end
     properties(GetObservable, SetObservable)
-        exposure =      Prefs.Double(NaN, 'units', 'ms', 'min', 0, 'max', inf, 'allow_nan', true, 'set', 'set_exposure');
+        exposure =      Prefs.Double(NaN, 'unit', 'ms', 'min', 0, 'max', inf, 'allow_nan', true, 'set', 'set_exposure');
     end
     properties(GetObservable, SetObservable)
         bitdepth = 0;

@@ -23,17 +23,17 @@ classdef awgPLEscan < Modules.Experiment
         %%% CHECK TRIGGER LINE
         TRIGline = Prefs.Integer(1,'min',1);
         
-        freq_start =    Prefs.Double(2, 'units', 'GHz', 'help_text', 'Sweep start frequenecy. Used in linspace(s,e,p).');
-        freq_end =      Prefs.Double(4, 'units', 'GHz', 'help_text', 'Sweep start frequenecy. Used in linspace(s,e,p).');
+        freq_start =    Prefs.Double(2, 'unit', 'GHz', 'help_text', 'Sweep start frequenecy. Used in linspace(s,e,p).');
+        freq_end =      Prefs.Double(4, 'unit', 'GHz', 'help_text', 'Sweep start frequenecy. Used in linspace(s,e,p).');
         points =        Prefs.Integer(1,'min',1,        'help_text', 'Number of points per frequency sweep. Used in linspace(s,e,p).');
         
-        repumpTime =    Prefs.Double(1, 'units', 'us',  'help_text', 'Length of time to turn the repump laser on');
-        paddingTime =   Prefs.Double(1, 'units', 'us',  'help_text', 'Length of time inbetween laser pulses');
-        resTime =       Prefs.Double(10, 'units', 'us', 'help_text', 'Length of time to turn the resonant laser on');
+        repumpTime =    Prefs.Double(1, 'unit', 'us',  'help_text', 'Length of time to turn the repump laser on');
+        paddingTime =   Prefs.Double(1, 'unit', 'us',  'help_text', 'Length of time inbetween laser pulses');
+        resTime =       Prefs.Double(10, 'unit', 'us', 'help_text', 'Length of time to turn the resonant laser on');
 
-        Amplitude =     Prefs.Double(0.05, 'units', 'V',  'help_text', 'AWG Vpp');
-        SampleRate =    Prefs.Double(2.5, 'units', 'GHz',  'help_text', 'AWG sample rate');
-        phaseOffset =   Prefs.Double(0, 'units', 'rad', 'help_text', 'Phase offset for AWG waveforms');
+        Amplitude =     Prefs.Double(0.05, 'unit', 'V',  'help_text', 'AWG Vpp');
+        SampleRate =    Prefs.Double(2.5, 'unit', 'GHz',  'help_text', 'AWG sample rate');
+        phaseOffset =   Prefs.Double(0, 'unit', 'rad', 'help_text', 'Phase offset for AWG waveforms');
         
         repump_type =   Prefs.MultipleChoice('Off', 'choices', {'Off', 'Once', 'Every Sweep', 'Every Point'}, ...
                             'help_text', sprintf(   ['Where to put repump pulses.\n - Off ==> repump disabled.\n - Once ==> only at the very start (software-triggered).\n', ...

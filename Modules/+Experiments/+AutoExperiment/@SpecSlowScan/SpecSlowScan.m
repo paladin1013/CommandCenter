@@ -8,13 +8,13 @@ classdef SpecSlowScan < Experiments.AutoExperiment.AutoExperiment_invisible
 
     properties(SetObservable,GetObservable)
         % Preferences for thresholding in the patch methods
-        freq_range = Prefs.DoubleArray(299792./[635,640],'units','THz','min',0,'allow_nan',false);
-        SpecCalExposure = Prefs.Double(0.1,'min',0,'units','sec');
+        freq_range = Prefs.DoubleArray(299792./[635,640],'unit','THz','min',0,'allow_nan',false);
+        SpecCalExposure = Prefs.Double(0.1,'min',0,'unit','sec');
         SpecPeakThresh = Prefs.Double(4,'min',0,'allow_nan',false,'help_text','Number of std above noise proms');
         PointsPerPeak = Prefs.Integer(10,'min',0,'allow_nan',false,'help_text','how many points per std for SlowScanClosed');
         StdsPerPeak = Prefs.Double(5,'min',0,'allow_nan',false,'help_text','how wide of a bin around peaks for SlowScanClosed');
-        ROI_Size = Prefs.Double(2,'units','um','allow_nan',false,'help_text','Symmetric box size (width and height) for super res scans around emitter');
-        ROI_points = Prefs.Integer(50,'units','px','allow_nan',false,'help_text','Symmetric pixel count (width and height) for super res scans. Will determine resolution.')
+        ROI_Size = Prefs.Double(2,'unit','um','allow_nan',false,'help_text','Symmetric box size (width and height) for super res scans around emitter');
+        ROI_points = Prefs.Integer(50,'unit','px','allow_nan',false,'help_text','Symmetric pixel count (width and height) for super res scans. Will determine resolution.')
     end
     properties
         patch_functions = {'','Spec2Open','Open2Closed','Closed2SuperRes'};

@@ -11,8 +11,8 @@ classdef CS235CU < Modules.Imaging
         tlCameraSDK;
     end
     properties(GetObservable, SetObservable)
-        exposure =      Prefs.Double(NaN, 'units', 'ms', 'min', 0, 'max', inf, 'allow_nan', true, 'set', 'set_exposure');
-        gain = Prefs.Double(NaN, 'units', 'dB', 'min', 0, 'max', 480, 'allow_nan', true, 'set', 'set_gain');
+        exposure =      Prefs.Double(NaN, 'unit', 'ms', 'min', 0, 'max', inf, 'allow_nan', true, 'set', 'set_exposure');
+        gain = Prefs.Double(NaN, 'unit', 'dB', 'min', 0, 'max', 480, 'allow_nan', true, 'set', 'set_gain');
     end
     properties(GetObservable, SetObservable)
         bitdepth = 0;
