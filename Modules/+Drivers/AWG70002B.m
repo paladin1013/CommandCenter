@@ -67,6 +67,10 @@ classdef AWG70002B < Modules.Driver
             obj.singleton_id = host_resolved;
             Objects(end+1) = obj;
         end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'Protocal', 'IPAddress'};
+            default_vals = {'"visa"', '"18.25.28.214"'};
+        end
     end
 
     methods(Access=private)

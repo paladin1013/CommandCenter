@@ -4,7 +4,7 @@ classdef Line < Modules.Driver
     properties(SetObservable, GetObservable)
         % Note: Maximum values are from manual. Might be hardware-dependent.
         LUT =    Prefs.String('', 'readonly', true, 'display_only', true, ...
-                                            'help', 'LUT number for this attocube stepper.')
+                                            'help', 'LUT number for this attocube stepper.');
         
         % Modes other than 'stp+' are currently NotImplemented. Leaving this line in as a note that it is possible.
 %         mode =      Prefs.MultipleChoice('stp+', 'choices', {'gnd', 'inp', 'cap', 'stp', 'off', 'stp+', 'stp-'},...
@@ -36,9 +36,9 @@ classdef Line < Modules.Driver
         DcVoltage =    Prefs.Double(0,     'min', 0, 'max', 150, 'set', 'set_DcVoltage',      'unit', 'V',...
                                             'help', 'Voltage that is added to the step waveform for a fine offset on the piezo.');
         output =     Prefs.Boolean(false, 'set', 'set_output', ...
-                                            'help', 'Whether the output of this axis is enabled.')
+                                            'help', 'Whether the output of this axis is enabled.');
         moving =     Prefs.Boolean(false, 'readonly', true, ...
-                                            'help', 'Whether the axis is moving.')
+                                            'help', 'Whether the axis is moving.');
     end
     properties(SetAccess=immutable, Hidden)
         parent; % Handle to Drivers.Attocube.ANC350 parent
@@ -62,7 +62,7 @@ classdef Line < Modules.Driver
             if isempty(Objects)
                 Objects = Drivers.Attocube.ANC350.Line.empty(1,0);
             end
-            id = [parent.host '_line' num2str(line)];
+            id = [char(parent.host) '_line' num2str(line)];
             for ii = 1:length(Objects)
                 if isvalid(Objects(ii)) && isvalid(Objects(ii).parent) && isequal(id, Objects(ii).singleton_id)
                     obj = Objects(ii);
@@ -70,7 +70,7 @@ classdef Line < Modules.Driver
                 end
             end
             obj = Drivers.Attocube.ANC350.Line(parent, line);
-            obj.singleton_id = id;
+            obj.singleton_id = char(join(id, ""));
             obj.loadPrefs;
             obj.name = name_array(line);
             Objects(end+1) = obj;

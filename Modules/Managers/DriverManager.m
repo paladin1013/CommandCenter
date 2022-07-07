@@ -7,16 +7,14 @@ classdef DriverManager < Base.Manager
         function obj = DriverManager(handles)
             obj = obj@Base.Manager(Modules.Driver.modules_package,handles,handles.panelDrivers);
             obj.blockOnLoad = handles.menu_drivers;
-            set(handles.experiment_run,'callback',@obj.run)
+            set(handles.experiment_run,'callback',@obj.run);
         end
         
 
     end
     methods(Access=protected)
         function active_module_changed(obj,varargin)
-            if ~isempty(obj.active_module)
-                addlistener(obj.active_module,'save_request',@obj.forceSave);
-            end
+            
         end
         function modules_temp = load_module_str(obj,class_str)
             set(obj.blockOnLoad,'enable','off')
@@ -39,11 +37,19 @@ classdef DriverManager < Base.Manager
                     if Nargin == 0
                         modules_temp{end+1} = eval(sprintf('%s.instance',class_str{i})); %#ok<AGROW>
                     else
-                        prompt = {};
-                        for k = 1:Nargin
-                        prompt{k} = sprintf("Arg%d", k);
+                        try
+                            [arg_names, default_vals] = eval(sprintf('%s.get_default_args',class_str{i}));
+                            assert(length(arg_names) == Nargin, "Number of default args (%d) is inconsistent with Nargin (%d).");
+                            result = inputdlg(arg_names, 'Driver initialization arguments', Nargin, default_vals);
+
+                        catch
+                            warning("`get_default_args` method is not implemented in %s", class_str{i});
+                            prompt = {};
+                            for k = 1:Nargin
+                                prompt{k} = sprintf("Arg%d:",k);
+                            end
+                            result = inputdlg(prompt, 'Driver initialization arguments', Nargin);
                         end
-                        result = inputdlg(prompt, 'Driver initialization arguments', Nargin);
                         argstrcell = join(result, ',');
                         modules_temp{end+1} = eval(sprintf('%s.instance(%s)',class_str{i},argstrcell{1} )); %#ok<AGROW>
                     end
@@ -67,31 +73,18 @@ classdef DriverManager < Base.Manager
                         % added to loaded_modules, will still be locked.
                         munlock(class_str{i});
                     elseif mislocked([class_str{i} '.instance'])
-                        munlock([class_str{i} '.instance'])
+                        munlock([class_str{i} '.instance']);
                     end
                     errors{end+1} = sprintf('Error loading %s:\n%s',class_str{i},err.message); %#ok<AGROW>
                     msg = sprintf('Following error caught in <a href="matlab: opentoline(''%s'',%i)">%s (line %i)</a>:\n%s',err.stack(1).file,err.stack(1).line,err.stack(1).name,err.stack(1).line,err.message);
-                    obj.log(msg,Base.Logger.ERROR) % This part of the log keeps the traceback
+                    obj.log(msg,Base.Logger.ERROR); % This part of the log keeps the traceback
                 end
             end
             if ~isempty(errors)
                 errors = strjoin(errors,'\n\n');
                 obj.error(errors)  % TODO: somehow keep track of traceback for these errors
             end
-            set(obj.blockOnLoad,'enable','on')
-        end
-    end
-    methods(Static)
-        function [textH,h] = abortBox(name,abort_callback)
-            h = msgbox('Experiment Started',sprintf('%s running',name),'help','modal');
-            h.KeyPressFcn='';  % Prevent esc from closing window
-            h.CloseRequestFcn = abort_callback;
-            % Repurpose the OKButton
-            button = findall(h,'tag','OKButton');
-            set(button,'tag','AbortButton','string','Abort',...
-                'callback',abort_callback)
-            textH = findall(h,'tag','MessageBox');
-            addlistener(textH,'String','PostSet',@Base.Manager.resizeMsgBox);
+            set(obj.blockOnLoad,'enable','on');
         end
     end
 end

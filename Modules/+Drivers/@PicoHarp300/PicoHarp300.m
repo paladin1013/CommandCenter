@@ -74,6 +74,10 @@ classdef PicoHarp300 < Modules.Driver
             obj.singleton_id = "PicoHarp300";
             Objects(end+1) = obj;
         end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'MODE'};
+            default_vals = {'2'};
+        end
     end
     
     methods(Access=private)

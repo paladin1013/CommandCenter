@@ -33,6 +33,10 @@ classdef DG645 < Modules.Driver
             obj.singleton_id = obj.serialNo;
             Objects(end+1) = obj;
         end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'host_ip'};
+            default_vals = {'"localhost"'};
+        end
     end
     methods(Access=private)
         function obj = DG645(host_)

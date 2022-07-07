@@ -42,6 +42,10 @@ classdef ANC350 < Modules.Driver
             Objects(end+1) = obj;
             obj.spawnLines;
         end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'host_ip'};
+            default_vals = {'"localhost"'};
+        end
     end
     methods(Access=private)
         function obj = ANC350(host_)

@@ -618,6 +618,7 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
             end
             
             if ~isempty(obj.singleton_id)
+                str2 = '';
                 if ischar(obj.singleton_id)
                     str2 = ['''' obj.singleton_id ''''];
                 elseif isnumeric(obj.singleton_id)
@@ -626,8 +627,17 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
                     catch
                         str2 = '';
                     end
+                elseif length(obj.singleton_id) > 1 && isstring(obj.singleton_id(1)) % In case the singleton id is not combined together
+                    try 
+                        str2 = ['''' char(join(obj.singleton_id, "")) ''''];
+                    catch
+                        str2 = '';
+                    end
                 end
-
+                if isempty(str2)
+                    warning("Missing singleton_id in %s", str);
+                end
+                
                 if ~isempty(str2)
                     if isHTML
                         str = [str '(<font face="Courier New" color="purple">' str2 '</font>)'];

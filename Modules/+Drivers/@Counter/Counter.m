@@ -124,6 +124,10 @@ classdef Counter < Modules.Driver
             obj.singleton_id = id; 
             Objects(end+1) = obj;
         end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'lineIn', 'lineOut'};
+            default_vals = {'"APD1"', '"CounterSync"'};
+        end
     end
     methods
         function delete(obj)

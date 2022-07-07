@@ -37,6 +37,10 @@ classdef Keithley2400 < Modules.Driver
             obj.singleton_id = GPIBAddr;
             Objects(end+1) = obj;
         end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'GPIBNumber', 'GPIBAddr'};
+            default_vals = {'0', '16'};
+        end
     end
     methods (Access=private)
         function obj = Keithley2400(GPIBNumber, GPIBAddr)
