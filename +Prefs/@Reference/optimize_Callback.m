@@ -41,10 +41,10 @@ function obj = optimize_Callback(obj, src, evt)
             % The optimization will automatically stop once current value is out of range.
             max_range = 20*base_step; 
             max_iteration = 50;
-            min_step = 0.1*base_step; % Optimization will stop if the current step is too short and there is no improvement.
+            min_step = ms.min_step_ratio*base_step; % Optimization will stop if the current step is too short and there is no improvement.
             
             fixed_pos = obj.read;
-            sweep_num = 0;
+            sweep_num = ms.sweep_num;
             % Sweep [-5:5]*base_step to find a starting point of optimization
             for k = -sweep_num:sweep_num
                 test_pos = fixed_pos + k*base_step;
@@ -126,7 +126,9 @@ function obj = optimize_Callback(obj, src, evt)
                     end
                 end
             end % End while loop
-            obj.plot_records(1, 1, obj.name);
+            if ms.plot_record
+                obj.plot_records(1, 1, obj.name);
+            end
             
         end
     else % src.Value == false

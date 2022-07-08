@@ -80,7 +80,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             record.val = avg;
             record.st = st;
             obj.record_array{end+1} = record;
-            sweep_num = 0;
+            sweep_num = ms.sweep_num;
 
             % Do sweep along all avaliable axes
             for k = 1:3
@@ -123,18 +123,17 @@ function obj = global_optimize_Callback(obj, src, evt)
             % The optimization will automatically stop once current value is out of range.
             max_range = 20*base_step; 
             max_iteration = 50;
-            min_step = 0.1*base_step; % Optimization will stop if the current step is too short and there is no improvement.
+            min_step = ms.min_step_ratio*base_step; % Optimization will stop if the current step is too short and there is no improvement.
             iteration_num = 0;
             direction_changed = zeros(1, 3);
+            finish_ordinary_optimize = false;
 
 
 
-            while(optimizing == obj.name)
+            while(optimizing == obj.name && ~finish_ordinary_optimize)
                 if all(axis_stop)
                     fprintf("No available axis to be optimized. Abort.\n");
-                    optimizing = "";
-                    src.Value = false;
-                    set_pos(fixed_pos);
+                    finish_ordinary_optimize = true;
                     break;
                 end
                 % Use hill climbing to iteratively optimize all axes:
@@ -175,9 +174,7 @@ function obj = global_optimize_Callback(obj, src, evt)
                             end
                             if all(abs(step) <= min_step)
                                 fprintf("All axes reaches local maximum. Abort.\n");
-                                set_pos(fixed_pos);
-                                optimizing = "";
-                                src.Value = false;
+                                finish_ordinary_optimize = true;
                                 break;
                             end
                             direction_changed(k) = false;
@@ -189,14 +186,19 @@ function obj = global_optimize_Callback(obj, src, evt)
                 end % End for loop
 
             end % End while loop
-            
-            obj.plot_records(optimize_dim, axis_available, axis_ref_name);
-            % Optimize step-only references
-            for k = 1:3
-                if axis_steponly(k)
-                    mp = ms.get_meta_pref(axis_name{k});
-                    src.Value = true;
-                    mp.steponly_optimize_Callback(src);
+            set_pos(fixed_pos);
+            if ms.plot_record
+                obj.plot_records(optimize_dim, axis_available, axis_ref_name);
+            end
+            if optimizing == obj.name
+                % Optimize step-only references
+                for k = 1:3
+                    if axis_steponly(k)
+                        mp = ms.get_meta_pref(axis_name{k});
+                        src.Value = true;
+                        optimizing = "";
+                        mp.steponly_optimize_Callback(src);
+                    end
                 end
             end
             optimizing = "";

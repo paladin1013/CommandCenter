@@ -41,10 +41,9 @@ function obj = steponly_optimize_Callback(obj, src, evt)
             % The optimization will automatically stop once current value is out of range.
             max_range = 20*base_step; 
             max_iteration = 50;
-            min_step = 0.1*base_step; % Optimization will stop if the current step is too short and there is no improvement.
             
             temp_pos = start_pos;
-            temp_val = obj.get_avg_val(10);
+            temp_val = obj.get_avg_val;
             max_val = temp_val;
 
 
@@ -73,7 +72,7 @@ function obj = steponly_optimize_Callback(obj, src, evt)
                 end
                 test_pos = temp_pos + step;
                 obj.writ(test_pos);
-                [avg, st] = obj.get_avg_val(10);
+                [avg, st] = obj.get_avg_val;
                 record.pos = test_pos;
                 record.val = avg;
                 record.st = st;
@@ -109,7 +108,9 @@ function obj = steponly_optimize_Callback(obj, src, evt)
                 max_val = max(temp_val, max_val);
 
             end % End while loop
-            obj.plot_records(1, 1, obj.name);
+            if ms.plot_record
+                obj.plot_records(1, 1, obj.name);
+            end
             
         end
     else % src.Value == false

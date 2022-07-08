@@ -13,6 +13,11 @@ classdef MetaStage < Base.Module
         joy_step_x = Prefs.Double(0.1);
         joy_step_y = Prefs.Double(0.1);
         joy_step_z = Prefs.Double(0.1);
+        sweep_num = Prefs.Integer(0, 'min', 0, 'max', 10, 'help', 'Do parameter sweep before hill-climbing optimization to avoid being trapped into local maximum.');
+        sample_num = Prefs.Integer(5, 'min', 1, 'max', 100, 'help', 'Number of samples to average in each optimization step.')
+        sample_interval = Prefs.Double(0.1, 'min', 0, 'max', 10, 'help', 'Time delay between two samples.')
+        plot_record = Prefs.Boolean(true, 'help', 'Whether to plot the intermediate results during the optimization.')
+        min_step_ratio = Prefs.Double(0.1, 'min', 0.01, 'max', 1, 'help', 'The minimum step (resolution) of the optimiaztion')
     end
     properties(SetAccess=immutable)
         name;
@@ -24,7 +29,7 @@ classdef MetaStage < Base.Module
     
     properties(SetObservable, AbortSet)
         show_prefs = {'X', 'Y', 'Z', 'Target'};
-        prefs = {'X', 'Y', 'Z', 'Target', 'key_step_x', 'key_step_y', 'key_step_z', 'joy_step_x', 'joy_step_y', 'joy_step_z'};
+        prefs = {'X', 'Y', 'Z', 'Target', 'key_step_x', 'key_step_y', 'key_step_z', 'joy_step_x', 'joy_step_y', 'joy_step_z', 'sweep_num', 'smaple_num', 'sample_interval', 'min_step_ratio'};
     end
     methods(Static)
         function obj = instance(name, manager)

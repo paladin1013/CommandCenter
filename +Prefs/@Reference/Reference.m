@@ -69,31 +69,38 @@ classdef Reference < Base.Pref
         end
 
 
-        function [avg, st] = get_avg_val(obj, average_time, max_std_ratio)
+        function [avg, st] = get_avg_val(obj, sample_num, max_std_ratio)
             target = obj.parent.get_meta_pref('Target');
-            if ~exist('average_time', 'var')
-                average_time = 5;
+            if ~exist('sample_num', 'var')
+                sample_num = obj.parent.sample_num;
             end
             if ~exist('max_std_ratio', 'var')
                 max_std_ratio = 0.2;
             end
-            test_vals = zeros(1, average_time);
-            for k = 1:average_time
-                pause(0.1)
+            test_vals = zeros(1, sample_num);
+            for k = 1:sample_num
+                pause(obj.parent.sample_interval);
                 test_vals(k) = target.read;
             end
             avg = mean(test_vals);
             st = std(test_vals);
             if abs(st/avg) > max_std_ratio
                 % The standart deviation is too large. Retake the measurement.
-                average_time = average_time*2;
-                test_vals = zeros(1, average_time);
-                for k = 1:average_time
-                    test_vals(k) = target.read;
-                    pause(0.1)
+                sample_num = sample_num*2;
+                test_vals_new = zeros(1, sample_num);
+                for k = 1:sample_num
+                    test_vals_new(k) = target.read;
+                    pause(obj.parent.sample_interval);
                 end
-                avg = mean(test_vals);
-                st = std(test_vals);
+                avg_new = mean(test_vals_new);
+                st_new = std(test_vals_new);
+                if abs(st_new/avg_new) > max_std_ratio
+                    avg = mean([test_vals, test_vals_new]);
+                    st = std([test_vals, test_vals_new]);
+                else
+                    avg = avg_new;
+                    st = st_new;
+                end
             end
         end
 

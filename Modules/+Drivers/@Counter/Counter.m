@@ -86,7 +86,7 @@ classdef Counter < Modules.Driver
             try
                 obj.count = counts;
             catch
-                % Will causle error in javaTimerArray(lcv).start
+                % Will cause error in javaTimerArray(lcv).start
             end
 
         end
