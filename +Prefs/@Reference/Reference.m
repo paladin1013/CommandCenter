@@ -79,8 +79,8 @@ classdef Reference < Base.Pref
             end
             test_vals = zeros(1, average_time);
             for k = 1:average_time
-                test_vals(k) = target.read;
                 pause(0.1)
+                test_vals(k) = target.read;
             end
             avg = mean(test_vals);
             st = std(test_vals);
