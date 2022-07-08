@@ -142,6 +142,11 @@ classdef Line < Modules.Driver
             end
             obj.steps_moved_prev = val;
         end
+        function reset_steps_moved(obj)
+            fprintf("Resetting `steps_moved` to 0\n");
+            obj.steps_moved = 0;
+            obj.steps_moved_prev = 0;
+        end
     end
     
     methods(Hidden)
