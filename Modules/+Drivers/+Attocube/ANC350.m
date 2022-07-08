@@ -62,7 +62,7 @@ classdef ANC350 < Modules.Driver
             end
         end
         function spawnLines(obj)
-            for ii = 1:7    % Max number of possible lines according to manual
+            for ii = 1:3    % Max number of possible lines according to manual
 
                 try         % Try to make a line; an expected error will occur if the line does not exist.
                     obj.lines = [obj.lines Drivers.Attocube.ANC350.Line.instance(obj, ii)]; 

@@ -4,9 +4,9 @@ classdef Manual < Modules.Database
     properties(SetAccess=private)
         autosave = false;
     end
-    properties(SetObservable)
-        ImPath = '.';
-        ExpPath = '.';
+    properties(SetObservable, GetObservable)
+        ImPath = Prefs.String('.');
+        ExpPath = Prefs.String('.');
     end
     properties
         prefs = {'ImPath','ExpPath'};

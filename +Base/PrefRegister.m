@@ -50,8 +50,6 @@ classdef PrefRegister < Base.Singleton
             % place.
             assert(nargin > 2, 'Base.PrefRegister.getMenu: parentObject (figure or uimenu) and callback (function_handle) must be provided as arguments of getMenu().')
             
-            nargin(callback)
-            
 %             assert(nargin(callback) == 1, 'Base.PrefRegister.getMenu: Callback must accept exactly one argument.');
             assert(mod(numel(varargin), 2) == 0, 'Base.PrefRegister.getMenu expects an even number of ''Name'', Value pairs.');
             

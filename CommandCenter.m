@@ -35,7 +35,7 @@ function varargout = CommandCenter(varargin)
 
 % Edit the above text to modify the response to help CommandCenter
 
-% Last Modified by GUIDE v2.5 28-Apr-2021 20:31:58
+% Last Modified by GUIDE v2.5 07-Jul-2022 19:32:16
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -682,6 +682,18 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
     set(hObject,'BackgroundColor','white');
 end
 
+% --- Executes during object creation, after setting all properties.
+function drivers_select_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to stage_select (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
 
 
 % --- Executes during object creation, after setting all properties.
@@ -883,8 +895,7 @@ function drivers_Callback(hObject, eventdata, handles)
 % hObject    handle to reset (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-close(handles.figure1);
-CommandCenter;
+Base.propedit(handles.Managers.Drivers)
 
 
 % --------------------------------------------------------------------
@@ -1006,3 +1017,4 @@ function menu_drivers_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 handles.Managers.Drivers.getAvail(hObject);
+

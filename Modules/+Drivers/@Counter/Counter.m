@@ -3,15 +3,15 @@ classdef Counter < Modules.Driver
     %   Sets up infinite counter, and samples at the end of each dwell time
     
     properties
-        dwell = 1;              % ms (clock speed of PulseTrain).  Takes effect at start.
-        update_rate = 0.1;      % s (time between Matlab reading DAQ).  Takes effect at start.
-        WindowMax = 60;         % Max axes width in seconds
         prefs = {'dwell','update_rate','WindowMax', 'count'};
         readonly_prefs = {'count'};
         pltH;
     end
     properties(SetObservable, GetObservable)
         count = Prefs.Double(0, 'readonly', true);                % Counts per second. For other modules to inspect.
+        dwell = Prefs.Double(1);              % ms (clock speed of PulseTrain).  Takes effect at start.
+        update_rate = Prefs.Double(0.1);      % s (time between Matlab reading DAQ).  Takes effect at start.
+        WindowMax = Prefs.Double(60);         % Max axes width in seconds
 
     end
     properties(Access=private)
@@ -56,6 +56,9 @@ classdef Counter < Modules.Driver
                 error('Add lines below, and load again.\n%s',strjoin(msg,'\n'))
             end
             obj.loadPrefs;
+            % if ~obj.running
+            %     obj.start;
+            % end
 
         end
         function stopTimer(obj,varargin)
@@ -80,7 +83,12 @@ classdef Counter < Modules.Driver
                 counts = counts/(obj.dwell/1000);
                 obj.callback(counts,nsamples)
             end
-            obj.count = counts;
+            try
+                obj.count = counts;
+            catch
+                % Will causle error in javaTimerArray(lcv).start
+            end
+
         end
         function updateView(obj,counts,samples)
             % Default GUI callback
@@ -107,7 +115,7 @@ classdef Counter < Modules.Driver
     methods(Static)
         function obj = instance(lineIn,lineOut)
             mlock;
-            id = [lineIn,lineOut]; 
+            id = [char(lineIn),char(lineOut)];  % ["string1", "string2"] will generate string array, which is not combined together
             % Using cell `id` directly may lead to numerous problems in encoding preferences. 
             % Should use char array concatenation instead.
             persistent Objects
@@ -132,6 +140,11 @@ classdef Counter < Modules.Driver
     methods
         function delete(obj)
             obj.reset;
+            try
+                obj.closeReq;
+            catch
+            end
+            
             if ~isempty(obj.fig)&&isvalid(obj.fig)
                 delete(obj.fig)
             end
