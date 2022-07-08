@@ -5,10 +5,22 @@ function fig = plot_records(obj, dim, axis_available, axis_name)
         axis_available = 1;
     end
     fig = figure;
-    ax = axis;
-    record_dim = sum(~isnan(obj.record_array{1}.pos));
+    ax = axes('Parent', fig);
+    record_dim = length(find(axis_available));
     assert(dim == record_dim, sprintf("Input dimension (%d) is not consistent with recorded position dimension (%d).", length(find(axis_available)), dim));
-    
+    function cbh = draw_color_bar(fig, min, max, cmap, pos)
+        ax2 = axes('Parent', fig);
+        colormap(cmap);
+        cbh = colorbar('east'); % Colorbar handle
+        ax2.Visible = 'off';
+        caxis([min, max]);
+        ylabel(cbh, 'Iteration number', 'Rotation', 90);
+        cbh.Label.Position(1) = 2;
+        cbh.Position(1) = 0.9;
+        if exist('pos', 'var')
+            set(cbh, 'Position', pos);
+        end
+    end
     switch dim
         case 1
             n = length(obj.record_array);
@@ -38,7 +50,6 @@ function fig = plot_records(obj, dim, axis_available, axis_name)
                 set(get(gca, 'YLabel'), 'String', obj.parent.get_meta_pref('Target').reference.name);
                 
             end
-            
         case 2
             n = length(obj.record_array);
             x = zeros(1, n);
@@ -71,7 +82,11 @@ function fig = plot_records(obj, dim, axis_available, axis_name)
             if ~isempty(obj.parent.get_meta_pref('Target').reference)
                 set(get(gca, 'ZLabel'), 'String', obj.parent.get_meta_pref('Target').reference.name);
             end
+            
         otherwise
             fprintf("Plotting records of dimision %d is not supported", dim);
+            return;
     end
+    ax.Position(3) = 0.7;
+    draw_color_bar(fig, 1, n, flipud(colormap('hot')))
 end
