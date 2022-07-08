@@ -48,6 +48,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             axis_available = zeros(1, 3);
             axis_stop = ones(1, 3);
             axis_reference = cell(1, 3); % {Prefs.Reference()}
+            axis_steponly = zeros(1, 3);
             axis_ref_name = cell(1, 3);
 
             base_step = zeros(1, 3);
@@ -55,11 +56,17 @@ function obj = global_optimize_Callback(obj, src, evt)
             for k = 1:3
                 mp = ms.get_meta_pref(axis_name{k});
                 if ~isempty(mp.reference)
-                    axis_available(k) = 1;
-                    axis_stop(k) = 0;
+                    if isprop(mp.reference.parent, 'steponly') && mp.reference.parent.steponly
+                        % Step-only preferences should not participate in global optimization. Optimization of step-only references should be done individually in the end of the procedure. 
+                        axis_available(k) = 0;
+                        axis_steponly(k) = 1;
+                    else
+                        axis_available(k) = 1;
+                        axis_stop(k) = 0;
+                        base_step(k) = ms.(sprintf("key_step_%s", lower(axis_name{k})));
+                    end
                     axis_reference{k} = mp;
                     start_pos(k) = mp.read;
-                    base_step(k) = ms.(sprintf("key_step_%s", lower(axis_name{k})));
                     axis_ref_name{k} = mp.reference.name;
                 end
             end
@@ -73,7 +80,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             record.val = avg;
             record.st = st;
             obj.record_array{end+1} = record;
-            sweep_num = 3;
+            sweep_num = 0;
 
             % Do sweep along all avaliable axes
             for k = 1:3
@@ -184,6 +191,16 @@ function obj = global_optimize_Callback(obj, src, evt)
             end % End while loop
             
             obj.plot_records(optimize_dim, axis_available, axis_ref_name);
+            % Optimize step-only references
+            for k = 1:3
+                if axis_steponly(k)
+                    mp = ms.get_meta_pref(axis_name{k});
+                    src.Value = true;
+                    mp.steponly_optimize_Callback(src);
+                end
+            end
+            optimizing = "";
+            src.Value = false;
         end
     else % src.Value == false
         if obj.name == optimizing
