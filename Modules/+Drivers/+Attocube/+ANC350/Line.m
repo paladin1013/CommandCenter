@@ -45,6 +45,7 @@ classdef Line < Modules.Driver
     end
     properties(SetAccess=immutable)
         line;   % Index of the physical line of the parent that this D.A.Line controls.
+        steponly = true;
     end
     properties(Access=private)
         steps_moved_prev =   0; % To calculate how many steps it should move under the current command.

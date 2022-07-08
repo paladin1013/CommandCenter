@@ -9,7 +9,9 @@ classdef Reference < Base.Pref
         default = [];
         ui = Prefs.Inputs.ReferenceField;
         reference = []; % Prefs.Numeric.empty(1,0);
-        
+        steponly = false; % Steponly being `true` means this referenced value can only be changed gradually (e.g.Piezo, Resonant Laser) but not shift dramatically. 
+        % Also, errors may occor when it come back to a previously set value.
+        % This reference will be no longer allowed to participate in global optimization, and the steponly_optimizate requires the endpoint to be the maximal position. 
         lsh = [];
         record_array;
     end
@@ -54,8 +56,10 @@ classdef Reference < Base.Pref
             if ismember('Prefs.Inputs.LabelControlBasic', superclasses(val.ui)) && ~isa(val, 'Prefs.Reference') && ~ismember('Prefs.Reference', superclasses(val)) && ~isequal(obj.parent, val.parent)
                 obj.reference = val;
                 obj.readonly = val.readonly;
+                if isprop(val.parent, "steponly") && val.parent.steponly
+                    obj.steponly = true;
+                end
                 obj.parent.set_meta_pref(obj.property_name, obj);
-
                 notify(obj.parent, 'update_settings');
             end
         end
@@ -152,6 +156,7 @@ classdef Reference < Base.Pref
         end
         obj = optimize_Callback(obj, src, evt);
         obj = global_optimize_Callback(obj, src, evt);
+        obj = steponly_optimize_Callback(obj, src, evt);
         fig = plot_records(obj, dim, axis_available, axis_name);
     end
 end
