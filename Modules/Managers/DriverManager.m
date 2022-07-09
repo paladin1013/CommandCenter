@@ -44,6 +44,9 @@ classdef DriverManager < Base.Manager
             obj.log('Destroying <a href="matlab: opentoline(''%s'',1)">%s</a>',which(class(hObject)),class(hObject))
             mask = obj.check_module_str(class(hObject));
             obj.remove_module_args(class(hObject));
+            if strcmp(class(hObject), "Drivers.Counter")
+                hObject.closeReq;
+            end
             obj.modules(mask) = [];
         end
     end

@@ -20,10 +20,10 @@ classdef GalvoVoltage < Modules.Imaging
     end
     properties(Access=private)
         counter_was_running = false;
+        counter             % Handle to counter driver
     end
     properties(SetAccess=immutable)
         galvos              % Handle to galvo controller
-        counter             % Handle to counter driver
     end
     
     methods(Access=private)
@@ -194,6 +194,9 @@ classdef GalvoVoltage < Modules.Imaging
             obj.resolution(pos) = val;
         end
         function StartCounterCallback(obj,varargin)
+            if ~isvalid(obj.counter)
+                obj.counter = Drivers.Counter.instance('APD1','CounterSync');
+            end
             obj.counter.start;
         end
     end

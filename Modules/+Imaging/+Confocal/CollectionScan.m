@@ -16,9 +16,10 @@ classdef CollectionScan < Modules.Imaging
     end
     properties(SetAccess=immutable)
         galvos              % Handle to galvo controller
+    end
+    properties(private)
         counter             % Handle to counter driver
     end
-    
     methods(Access=private)
         function obj = CollectionScan()
             obj.uses_stage = 'Stages.CollectionGalvos';
@@ -132,6 +133,9 @@ classdef CollectionScan < Modules.Imaging
             obj.resolution(pos) = val;
         end
         function StartCounterCallback(obj,varargin)
+            if ~isvalid(obj.counter)
+                obj.counter = Drivers.Counter.instance('APD1','CounterSync');
+            end
             obj.counter.start;
         end
     end

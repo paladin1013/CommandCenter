@@ -16,9 +16,10 @@ classdef Galvo_Axiovert200 < Modules.Imaging
     end
     properties(SetAccess=immutable)
         galvos              % Handle to galvo controller
+    end
+    properties(private)
         counter             % Handle to counter driver
     end
-    
     methods(Access=private)
         function obj = Galvo_Axiovert200()
             obj.uses_stage = 'Stages.Galvos_Axiovert200';
@@ -132,6 +133,9 @@ classdef Galvo_Axiovert200 < Modules.Imaging
             obj.resolution(pos) = val;
         end
         function StartCounterCallback(obj,varargin)
+            if ~isvalid(obj.counter)
+                obj.counter = Drivers.Counter.instance('APD1','CounterSync');
+            end
             obj.counter.start;
         end
     end

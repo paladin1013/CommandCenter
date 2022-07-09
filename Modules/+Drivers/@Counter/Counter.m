@@ -139,6 +139,9 @@ classdef Counter < Modules.Driver
     end
     methods
         function delete(obj)
+            if ~isempty(obj.timerH)
+                stop(obj.timerH);
+            end
             obj.reset;
             try
                 obj.closeReq;

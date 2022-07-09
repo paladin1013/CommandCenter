@@ -164,6 +164,9 @@ classdef Piezo < Modules.Imaging
             obj.resolution(pos) = val;
         end
         function StartCounterCallback(obj,varargin)
+            if ~isvalid(obj.counter)
+                obj.counter = Drivers.Counter.instance('APD1','CounterSync');
+            end
             obj.counter.start;
         end
         function mirrorUp(obj)
