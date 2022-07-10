@@ -2,18 +2,28 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
     %Spec automatically takes Lifetime at sites
     
     properties
-        prerun_functions = {'preLifetime'};
+        prerun_functions = {''};
         patch_functions = {''};
     end
     properties(Access=private)
         validROIRect; % Handle to imrect of validROI
         listeners;   % Listeners to valid ROI
-        ax;
+        axH;            % Handle to axes (children of figH)
+        imH;            % Handle to image (children of axH)
+        ax2H;           % Handle to axes (children of figH)
+        sitesH;         % Handle to sites scatter plot (children of ax2H)
     end
     properties(SetObservable, GetObservable)
-        enable_validROI = Prefs.Boolean(true);
+        enableValidROI = Prefs.Boolean(true);
         imageROI = zeros(2, 2);
         validROI = zeros(2, 2); % Only sites inside this area are valid
+
+        % struct of external input sites (eg. EMCCD wide field scan)
+            % relPos (2*N): relative position based on validROI, 
+            % wavelengths_nm (1*N): resonant wavelengths_nm of each emitter 
+        externalSites = struct('relPos', [], 'wavelengths_nm', []); 
+        figH;           % Handle to figure
+
     end
     methods(Static)
         function obj = instance(varargin)
@@ -71,7 +81,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
     end
     methods(Access=private)
         function obj = Lifetime()
-            obj.experiments = Experiments.PulseSequenceSweep.LifetimeMeasurement.instance;
+            obj.experiments = Experiments.SlowScan.Open.instance;
+            obj.imaging_source = Sources.Cobolt_PB.instance;
             obj.loadPrefs;
         end
     end
@@ -113,71 +124,71 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
 
             if isempty(managers.Imaging.current_image)
-                source_on = imaging_source.source_on;
-                imaging_source.on;
+                source_on = obj.imaging_source.source_on;
+                obj.imaging_source.on;
                 sites.image = managers.Imaging.snap; %take image snapshot
                 if ~source_on
-                    imaging_source.off;
+                    obj.imaging_source.off;
                 end
             else
                 sites.image = managers.Imaging.current_image.info;
             end
 
-            f = figure;
-            ax_temp = axes('parent',f);
+            obj.figH = figure;
+            obj.axH = axes('parent',obj.figH);
+            obj.ax2H = axes('parent',obj.figH); % For sites scatter plot
+            obj.sitesH = scatter(obj.ax2H, [], []);
+            cbH = colorbar(obj.ax2H);
+            cbH.Visible = 'off';
+            colormap(obj.ax2H, 'jet');
+            obj.ax2H.Visible = 'off';
+            axis(obj.ax2H, 'equal');
+            linkaxes([obj.axH, obj.ax2H]);
+            % set([obj.axH, obj.ax2H], 'Position', [0.1, 0.1, 0.8, 0.8])
+            obj.ax2H.Position = obj.axH.Position;
            
 
-            imH = imagesc(sites.image.ROI(1,:),sites.image.ROI(2,:),sites.image.image,'parent',ax_temp);
-            colormap(ax_temp,managers.Imaging.set_colormap);
-            set(ax_temp,'ydir','normal')
-            axis(ax_temp,'image')
-            obj.ax = ax_temp;
-             if obj.enable_validROI
-                obj.validROI = sites.image.ROI;
-                obj.imageROI = sites.image.ROI;
-                xmin = obj.validROI(1,1);
-                xmax = obj.validROI(1,2);
-                ymin = obj.validROI(2,1);
-                ymax = obj.validROI(2,2);
-                obj.listeners = addlistener(obj, 'validROI', 'PostSet', @obj.updateROI);
-                obj.validROIRect = imrect(ax_temp,[xmin,ymin,xmax-xmin,ymax-ymin]);
-                obj.validROIRect.Deletable = false;
-                obj.validROIRect.setColor('b');
-                obj.validROIRect.setPositionConstraintFcn(@obj.constrainROI);
-                validROIGroup = findall(ax_temp,'tag','imrect');
-                for i = 1:length(validROIGroup.Children)
-                    callback = validROIGroup.Children(i).ButtonDownFcn;
-                    validROIGroup.Children(i).ButtonDownFcn = @(a,b)obj.prepROI(a,b,callback);
-                end
+            obj.imH = imagesc(sites.image.ROI(1,:),sites.image.ROI(2,:),sites.image.image,'parent',obj.axH);
+            colormap(obj.axH,managers.Imaging.set_colormap);
+            set(obj.axH,'ydir','normal')
+            axis(obj.axH,'image')
+            obj.validROI = sites.image.ROI;
+            obj.imageROI = sites.image.ROI;
+            xmin = obj.validROI(1,1);
+            xmax = obj.validROI(1,2);
+            ymin = obj.validROI(2,1);
+            ymax = obj.validROI(2,2);
+            obj.listeners = addlistener(obj, 'validROI', 'PostSet', @obj.updateROI);
+            obj.listeners(2) = addlistener(obj, 'externalSites', 'PostSet', @obj.updateExternalSites);
+            obj.listeners(3) = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
+            obj.validROIRect = imrect(obj.axH,[xmin,ymin,xmax-xmin,ymax-ymin]);
+            obj.validROIRect.Deletable = false;
+            obj.validROIRect.setColor('b');
+            obj.validROIRect.setPositionConstraintFcn(@obj.constrainROI);
+            validROIGroup = findall(obj.axH,'tag','imrect');
+            for i = 1:length(validROIGroup.Children)
+                callback = validROIGroup.Children(i).ButtonDownFcn;
+                validROIGroup.Children(i).ButtonDownFcn = @(a,b)obj.prepROI(a,b,callback);
             end
-            switch obj.site_selection
-                case 'Peak finder'
-                    title('Drag red region to set thresholds, then close adjustment window when done.')
-                    [scatterH,panelH] = imfindpeaks(imH); %returns array of NV locations
-                    uiwait(panelH);
-                    sites.positions = [scatterH.XData',scatterH.YData'];
-                    sites.meta = scatterH.UserData;
-                case 'Grid'
-                    sites = Experiments.AutoExperiment.AutoExperiment_invisible.select_grid_sites(sites,ax_temp);
-                case 'Manual sites'
-                    title(sprintf('Click on all positions\nDrag to adjust\nRight click on point to get menu to delete.\n\nRight click on image to finish (DO NOT CLOSE!)'))
-                    imH.UserData.h = [];
-                    imH.ButtonDownFcn = @im_clicked;
-                    uiwait(f);
-                    sites.positions = NaN(0,2);
-                    for i = 1:length(imH.UserData.h)
-                        if isvalid(imH.UserData.h(i))
-                            sites.positions(end+1,:) = imH.UserData.h(i).getPosition;
-                        end
-                    end
-            end
-            % Add in column of NaNs for Z (this will prevent setting Z when
-            % moving to emitter position; Track can still modify global Z
-            % if desired.
+            % Just for debug tests
+            obj.externalSites.relPos = [[0.5, 0.25, 0.75, 0.25, 0.75]; [0.5, 0.25, 0.75, 0.75, 0.25]];
+            obj.externalSites.wavelengths_nm = [619, 619.2, 619.4, 619.6, 619.8];
+            uiwait(obj.figH);
+
+            %         title(sprintf('Click on all positions\nDrag to adjust\nRight click on point to get menu to delete.\n\nRight click on image to finish (DO NOT CLOSE!)'))
+            %         obj.imH.UserData.h = [];
+            %         obj.imH.ButtonDownFcn = @im_clicked;
+            %         uiwait(obj.figH);
+            %         sites.positions = NaN(0,2);
+            %         for i = 1:length(obj.imH.UserData.h)
+            %             if isvalid(obj.imH.UserData.h(i))
+            %                 sites.positions(end+1,:) = obj.imH.UserData.h(i).getPosition;
+            %             end
+            %         end
             sites.positions = [sites.positions, NaN(size(sites.positions,1),1)];
             sites.validROI = obj.validROI;
 
-            close(f)
+            close(obj.figH)
             assert(~isempty(sites.positions),'No positions!')
             function im_clicked(hObj,eventdata)
                 if eventdata.Button ~= 1
@@ -192,7 +203,55 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 end
             end
         end
-        
+        function updateExternalSites(obj, hObj, eventdata)
+            N = size(obj.externalSites.relPos, 2);
+            assert(size(obj.externalSites.relPos, 1) == 2, sprintf("Size of obj.externalSites.resPos should be 2*N (N=%d)", N));
+
+            if isempty(obj.externalSites.wavelengths_nm) || all(size(obj.externalSites.wavelengths_nm) == [1, N])
+                % hold(obj.axH, 'on') 
+                xrel = obj.externalSites.relPos(1, :);
+                yrel = obj.externalSites.relPos(2, :);
+                xmin = obj.validROI(1,1);
+                xmax = obj.validROI(1,2);
+                ymin = obj.validROI(2,1);
+                ymax = obj.validROI(2,2);
+                xabs = xmin+xrel*(xmax-xmin);
+                yabs = ymin+yrel*(ymax-ymin);
+                obj.sitesH.XData = xabs;
+                obj.sitesH.YData = yabs;
+                obj.sitesH.SizeData = ones(1, N)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+                cbh = obj.ax2H.Colorbar;
+                if  ~all(size(obj.externalSites.wavelengths_nm) == [1, N])
+                    % Draw scatter plot with frequency
+                    cbh.Visible = 'off';
+                    obj.sitesH.CData = zeros(1, N);
+                else
+                    % Draw scatter plot without frequency
+                    wls = obj.externalSites.wavelengths_nm;
+                    cbh.Visible = 'on';
+                    obj.sitesH.CData = wls;
+                    ylabel(cbh, 'Resonance wavelength (nm)', 'Rotation', 90);
+                    cbh.Label.Position(1) = 3;
+                    if min(wls)< max(wls)
+                        caxis(obj.ax2H, [min(wls), max(wls)]);
+                    end
+                end
+                obj.ax2H.Visible = 'off';
+                drawnow;
+            end
+            
+        end
+
+        function adjustMarkerSize(obj, hObj, eventData)
+            if ~isempty(obj.sitesH)
+                N = size(obj.externalSites.relPos, 2);
+                obj.sitesH.SizeData = ones(1, N)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+            end
+        end
+
+        function locateSites(obj)
+            
+        end
         function updateROI(obj,varargin)
             % Updates imrect from imager ROI change
             roi = obj.validROI;
@@ -202,6 +261,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             ymax = roi(2,2);
             pos = [xmin,ymin,xmax-xmin,ymax-ymin];
             obj.validROIRect.setPosition(pos);
+            obj.updateExternalSites;
         end
         function pos = constrainROI(obj,pos,varargin)
             maxROI = obj.imageROI;
@@ -215,7 +275,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             pos(4) = roi(2,2)-roi(2,1);
         end
         function prepROI(obj,hObj,eventdata,callback)
-            f = Base.getParentFigure(obj.ax);
+            f = Base.getParentFigure(obj.axH);
             callback(hObj,eventdata);  % This assigns its own WindowButtonUpFcn
             ButtonUp = f.WindowButtonUpFcn;
             f.WindowButtonUpFcn = @(a,b)obj.newROI(a,b,ButtonUp);
@@ -243,9 +303,6 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         function PostRun(obj,status,managers,ax)
             %turn laser off after running
             obj.imaging_source.off;
-        end
-        function preLifetime(obj,exp)
-            obj.imaging_source.on;
         end
     end
 end
