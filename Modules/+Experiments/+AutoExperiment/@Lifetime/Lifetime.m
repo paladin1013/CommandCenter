@@ -12,6 +12,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         imH;            % Handle to image (children of axH)
         ax2H;           % Handle to axes (children of figH)
         sitesH;         % Handle to sites scatter plot (children of ax2H)
+        sites;          % sites data
     end
     properties(SetObservable, GetObservable)
         enableValidROI = Prefs.Boolean(true);
@@ -19,12 +20,12 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         validROI = zeros(2, 2); % Only sites inside this area are valid
 
         % struct of external input sites (eg. EMCCD wide field scan)
-            % relPos (2*N): relative position based on validROI, 
-            % wavelengths_nm (1*N): resonant wavelengths_nm of each emitter 
+            % relPos (N*2): relative position based on validROI, 
+            % wavelengths_nm (N*1): resonant wavelengths_nm of each emitter 
         importedSites = struct('relPos', [], 'wavelengths_nm', [], 'relSize', []); 
         figH;           % Handle to figure
         includeWavelength = Prefs.Boolean(true, 'help', 'Whether wavelength is considered in each site. Must be set to false to enable manually select');
-        sitesFile = Prefs.File('filter_spec','*.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.relPos`, `data.wavelegnths_nm`.',...
+        sitesFile = Prefs.File('filter_spec','*.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.relPos`, `data.wavelengths_nm`.',...
         'custom_validate','validate_sites_data');
     end
     methods(Static)
@@ -98,6 +99,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 % Returns struct sites, with fields:
                 %   image = image used in finding sites
                 %   positions = [Nx2] array of positions
+                %   wavelengths_nm = [N]
                 %   manual_input = boolean, true if positions were user-supplied
                 %   meta = empty if manual_input, else UserData from imfindpeaks
             persistent last_path
@@ -139,7 +141,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 end
             end
 
-            obj.figH = figure;
+            obj.figH = figure('Position', [500,  100, 1000, 1000]);
             obj.axH = axes('parent',obj.figH);
             obj.ax2H = axes('parent',obj.figH); % For sites scatter plot
             obj.sitesH = scatter(obj.ax2H, [], []);
@@ -168,19 +170,9 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             obj.listeners(3) = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
             obj.validROIRect = drawrectangle(obj.axH,'Position', [xmin,ymin,xmax-xmin,ymax-ymin], 'Color', 'b');
             obj.validROIRect.Deletable = false;
-%             obj.validROIRect.setPositionConstraintFcn(@obj.constrainROI);
-            % validROIGroup = findall(obj.axH,'tag','imrect');
-            % for i = 1:length(validROIGroup.Children)
-            %     callback = validROIGroup.Children(i).ButtonDownFcn;
-            %     validROIGroup.Children(i).ButtonDownFcn = @(a,b)obj.prepROI(a,b,callback);
-            % end
+            obj.validROI = sites.image.ROI;
             obj.listeners(4) = addlistener(obj.validROIRect, 'ROIMoved', @obj.newROI);
-
-
-            % Just for debug tests
-            % data.relPos = [[0.5, 0.25, 0.75, 0.25, 0.75]; [0.5, 0.25, 0.75, 0.75, 0.25]];
-            % data.wavelengths_nm = [619, 619.2, 619.4, 619.6, 619.8];
-            title(sprintf('Drag the ROI to fit the imported site region\nRight click on figure to confirm (DO NOT CLOSE!)'));
+            set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to fit the imported site region\nRight click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE!)'));
             obj.imH.ButtonDownFcn = @im_clicked2; % Wait until next click
             uiwait(obj.figH);
 
@@ -204,6 +196,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             for k = 1:length(xabs)
                 if obj.includeWavelength
                     h = drawpoint(obj.axH, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k)/10, 'Color', colors(k, :));
+                    h.UserData = wls(k);
                 else
                     h = drawpoint(obj.axH, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k)/10);
                 end
@@ -213,18 +206,30 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                     obj.imH.UserData.h(end+1) = h;
                 end
             end
-            title(sprintf('Drag to adjust\nRight click on point to get menu to delete.\n\nRight click on image to finish (DO NOT CLOSE!)'))
+            if ~obj.includeWavelength
+                title(sprintf('Drag to adjust\nLeft click to add new points\nRight click on point to get menu to delete.\nRight click on image to finish (DO NOT CLOSE!)'))
+            else
+                title(sprintf('Drag to adjust\nRight click on point to get menu to delete.\n\nRight click on image to finish (DO NOT CLOSE!)'))
+            end
             
             obj.imH.ButtonDownFcn = @im_clicked;
             uiwait(obj.figH);
-            %         sites.positions = NaN(0,2);
-            %         for i = 1:length(obj.imH.UserData.h)
-            %             if isvalid(obj.imH.UserData.h(i))
-            %                 sites.positions(end+1,:) = obj.imH.UserData.h(i).getPosition;
-            %             end
-            %         end
-            sites.positions = [sites.positions, NaN(size(sites.positions,1),1)];
+
+
+            % Save data to sites
+            sites.positions = NaN(0,2);
+            sites.wavelengths_nm = NaN(0, 1);
+            for i = 1:length(obj.imH.UserData.h)
+                if isvalid(obj.imH.UserData.h(i))
+                    sites.positions(end+1,:) = obj.imH.UserData.h(i).Position;
+                    if obj.includeWavelength
+                        sites.wavelengths_nm(end+1,1) = obj.imH.UserData.h(i).UserData;
+                    end
+                end
+            end
+            sites.positions = [sites.positions, NaN(size(sites.positions,1),1)]; % Add z axis
             sites.validROI = obj.validROI;
+            obj.sites = sites;
 
             close(obj.figH)
             assert(~isempty(sites.positions),'No positions!')
@@ -233,11 +238,15 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                     uiresume;
                     return
                 end
-                h = drawpoint(hObj.Parent, 'Position', eventdata.IntersectionPoint(1:2));
-                if isempty(hObj.UserData.h)
-                    hObj.UserData.h = h;
+                if ~obj.includeWavelength
+                    h = drawpoint(hObj.Parent, 'Position', eventdata.IntersectionPoint(1:2), 'MarkerSize', 0.1*min(obj.figH.Position(3), obj.figH.Position(4)));
+                    if isempty(hObj.UserData.h)
+                        hObj.UserData.h = h;
+                    else
+                        hObj.UserData.h(end+1) = h;
+                    end
                 else
-                    hObj.UserData.h(end+1) = h;
+                    fprintf("Manualy adding sites is prohibited in `includeWavelength` mode.\n");
                 end
             end
             function im_clicked2(hObj,eventdata)
@@ -248,13 +257,13 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
         end
         function updateimportedSites(obj, hObj, eventdata)
-            N = size(obj.importedSites.relPos, 2);
-            assert(size(obj.importedSites.relPos, 1) == 2, sprintf("Size of obj.importedSites.resPos should be 2*N (N=%d)", N));
+            N = size(obj.importedSites.relPos, 1);
+            assert(size(obj.importedSites.relPos, 2) == 2, sprintf("Size of obj.importedSites.resPos should be 2*N (N=%d)", N));
 
             if isempty(obj.importedSites.wavelengths_nm) || all(size(obj.importedSites.wavelengths_nm) == [1, N])
                 % hold(obj.axH, 'on') 
-                xrel = obj.importedSites.relPos(1, :);
-                yrel = obj.importedSites.relPos(2, :);
+                xrel = obj.importedSites.relPos(:, 1);
+                yrel = obj.importedSites.relPos(:, 2);
                 xmin = obj.validROI(1,1);
                 xmax = obj.validROI(1,2);
                 ymin = obj.validROI(2,1);
@@ -263,18 +272,18 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 yabs = ymin+yrel*(ymax-ymin);
                 obj.sitesH.XData = xabs;
                 obj.sitesH.YData = yabs;
-                obj.sitesH.SizeData = ones(1, N)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+                obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
                 cbh = obj.ax2H.Colorbar;
                 if  ~obj.includeWavelength
                     % Draw scatter plot without frequency
                     cbh.Visible = 'off';
-                    obj.sitesH.CData = zeros(1, N);
+                    obj.sitesH.CData = zeros(N, 1);
                 else
                     % Draw scatter plot with frequency
                     wls = obj.importedSites.wavelengths_nm;
                     cbh.Visible = 'on';
                     obj.sitesH.CData = wls;
-                    ylabel(cbh, 'Resonance wavelength (nm)', 'Rotation', 90);
+                    ylabel(cbh, 'Resonant wavelength (nm)', 'Rotation', 90);
                     cbh.Label.Position(1) = 3;
                     if min(wls)< max(wls)
                         caxis(obj.ax2H, [min(wls), max(wls)]);
@@ -289,7 +298,12 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         function adjustMarkerSize(obj, hObj, eventData)
             if ~isempty(obj.sitesH)
                 N = length(obj.sitesH.XData);
-                obj.sitesH.SizeData = ones(1, N)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+                obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+            end
+            if ~isempty(obj.imH.UserData.h)
+                for k = 1:length(obj.imH.UserData.h)
+                    obj.imH.UserData.h(k).MarkerSize = 0.01*min(obj.figH.Position(3), obj.figH.Position(4));
+                end
             end
         end
 
