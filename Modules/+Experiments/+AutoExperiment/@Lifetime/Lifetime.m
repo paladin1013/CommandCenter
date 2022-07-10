@@ -21,9 +21,11 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         % struct of external input sites (eg. EMCCD wide field scan)
             % relPos (2*N): relative position based on validROI, 
             % wavelengths_nm (1*N): resonant wavelengths_nm of each emitter 
-        importedSites = struct('relPos', [], 'wavelengths_nm', []); 
+        importedSites = struct('relPos', [], 'wavelengths_nm', [], 'relSize', []); 
         figH;           % Handle to figure
         includeWavelength = Prefs.Boolean(true, 'help', 'Whether wavelength is considered in each site. Must be set to false to enable manually select');
+        sitesFile = Prefs.File('filter_spec','*.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.relPos`, `data.wavelegnths_nm`.',...
+        'custom_validate','validate_sites_data');
     end
     methods(Static)
         function obj = instance(varargin)
@@ -40,6 +42,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
             obj = Experiments.AutoExperiment.Lifetime(varargin{:});
             obj.singleton_id = varargin;
+            obj.site_selection = 'Load from file';
+
             Objects(end+1) = obj;
         end
         function [dx,dy,dz,metric] = Track(Imaging,Stage,track_thresh) 
@@ -102,26 +106,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
             sites = struct('image',[],'positions',[],'input_method',obj.site_selection,'meta',[]);
 
-            if strcmp(obj.site_selection,'Load from file')
-                [file,path] = uigetfile('*.mat','Site Selection',last_path);
-                    if isequal(file,0)
-                        error('Site selection aborted')
-                    else
-                        last_path = path;
-                        temp = load(fullfile(path,file));
-                        f = fieldnames(temp);
-                        assert(numel(f)==1,...
-                            sprintf('The mat file containing sites should only contain a single variable, found:\n\n%s',...
-                            strjoin(f,', ')))
-                        sites.positions = temp.(f{1});
-                        sites.meta.path = fullfile(path,file);
-                        recvd = num2str(size(sites.positions),'%i, ');
-                        assert(size(sites.positions,2)==2,...
-                            sprintf('Only supports loading x, y coordinates (expected Nx2 array, received [%s]).',recvd(1:end-1)));
-                    end
-                sites.positions = [sites.positions, NaN(size(sites.positions,1),1)];
-                return
-            end
+
 
             if isempty(managers.Imaging.current_image)
                 source_on = obj.imaging_source.source_on;
@@ -132,6 +117,26 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 end
             else
                 sites.image = managers.Imaging.current_image.info;
+            end
+
+            if strcmp(obj.site_selection,'Load from file')
+                if isempty(obj.importedSites.relPos)
+                    [file,path] = uigetfile('*.mat','Site Selection',last_path);
+                    if isequal(file,0)
+                        error('Site selection aborted')
+                    else
+                        last_path = path;
+                        temp = load(fullfile(path,file));
+                        data = temp.data;
+                        assert(isfield(data, 'relPos'), "Imported site data file should contain field `relPos`\n");
+                        assert(isfield(data, 'wavelengths_nm'), "Imported site data file should contain field `wavelengths_nm`\n");
+                        obj.importedSites.relPos = data.relPos;
+                        obj.importedSites.wavelengths_nm = data.wavelengths_nm;
+                        if isfield(data, 'relSize')
+                            obj.importedSites.relSize = data.relSize;
+                        end
+                    end
+                end
             end
 
             obj.figH = figure;
@@ -161,21 +166,20 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             obj.listeners = addlistener(obj, 'validROI', 'PostSet', @obj.updateROI);
             obj.listeners(2) = addlistener(obj, 'importedSites', 'PostSet', @obj.updateimportedSites);
             obj.listeners(3) = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
-            obj.validROIRect = imrect(obj.axH,[xmin,ymin,xmax-xmin,ymax-ymin]);
+            obj.validROIRect = drawrectangle(obj.axH,'Position', [xmin,ymin,xmax-xmin,ymax-ymin], 'Color', 'b');
             obj.validROIRect.Deletable = false;
-            obj.validROIRect.setColor('b');
-            obj.validROIRect.setPositionConstraintFcn(@obj.constrainROI);
-            validROIGroup = findall(obj.axH,'tag','imrect');
-            for i = 1:length(validROIGroup.Children)
-                callback = validROIGroup.Children(i).ButtonDownFcn;
-                validROIGroup.Children(i).ButtonDownFcn = @(a,b)obj.prepROI(a,b,callback);
-            end
-
+%             obj.validROIRect.setPositionConstraintFcn(@obj.constrainROI);
+            % validROIGroup = findall(obj.axH,'tag','imrect');
+            % for i = 1:length(validROIGroup.Children)
+            %     callback = validROIGroup.Children(i).ButtonDownFcn;
+            %     validROIGroup.Children(i).ButtonDownFcn = @(a,b)obj.prepROI(a,b,callback);
+            % end
+            obj.listeners(4) = addlistener(obj.validROIRect, 'ROIMoved', @obj.newROI);
 
 
             % Just for debug tests
-            obj.importedSites.relPos = [[0.5, 0.25, 0.75, 0.25, 0.75]; [0.5, 0.25, 0.75, 0.75, 0.25]];
-            obj.importedSites.wavelengths_nm = [619, 619.2, 619.4, 619.6, 619.8];
+            % data.relPos = [[0.5, 0.25, 0.75, 0.25, 0.75]; [0.5, 0.25, 0.75, 0.75, 0.25]];
+            % data.wavelengths_nm = [619, 619.2, 619.4, 619.6, 619.8];
             title(sprintf('Drag the ROI to fit the imported site region\nRight click on figure to confirm (DO NOT CLOSE!)'));
             obj.imH.ButtonDownFcn = @im_clicked2; % Wait until next click
             uiwait(obj.figH);
@@ -187,7 +191,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             yabs = obj.sitesH.YData;
             markerSize = obj.sitesH.SizeData;
             obj.sitesH.Visible = false;
-            
+            obj.validROIRect.Visible = 'off';
+
             if obj.includeWavelength
                 wls = obj.importedSites.wavelengths_nm;
                 wl_max = max(wls);
@@ -299,7 +304,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             ymin = roi(2,1);
             ymax = roi(2,2);
             pos = [xmin,ymin,xmax-xmin,ymax-ymin];
-            obj.validROIRect.setPosition(pos);
+            obj.validROIRect.Position = pos;
             
             obj.updateimportedSites;
         end
@@ -314,26 +319,15 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             pos(3) = roi(1,2)-roi(1,1);
             pos(4) = roi(2,2)-roi(2,1);
         end
-        function prepROI(obj,hObj,eventdata,callback)
-            f = Base.getParentFigure(obj.axH);
-            callback(hObj,eventdata);  % This assigns its own WindowButtonUpFcn
-            ButtonUp = f.WindowButtonUpFcn;
-            f.WindowButtonUpFcn = @(a,b)obj.newROI(a,b,ButtonUp);
-        end
-        function newROI(obj,hObj,eventdata,callback)
+        function newROI(obj,hObj,eventdata)
             % Should be called on WindowButtonUpFcn
             % Updates imager's ROI from imrect change
-            m_type = get(hObj,'selectionType');
-            hObj.WindowButtonUpFcn = '';
-            if strcmp(m_type,'normal')
-                callback(hObj,eventdata);
-                pos = obj.validROIRect.getPosition;
-                xmin = pos(1);
-                xmax = pos(1)+pos(3);
-                ymin = pos(2);
-                ymax = pos(2)+pos(4);
-                obj.validROI = [xmin,xmax;ymin,ymax]; % This should call obj.updateROI from listener
-            end
+            pos = obj.validROIRect.Position;
+            xmin = pos(1);
+            xmax = pos(1)+pos(3);
+            ymin = pos(2);
+            ymax = pos(2)+pos(4);
+            obj.validROI = [xmin,xmax;ymin,ymax]; % This should call obj.updateROI from listener
         end
         function PreRun(obj,status,managers,ax)
             %turn laser on before running
@@ -343,6 +337,29 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         function PostRun(obj,status,managers,ax)
             %turn laser off after running
             obj.imaging_source.off;
+        end
+        function validate_sites_data(obj,val,~)
+            % We will validate and set the analysis prop here
+            if ~isempty(val)
+                flag = exist(val,'file');
+                if flag == 0
+                    error('Could not find "%s"!',val)
+                end
+                if flag ~= 2
+                    error('File "%s" must be a mat file!',val)
+                end
+                data = load(val);
+                if isfield(data, 'data')
+                    data = data.data;
+                end
+                assert(isfield(data, 'relPos'), "Imported site data file should contain field `relPos`\n");
+                assert(isfield(data, 'wavelengths_nm'), "Imported site data file should contain field `wavelengths_nm`\n");
+                obj.importedSites.relPos = data.relPos;
+                obj.importedSites.wavelengths_nm = data.wavelengths_nm;
+                if isfield(data, 'relSize')
+                    obj.importedSites.relSize = data.relSize;
+                end
+            end
         end
     end
 end
