@@ -269,6 +269,8 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
                 error(['Wavelength ' num2str(target) ' nm is outside the range of this msquared laser.'])
             end
             obj.active_module = module;
+
+            obj.getFrequency();
             
             % With error-handling done, proclaim that we are updating.
             obj.updatingVal = true;
@@ -334,6 +336,8 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
                                 pause(.5);          % After a little bit, continue with the while loop to tune back.
                             end
                         end
+                        
+                        pause(1);          % After a little bit, continue with the while loop to tune back.
                     end
                 catch err
                     warning(err.message)
