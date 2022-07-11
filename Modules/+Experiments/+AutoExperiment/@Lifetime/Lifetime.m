@@ -6,7 +6,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         patch_functions = {''};
     end
     properties(Access=private)
-        validROIRect; % Handle to imrect of validROI
+        validROIPoly; % Handle to imrect of validROI
         listeners = {}; % Handle of listeners
         axH;            % Handle to axes (children of figH)
         imH;            % Handle to image (children of axH)
@@ -16,18 +16,22 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
     end
     properties(SetObservable, GetObservable)
         imageROI = zeros(2, 2);
-        validROI = zeros(2, 2); % Only sites inside this area are valid
+        validROI = zeros(4, 2); % Only sites inside this polygon area are valid
 
-        % struct of external input sites (eg. EMCCD wide field scan)
-            % relPos (N*2): relative position based on validROI, 
-            % wavelengths_nm (N*1): resonant wavelengths_nm of each emitter 
-        importedSites = struct('relPos', [], 'wavelengths_nm', [], 'relSize', []); 
+        % struct of external imported sites (eg. EMCCD wide field scan)
+            % baryPos (N*3): barycentric coordinates of sites position
+            % triangleIdx (N*1): site belongs to which triangle in ROI triangulation (Idx = 1 or 2)
+            % wavelengths_nm (N*1): (optional) resonant wavelengths_nm of each emitter 
+            % freqs_THz (N*1): resonant wavelengths_nm of each emitter 
+            % relPos (N*2): (optional, deprecated) relative position based on validROI
+            % relSize (N*1): (optional) relative size of each site
+        importedSites = struct('baryPos', [], 'triangleIdx', [], 'relPos', [], 'wavelengths_nm', [], 'freqs_THz', [], 'relSize', []); 
         findedSites = struct('absPos', [], 'relSize', []); % For sites founded by `Peak finder`
         figH;           % Handle to figure
         finderH;        % Handle to peak finder results
-        includeWavelength = Prefs.Boolean(false, 'help', 'Whether wavelength is considered in each site. Must be set to false to enable manually select');
+        includeFreq = Prefs.Boolean(false, 'help', 'Whether resonant frequency is considered in each site. Must be set to false to enable manually select');
         sitesFile = Prefs.File('filter_spec','*.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.relPos`, `data.wavelengths_nm`.',...
-        'custom_validate','validate_sites_data');
+        'custom_validate','loadSitesData');
     end
     methods(Static)
         function obj = instance(varargin)
@@ -44,7 +48,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
             obj = Experiments.AutoExperiment.Lifetime(varargin{:});
             obj.singleton_id = varargin;
-            obj.site_selection = 'Peak finder';
+            obj.site_selection = 'Load from file';
 
             Objects(end+1) = obj;
         end
@@ -141,42 +145,28 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             colormap(obj.axH,managers.Imaging.set_colormap);
             set(obj.axH,'ydir','normal')
             axis(obj.axH,'image')
-            obj.validROI = sites.image.ROI;
             obj.imageROI = sites.image.ROI;
-            xmin = obj.validROI(1,1);
-            xmax = obj.validROI(1,2);
-            ymin = obj.validROI(2,1);
-            ymax = obj.validROI(2,2);
-            obj.validROIRect = drawrectangle(obj.axH,'Position', [xmin,ymin,xmax-xmin,ymax-ymin], 'Color', 'b');
-            obj.validROIRect.Deletable = false;
-            obj.validROIRect.FaceAlpha = 0.1;
-            obj.updateROI;
-            obj.listeners{1} = addlistener(obj.validROIRect, 'ROIMoved', @obj.updateROI);
+            xmin = obj.imageROI(1,1);
+            xmax = obj.imageROI(1,2);
+            ymin = obj.imageROI(2,1);
+            ymax = obj.imageROI(2,2);
+            obj.validROIPoly = drawpolygon(obj.axH,'Position', [xmin, ymax; xmax, ymax; xmax, ymin; xmin, ymin ], 'Color', 'b');
+            obj.validROIPoly.Deletable = false;
+            obj.validROIPoly.FaceAlpha = 0.1;
+            obj.listeners{1} = addlistener(obj.validROIPoly, 'ROIMoved', @obj.updateROI);
             obj.listeners{2} = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
 
             if strcmp(obj.site_selection, 'Load from file')
-                if isempty(obj.importedSites.relPos)
+                if isempty(obj.importedSites.baryPos)
                     [file,path] = uigetfile('*.mat','Site Selection',last_path);
-                    if isequal(file,0)
-                        error('Site selection aborted')
-                    else
-                        last_path = path;
-                        temp = load(fullfile(path,file));
-                        data = temp.data;
-                        assert(isfield(data, 'relPos'), "Imported site data file should contain field `relPos`\n");
-                        assert(isfield(data, 'wavelengths_nm'), "Imported site data file should contain field `wavelengths_nm`\n");
-                        obj.importedSites.relPos = data.relPos;
-                        obj.importedSites.wavelengths_nm = data.wavelengths_nm;
-                        if isfield(data, 'relSize')
-                            obj.importedSites.relSize = data.relSize;
-                        end
-                    end
+                    obj.loadSitesData([path, file]);
                 end
                 obj.listeners{3} = addlistener(obj, 'importedSites', 'PostSet', @obj.updateImportedSites);
-                set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to fit the imported site region\nRight click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
+                obj.updateImportedSites;
+                set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to fit the imported site region\nMiddle click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
             elseif strcmp(obj.site_selection, 'Peak finder')
                 obj.listeners{3} = addlistener(obj, 'findedSites', 'PostSet', @obj.updateFindedSites);
-                assert(obj.includeWavelength == false, "Peak finder mode does not support wavelength mode")
+                assert(obj.includeFreq == false, "Peak finder mode does not support frequency mode")
                 title('Drag red region to set thresholds, then close adjustment window when done.')
                 [obj.finderH,panelH] = imfindpeaks(obj.imH); %returns array of NV locations
                 obj.finderH.Visible = 'off'; % Turn off finderH. Use obj.sitesH to display sites location
@@ -184,8 +174,9 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 obj.listeners{4} = addlistener(obj.finderH, 'YData', 'PostSet', @obj.updateFindedSites);
                 set(get(obj.axH, 'Title'), 'String', sprintf('Move the contrast bar to find peaks\nClose the setting panel to confirm\n'));
                 uiwait(panelH);
-                set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to bound the active region\nRight click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
+                set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to bound the active region\nMiddle click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
             end
+            obj.updateROI;
             obj.imH.ButtonDownFcn = @im_clicked2; % Wait until next click
             uiwait(obj.figH);
 
@@ -196,9 +187,9 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             yabs = obj.sitesH.YData;
             markerSize = obj.sitesH.SizeData;
             obj.sitesH.Visible = false;
-            obj.validROIRect.Visible = 'off';
+            obj.validROIPoly.Visible = 'off';
 
-            if obj.includeWavelength
+            if obj.includeFreq
                 wls = obj.importedSites.wavelengths_nm;
                 wl_max = max(wls);
                 wl_min = min(wls);
@@ -207,7 +198,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
 
             for k = 1:length(xabs)
-                if obj.includeWavelength
+                if obj.includeFreq
                     h = drawpoint(obj.axH, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k)/10, 'Color', colors(k, :));
                     h.UserData = wls(k);
                 else
@@ -219,10 +210,10 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                     obj.imH.UserData.h(end+1) = h;
                 end
             end
-            if ~obj.includeWavelength
-                title(sprintf('Drag to adjust\nLeft click to add new points\nRight click on point to get menu to delete.\nRight click on image to finish (DO NOT CLOSE!)'))
+            if ~obj.includeFreq
+                title(sprintf('Drag to adjust\nLeft click to add new points\nRight click on point to get menu to delete.\nMiddle click on image to finish (DO NOT CLOSE!)'))
             else
-                title(sprintf('Drag to adjust\nRight click on point to get menu to delete.\n\nRight click on image to finish (DO NOT CLOSE!)'))
+                title(sprintf('Drag to adjust\nRight click on point to get menu to delete.\n\nMiddle click on image to finish (DO NOT CLOSE!)'))
             end
             
             obj.imH.ButtonDownFcn = @im_clicked;
@@ -232,26 +223,30 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             % Save data to sites
             sites.positions = NaN(0,2);
             sites.wavelengths_nm = NaN(0, 1);
+            sites.freqs_THz = NaN(0, 1);
             for i = 1:length(obj.imH.UserData.h)
                 if isvalid(obj.imH.UserData.h(i))
                     sites.positions(end+1,:) = obj.imH.UserData.h(i).Position;
-                    if obj.includeWavelength
-                        sites.wavelengths_nm(end+1,1) = obj.imH.UserData.h(i).UserData;
+                    if obj.includeFreq
+                        sites.freqs_THz(end+1,1) = obj.imH.UserData.h(i).UserData;
                     end
                 end
             end
             sites.positions = [sites.positions, NaN(size(sites.positions,1),1)]; % Add z axis
-            sites.validROI = obj.validROI;
+            % sites.validROI = obj.validROI;
             obj.sites = sites;
 
             close(obj.figH)
             assert(~isempty(sites.positions),'No positions!')
             function im_clicked(hObj,eventdata)
-                if eventdata.Button ~= 1
+                if eventdata.Button == 2
                     uiresume;
                     return
                 end
-                if ~obj.includeWavelength
+                if eventdata.Button ~= 1
+                    return
+                end
+                if ~obj.includeFreq
                     h = drawpoint(hObj.Parent, 'Position', eventdata.IntersectionPoint(1:2), 'MarkerSize', 0.01*min(obj.figH.Position(3), obj.figH.Position(4)));
                     if isempty(hObj.UserData.h)
                         hObj.UserData.h = h;
@@ -259,11 +254,11 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                         hObj.UserData.h(end+1) = h;
                     end
                 else
-                    fprintf("Manualy adding sites is prohibited in `includeWavelength` mode.\n");
+                    fprintf("Manualy adding sites is prohibited in `includeFreq` mode.\n");
                 end
             end
             function im_clicked2(hObj,eventdata)
-                if eventdata.Button ~= 1
+                if eventdata.Button == 2
                     uiresume;
                     return
                 end
@@ -284,13 +279,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         end
 
         function updateROI(obj,varargin)
-            % Updates imrect from imager ROI change
-            pos = obj.validROIRect.Position;
-            xmin = pos(1);
-            xmax = pos(1)+pos(3);
-            ymin = pos(2);
-            ymax = pos(2)+pos(4);
-            obj.validROI = [xmin,xmax;ymin,ymax]; % This should call obj.updateROI from listener
+            % Updates validROI when polynomial location changes
+            obj.validROI = obj.validROIPoly.Position;
             if strcmp(obj.site_selection, 'Load from file')
                 obj.updateImportedSites;
             elseif strcmp(obj.site_selection, 'Peak finder')
@@ -298,36 +288,39 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
         end
         function updateImportedSites(obj, hObj, eventdata)
-            N = size(obj.importedSites.relPos, 1);
-            assert(size(obj.importedSites.relPos, 2) == 2, sprintf("Size of obj.importedSites.relPos should be N*2 (N=%d)", N));
+            N = size(obj.importedSites.baryPos, 1);
+            assert(size(obj.importedSites.baryPos, 2) == 3, sprintf("Size of obj.importedSites.baryPos should be N*3 (N=%d)", N));
 
-            if isempty(obj.importedSites.wavelengths_nm) || all(size(obj.importedSites.wavelengths_nm) == [1, N])
+            if isempty(obj.importedSites.freqs_THz) || all(size(obj.importedSites.freqs_THz) == [N, 1])
                 % hold(obj.axH, 'on') 
-                xrel = obj.importedSites.relPos(:, 1);
-                yrel = obj.importedSites.relPos(:, 2);
-                xmin = obj.validROI(1,1);
-                xmax = obj.validROI(1,2);
-                ymin = obj.validROI(2,1);
-                ymax = obj.validROI(2,2);
-                xabs = xmin+xrel*(xmax-xmin);
-                yabs = ymin+yrel*(ymax-ymin);
-                obj.sitesH.XData = xabs;
-                obj.sitesH.YData = yabs;
+                P = obj.validROIPoly.Position;
+                T = [1, 2, 3; 3, 4, 1];
+                TR = triangulation(T, P);
+                cartPos = zeros(N, 2);
+                for k = 1:N
+                    triIdx = obj.importedSites.triangleInd(k);
+                    cartPos(k, :) = barycentricToCartesian(TR, triIdx, obj.importedSites.baryPos(k, :));
+                end
+                hold(obj.ax2H, 'on');
+%                 triplot(TR);
+                obj.sitesH.XData = cartPos(:, 1);
+                obj.sitesH.YData = cartPos(:, 2);
                 obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
                 cbh = obj.ax2H.Colorbar;
-                if  ~obj.includeWavelength
+                if  ~obj.includeFreq
                     % Draw scatter plot without frequency
                     cbh.Visible = 'off';
                     obj.sitesH.CData = zeros(N, 1);
                 else
                     % Draw scatter plot with frequency
                     wls = obj.importedSites.wavelengths_nm;
+                    freqs = obj.importedSites.freqs_THz;
                     cbh.Visible = 'on';
-                    obj.sitesH.CData = wls;
-                    ylabel(cbh, 'Resonant wavelength (nm)', 'Rotation', 90);
+                    obj.sitesH.CData = freqs;
+                    ylabel(cbh, 'Resonant frequency (THz)', 'Rotation', 90);
                     cbh.Label.Position(1) = 3;
-                    if min(wls)< max(wls)
-                        caxis(obj.ax2H, [min(wls), max(wls)]);
+                    if min(freqs)< max(freqs)
+                        caxis(obj.ax2H, [min(freqs), max(freqs)]);
                     end
                 end
                 obj.ax2H.Visible = 'off';
@@ -341,15 +334,11 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             obj.findedSites.absPos = [obj.finderH.XData', obj.finderH.YData'];
             N = size(obj.findedSites.absPos, 1);
             assert(size(obj.findedSites.absPos, 2) == 2, sprintf("Size of obj.findedSites.absPos should be 2*N (N=%d)", N));
-            xmin = obj.validROI(1,1);
-            xmax = obj.validROI(1,2);
-            ymin = obj.validROI(2,1);
-            ymax = obj.validROI(2,2);
             pos = NaN(N, 2);
             n = 0;
             absPos = obj.findedSites.absPos;
             for k = 1:N
-                if  absPos (k, 1)>= xmin && absPos(k, 1) <= xmax && absPos(k, 2) >= ymin && absPos(k, 2) <= ymax
+                if  inpolygon(absPos(k, 1), absPos(k, 2), obj.validROI(:, 1), obj.validROI(:, 2))
                     % Only display sites within the rectangle ROI
                     n = n + 1;
                     pos(n, :) = absPos(k, :);
@@ -372,8 +361,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             %turn laser off after running
             obj.imaging_source.off;
         end
-        function validate_sites_data(obj,val,~)
-            % We will validate and set the analysis prop here
+        function loadSitesData(obj,val,~)
+            % Validate input data: data.sites{k} should contain fields baryPos, triangleInd, frequency_THz, wavelength_nm
             if ~isempty(val)
                 flag = exist(val,'file');
                 if flag == 0
@@ -386,10 +375,19 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 if isfield(data, 'data')
                     data = data.data;
                 end
-                assert(isfield(data, 'relPos'), "Imported site data file should contain field `relPos`\n");
-                assert(isfield(data, 'wavelengths_nm'), "Imported site data file should contain field `wavelengths_nm`\n");
-                obj.importedSites.relPos = data.relPos;
-                obj.importedSites.wavelengths_nm = data.wavelengths_nm;
+                assert(isfield(data, 'sites'), "Imported site data file should contain field `sites`\n");
+                N = length(data.sites);
+                obj.importedSites.baryPos = zeros(N, 3);
+                obj.importedSites.triangleInd = zeros(N, 1);
+                obj.importedSites.wavelengths_nm = zeros(N, 1);
+                obj.importedSites.freqs_THz = zeros(N, 1);
+                for k = 1:N
+                    siteData = data.sites{k};
+                    obj.importedSites.baryPos(k, :) = siteData.baryPos;
+                    obj.importedSites.triangleInd(k, :) = siteData.triangleInd;
+                    obj.importedSites.wavelengths_nm(k, :) = siteData.wavelength_nm;
+                    obj.importedSites.freqs_THz(k, :) = siteData.frequency_THz;
+                end                    
                 if isfield(data, 'relSize')
                     obj.importedSites.relSize = data.relSize;
                 end
