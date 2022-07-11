@@ -344,6 +344,7 @@ handles.panelExperiment.minimize();
 handles.panelDrivers.minimize();
 handles.panelSave.minimize();
 handles.panelMetaStage.setMaximizedHeight(30);
+handles.panelExperiment.setMaximizedHeight(30);
 handles.panelImage.setMaximizedHeight(20);
 
 

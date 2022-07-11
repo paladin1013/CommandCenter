@@ -7,7 +7,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
     end
     properties(Access=private)
         validROIRect; % Handle to imrect of validROI
-        listeners;   % Listeners to valid ROI
+        listeners = {}; % Handle of listeners
         axH;            % Handle to axes (children of figH)
         imH;            % Handle to image (children of axH)
         ax2H;           % Handle to axes (children of figH)
@@ -15,7 +15,6 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         sites;          % sites data
     end
     properties(SetObservable, GetObservable)
-        enableValidROI = Prefs.Boolean(true);
         imageROI = zeros(2, 2);
         validROI = zeros(2, 2); % Only sites inside this area are valid
 
@@ -23,8 +22,10 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             % relPos (N*2): relative position based on validROI, 
             % wavelengths_nm (N*1): resonant wavelengths_nm of each emitter 
         importedSites = struct('relPos', [], 'wavelengths_nm', [], 'relSize', []); 
+        findedSites = struct('absPos', [], 'relSize', []); % For sites founded by `Peak finder`
         figH;           % Handle to figure
-        includeWavelength = Prefs.Boolean(true, 'help', 'Whether wavelength is considered in each site. Must be set to false to enable manually select');
+        finderH;        % Handle to peak finder results
+        includeWavelength = Prefs.Boolean(false, 'help', 'Whether wavelength is considered in each site. Must be set to false to enable manually select');
         sitesFile = Prefs.File('filter_spec','*.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.relPos`, `data.wavelengths_nm`.',...
         'custom_validate','validate_sites_data');
     end
@@ -43,7 +44,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
             obj = Experiments.AutoExperiment.Lifetime(varargin{:});
             obj.singleton_id = varargin;
-            obj.site_selection = 'Load from file';
+            obj.site_selection = 'Peak finder';
 
             Objects(end+1) = obj;
         end
@@ -121,7 +122,39 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 sites.image = managers.Imaging.current_image.info;
             end
 
-            if strcmp(obj.site_selection,'Load from file')
+            obj.figH = figure('Position', [500,  100, 1000, 1000]);
+            obj.axH = axes('parent',obj.figH);
+            obj.ax2H = axes('parent',obj.figH); % For sites scatter plot
+            obj.sitesH = scatter(obj.ax2H, [], []);
+            cbH = colorbar(obj.ax2H);
+            cbH.Visible = 'off';
+            colormap(obj.ax2H, 'jet');
+            obj.ax2H.Visible = 'off';
+            axis(obj.ax2H, 'equal');
+            linkaxes([obj.axH, obj.ax2H]);
+            obj.ax2H.Position = obj.axH.Position;
+           
+
+            obj.imH = imagesc(sites.image.ROI(1,:),sites.image.ROI(2,:),sites.image.image,'parent',obj.axH);
+
+
+            colormap(obj.axH,managers.Imaging.set_colormap);
+            set(obj.axH,'ydir','normal')
+            axis(obj.axH,'image')
+            obj.validROI = sites.image.ROI;
+            obj.imageROI = sites.image.ROI;
+            xmin = obj.validROI(1,1);
+            xmax = obj.validROI(1,2);
+            ymin = obj.validROI(2,1);
+            ymax = obj.validROI(2,2);
+            obj.validROIRect = drawrectangle(obj.axH,'Position', [xmin,ymin,xmax-xmin,ymax-ymin], 'Color', 'b');
+            obj.validROIRect.Deletable = false;
+            obj.validROIRect.FaceAlpha = 0.1;
+            obj.updateROI;
+            obj.listeners{1} = addlistener(obj.validROIRect, 'ROIMoved', @obj.updateROI);
+            obj.listeners{2} = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
+
+            if strcmp(obj.site_selection, 'Load from file')
                 if isempty(obj.importedSites.relPos)
                     [file,path] = uigetfile('*.mat','Site Selection',last_path);
                     if isequal(file,0)
@@ -139,40 +172,20 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                         end
                     end
                 end
+                obj.listeners{3} = addlistener(obj, 'importedSites', 'PostSet', @obj.updateImportedSites);
+                set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to fit the imported site region\nRight click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
+            elseif strcmp(obj.site_selection, 'Peak finder')
+                obj.listeners{3} = addlistener(obj, 'findedSites', 'PostSet', @obj.updateFindedSites);
+                assert(obj.includeWavelength == false, "Peak finder mode does not support wavelength mode")
+                title('Drag red region to set thresholds, then close adjustment window when done.')
+                [obj.finderH,panelH] = imfindpeaks(obj.imH); %returns array of NV locations
+                obj.finderH.Visible = 'off'; % Turn off finderH. Use obj.sitesH to display sites location
+                obj.findedSites.absPos = [obj.finderH.XData', obj.finderH.YData'];
+                obj.listeners{4} = addlistener(obj.finderH, 'YData', 'PostSet', @obj.updateFindedSites);
+                set(get(obj.axH, 'Title'), 'String', sprintf('Move the contrast bar to find peaks\nClose the setting panel to confirm\n'));
+                uiwait(panelH);
+                set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to bound the active region\nRight click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
             end
-
-            obj.figH = figure('Position', [500,  100, 1000, 1000]);
-            obj.axH = axes('parent',obj.figH);
-            obj.ax2H = axes('parent',obj.figH); % For sites scatter plot
-            obj.sitesH = scatter(obj.ax2H, [], []);
-            cbH = colorbar(obj.ax2H);
-            cbH.Visible = 'off';
-            colormap(obj.ax2H, 'jet');
-            obj.ax2H.Visible = 'off';
-            axis(obj.ax2H, 'equal');
-            linkaxes([obj.axH, obj.ax2H]);
-            % set([obj.axH, obj.ax2H], 'Position', [0.1, 0.1, 0.8, 0.8])
-            obj.ax2H.Position = obj.axH.Position;
-           
-
-            obj.imH = imagesc(sites.image.ROI(1,:),sites.image.ROI(2,:),sites.image.image,'parent',obj.axH);
-            colormap(obj.axH,managers.Imaging.set_colormap);
-            set(obj.axH,'ydir','normal')
-            axis(obj.axH,'image')
-            obj.validROI = sites.image.ROI;
-            obj.imageROI = sites.image.ROI;
-            xmin = obj.validROI(1,1);
-            xmax = obj.validROI(1,2);
-            ymin = obj.validROI(2,1);
-            ymax = obj.validROI(2,2);
-            obj.listeners = addlistener(obj, 'validROI', 'PostSet', @obj.updateROI);
-            obj.listeners(2) = addlistener(obj, 'importedSites', 'PostSet', @obj.updateimportedSites);
-            obj.listeners(3) = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
-            obj.validROIRect = drawrectangle(obj.axH,'Position', [xmin,ymin,xmax-xmin,ymax-ymin], 'Color', 'b');
-            obj.validROIRect.Deletable = false;
-            obj.validROI = sites.image.ROI;
-            obj.listeners(4) = addlistener(obj.validROIRect, 'ROIMoved', @obj.newROI);
-            set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to fit the imported site region\nRight click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE!)'));
             obj.imH.ButtonDownFcn = @im_clicked2; % Wait until next click
             uiwait(obj.figH);
 
@@ -239,7 +252,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                     return
                 end
                 if ~obj.includeWavelength
-                    h = drawpoint(hObj.Parent, 'Position', eventdata.IntersectionPoint(1:2), 'MarkerSize', 0.1*min(obj.figH.Position(3), obj.figH.Position(4)));
+                    h = drawpoint(hObj.Parent, 'Position', eventdata.IntersectionPoint(1:2), 'MarkerSize', 0.01*min(obj.figH.Position(3), obj.figH.Position(4)));
                     if isempty(hObj.UserData.h)
                         hObj.UserData.h = h;
                     else
@@ -256,9 +269,37 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 end
             end
         end
-        function updateimportedSites(obj, hObj, eventdata)
+        
+
+        function adjustMarkerSize(obj, hObj, eventData)
+            if ~isempty(obj.sitesH)
+                N = length(obj.sitesH.XData);
+                obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+            end
+            if ~isempty(obj.imH.UserData.h)
+                for k = 1:length(obj.imH.UserData.h)
+                    obj.imH.UserData.h(k).MarkerSize = 0.01*min(obj.figH.Position(3), obj.figH.Position(4));
+                end
+            end
+        end
+
+        function updateROI(obj,varargin)
+            % Updates imrect from imager ROI change
+            pos = obj.validROIRect.Position;
+            xmin = pos(1);
+            xmax = pos(1)+pos(3);
+            ymin = pos(2);
+            ymax = pos(2)+pos(4);
+            obj.validROI = [xmin,xmax;ymin,ymax]; % This should call obj.updateROI from listener
+            if strcmp(obj.site_selection, 'Load from file')
+                obj.updateImportedSites;
+            elseif strcmp(obj.site_selection, 'Peak finder')
+                obj.updateFindedSites;
+            end
+        end
+        function updateImportedSites(obj, hObj, eventdata)
             N = size(obj.importedSites.relPos, 1);
-            assert(size(obj.importedSites.relPos, 2) == 2, sprintf("Size of obj.importedSites.resPos should be 2*N (N=%d)", N));
+            assert(size(obj.importedSites.relPos, 2) == 2, sprintf("Size of obj.importedSites.relPos should be N*2 (N=%d)", N));
 
             if isempty(obj.importedSites.wavelengths_nm) || all(size(obj.importedSites.wavelengths_nm) == [1, N])
                 % hold(obj.axH, 'on') 
@@ -290,59 +331,38 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                     end
                 end
                 obj.ax2H.Visible = 'off';
-                drawnow;
-            end
-            
+            end 
         end
 
-        function adjustMarkerSize(obj, hObj, eventData)
-            if ~isempty(obj.sitesH)
-                N = length(obj.sitesH.XData);
-                obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+        function updateFindedSites(obj, hObj, eventdata)
+            if isempty(obj.finderH) || ~isprop(obj.finderH, 'XData') || isempty(obj.finderH.XData)
+                return;
             end
-            if ~isempty(obj.imH.UserData.h)
-                for k = 1:length(obj.imH.UserData.h)
-                    obj.imH.UserData.h(k).MarkerSize = 0.01*min(obj.figH.Position(3), obj.figH.Position(4));
+            obj.findedSites.absPos = [obj.finderH.XData', obj.finderH.YData'];
+            N = size(obj.findedSites.absPos, 1);
+            assert(size(obj.findedSites.absPos, 2) == 2, sprintf("Size of obj.findedSites.absPos should be 2*N (N=%d)", N));
+            xmin = obj.validROI(1,1);
+            xmax = obj.validROI(1,2);
+            ymin = obj.validROI(2,1);
+            ymax = obj.validROI(2,2);
+            pos = NaN(N, 2);
+            n = 0;
+            absPos = obj.findedSites.absPos;
+            for k = 1:N
+                if  absPos (k, 1)>= xmin && absPos(k, 1) <= xmax && absPos(k, 2) >= ymin && absPos(k, 2) <= ymax
+                    % Only display sites within the rectangle ROI
+                    n = n + 1;
+                    pos(n, :) = absPos(k, :);
                 end
             end
+            obj.sitesH.XData = pos(1:n, 1);
+            obj.sitesH.YData = pos(1:n, 2);
+            
+            obj.sitesH.MarkerEdgeColor = 'r';
+            obj.sitesH.SizeData = ones(n, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+            obj.ax2H.Visible = 'off';
         end
 
-        function locateSites(obj)
-            
-        end
-        function updateROI(obj,varargin)
-            % Updates imrect from imager ROI change
-            roi = obj.validROI;
-            xmin = roi(1,1);
-            xmax = roi(1,2);
-            ymin = roi(2,1);
-            ymax = roi(2,2);
-            pos = [xmin,ymin,xmax-xmin,ymax-ymin];
-            obj.validROIRect.Position = pos;
-            
-            obj.updateimportedSites;
-        end
-        function pos = constrainROI(obj,pos,varargin)
-            maxROI = obj.imageROI;
-            roi(1,1) = min(max(maxROI(1,1),pos(1)),maxROI(1,2));
-            roi(1,2) = max(min(maxROI(1,2),pos(1)+pos(3)),maxROI(1,1));
-            roi(2,1) = min(max(maxROI(2,1),pos(2)),maxROI(2,2));
-            roi(2,2) = max(min(maxROI(2,2),pos(2)+pos(4)),maxROI(2,1));
-            pos(1) = roi(1,1);
-            pos(2) = roi(2,1);
-            pos(3) = roi(1,2)-roi(1,1);
-            pos(4) = roi(2,2)-roi(2,1);
-        end
-        function newROI(obj,hObj,eventdata)
-            % Should be called on WindowButtonUpFcn
-            % Updates imager's ROI from imrect change
-            pos = obj.validROIRect.Position;
-            xmin = pos(1);
-            xmax = pos(1)+pos(3);
-            ymin = pos(2);
-            ymax = pos(2)+pos(4);
-            obj.validROI = [xmin,xmax;ymin,ymax]; % This should call obj.updateROI from listener
-        end
         function PreRun(obj,status,managers,ax)
             %turn laser on before running
             obj.imaging_source.on;
