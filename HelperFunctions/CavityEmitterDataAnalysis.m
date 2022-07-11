@@ -1,22 +1,31 @@
-function CavityEmitterDataAnalysis(EMCCD_data_path, WL_data_path)
-    if ~exist('EMCCD_data_path')
-        EMCCD_data_path = '\\houston.mit.edu\qpgroup\Experiments\Diamond\EG309 Cavity\04062022_cavity_for_transfer\Experiments_ResonanceEMCCDonly2022_04_06_13_28_15.mat';
-    end
-    if ~exist('WL_data_path')
-        wl_data_path = '\\houston.mit.edu\qpgroup\Experiments\Diamond\EG309 Cavity\04062022_cavity_for_transfer\sep3W243d124_wl.mat';
-    end
-    d = load(EMCCD_data_path)
-    freqs = d.data.data.data.freqMeasured(:);
-    wl = load(WL_data_path);
-    imgs = d.data.data.data.images_EMCCD(:, :, :);
+% function CavityEmitterDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
+    % if ~exist('EMCCD_data_path', 'var')
+    %     EMCCD_data_path = 'Experiments_ResonanceEMCCDonly2022_04_06_13_28_15.mat';
+    % end
+    % if ~exist('WL_data_path', 'var')
+    %     WL_data_path = 'sep3W243d124_wl.mat';
+    % end
+    % if ~exist('processed_data_path', 'var')
+    %     processed_data_path = 'EMCCD_processed_data.mat';
+    % end
+
+    % try
+    %     d = load(processed_data_path)
+    % catch
+    %     frpintf("%s file does not exist, loading original from %d\n", processed_data_path, EMCCD_data_path);
+    %     d = load(EMCCD_data_path);
+    % end
+    % freqs = d.data.data.data.freqMeasured;
+    % wl = load(WL_data_path);
+    % imgs = d.data.data.data.images_EMCCD(:, :, :);
 
     %%
     % Emitter filter
-    mincount = 5000; %filter emitter
-    rxmin = 0;
-    rymin = 0;
-    rxmax = 500;
-    rymax = 500;
+    mincount = 8000; %filter emitter
+    rxmin = 100;
+    rymin = 220;
+    rxmax = 275;
+    rymax = 305;
 
     %display
     ylim_min = 00;
@@ -107,14 +116,14 @@ function CavityEmitterDataAnalysis(EMCCD_data_path, WL_data_path)
             wgt = yy(i, :);
             [wgtv, wgtp] = find(wgt == max(wgt));
             wgt(max(1, wgtp - 2):min(length(yy), wgtp + 2)) = min(wgt);
-            % if max(wgt(max(1,wgtp-floor(length(wgt)/20)):min(length(wgt),wgtp+floor(length(wgt)/20))))>0.5*max(yy(i,:))
-            wgc = [wgc; freqs(wgtp)];
-            wgx = [wgx; (freqs - min(freqs) * ones(1, length(freqs))) * 1e3];
-            wgy = [wgy; yy(i, :)];
-            wgym = [wgym; max(yy(i, :))];
-            wgpx = [wgpx; realy(i)];
-            wgpy = [wgpy; realx(i)];
-            % end
+            if max(wgt(max(1, wgtp - floor(length(wgt) / 20)):min(length(wgt), wgtp + floor(length(wgt) / 20)))) > 0.5 * max(yy(i, :))
+                wgc = [wgc; freqs(wgtp)];
+                wgx = [wgx; (freqs - min(freqs) * ones(1, length(freqs))) * 1e3];
+                wgy = [wgy; yy(i, :)];
+                wgym = [wgym; max(yy(i, :))];
+                wgpx = [wgpx; realy(i)];
+                wgpy = [wgpy; realx(i)];
+            end
 
         end
 
@@ -242,13 +251,19 @@ function CavityEmitterDataAnalysis(EMCCD_data_path, WL_data_path)
     xticks([])
     yticks([])
     set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
+
+    % Polygon ROI
+    polyH = drawpolygon(s1, 'Position', [rymin, rymax, rymax, rymin;rxmin, rxmin, rxmax, rxmax]');
+    
+
+
     % view(45,20)
     % title('(a) Emitter overlaid image','FontName', 'Times New Roman')
     %     function img = flatten(img0)
     %         img = img0 - imgaussfilt(img0, 10);
     %     end
     %%
-    s3 = subplot(1, 4, 4)
+    s3 = subplot(1, 4, 3)
 
     for i = 1:length(wgpx)
         hold on
@@ -284,38 +299,4 @@ function CavityEmitterDataAnalysis(EMCCD_data_path, WL_data_path)
 
     set(gcf, 'position', [10, 10, 1200, 800])
 
-    % figure(3)
-    % scatter(wgc,wgw)
-    % wg6c=wgc;
-    % wg6w=wgw;
-
-    %%
-    % figure()
-    % scatter(wg1c,wg1w,'r','filled')
-    % hold on
-    % scatter(wg2c,wg2w,'r','filled')
-    % scatter(wg3c,wg3w,'r','filled')
-    % scatter(wg4c,wg4w,'r','filled')
-    % scatter(wg5c,wg5w,'r','filled')
-    % scatter(wg6c,wg6w,'r','filled')
-    % hold off
-    % xlabel('Center frequency(THz)')
-    % ylabel('Linewidth (MHz)')
-    % ylim([0 200])
-    % set(gca,'FontSize',16,'FontName','Times New Roman')
-
-    %%
-    % FOV.wgc=wgc;
-    % FOV.wgw=wgw;
-    % FOV.wgx=wgx;
-
-    % FOV.wgy=wgy;
-    % FOV.wgpx=wgpx;
-    % FOV.wgpy=wgpy;
-    % FOV.wl=wl_img;
-    % FOV.pl=pl_img;
-    % FOV.ROI=[rxmin rxmax;rymin rymax];
-    % FOV.title='wg31_single_cavity_2';
-    % save('wg31.mat','FOV')
-
-    % a.
+% end
