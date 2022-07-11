@@ -1,23 +1,24 @@
-% function CavityEmitterDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
-    % if ~exist('EMCCD_data_path', 'var')
-    %     EMCCD_data_path = 'Experiments_ResonanceEMCCDonly2022_04_06_13_28_15.mat';
-    % end
-    % if ~exist('WL_data_path', 'var')
-    %     WL_data_path = 'sep3W243d124_wl.mat';
-    % end
-    % if ~exist('processed_data_path', 'var')
-    %     processed_data_path = 'EMCCD_processed_data.mat';
-    % end
+function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
+    if ~exist('EMCCD_data_path', 'var')
+        EMCCD_data_path = 'Experiments_ResonanceEMCCDonly2022_04_06_13_28_15.mat';
+    end
+    if ~exist('WL_data_path', 'var')
+        WL_data_path = 'sep3W243d124_wl.mat';
+    end
+    if ~exist('processed_data_path', 'var')
+        processed_data_path = 'EMCCD_processed_data.mat';
+    end
 
-    % try
-    %     d = load(processed_data_path)
-    % catch
-    %     frpintf("%s file does not exist, loading original from %d\n", processed_data_path, EMCCD_data_path);
-    %     d = load(EMCCD_data_path);
-    % end
-    % freqs = d.data.data.data.freqMeasured;
-    % wl = load(WL_data_path);
-    % imgs = d.data.data.data.images_EMCCD(:, :, :);
+    try
+        d = load(processed_data_path);
+        d = d.d;
+    catch
+        frpintf("%s file does not exist, loading original from %d\n", processed_data_path, EMCCD_data_path);
+        d = load(EMCCD_data_path);
+    end
+    wl = load(WL_data_path);
+    freqs = d.data.data.data.freqMeasured;
+    imgs = d.data.data.data.images_EMCCD(:, :, :);
 
     %%
     % Emitter filter
@@ -48,7 +49,7 @@
 
     imgs2 = d.imgs2(:, :, 1:length(freqs));
 
-    figure(1)
+    fig1 = figure(1)
 
     allpts0 = reshape(imgs2, [512 * 512, length(freqs)]);
     allpts0(max(allpts0, [], 2) < mincount, :) = [];
@@ -211,11 +212,11 @@
     % legend(labels)
     %%
 
-    s1 = subplot(1, 4, 1)
+    s1 = subplot(1, 4, 1);
 
     img = squeeze(max(imgs2, [], 3));
     % imagesc(d.data.data.data.images_EMCCD(rxmin:rxmax,rymin:rymax,2))
-    imagesc(wl.image.image(:, :))
+    imH = imagesc(wl.image.image(:, :));
     % imagesc(imgs(:,:,28))
     colormap('bone')
     % xticks([])
@@ -252,18 +253,14 @@
     yticks([])
     set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
 
-    % Polygon ROI
-    polyH = drawpolygon(s1, 'Position', [rymin, rymax, rymax, rymin;rxmin, rxmin, rxmax, rxmax]');
     
-
-
     % view(45,20)
     % title('(a) Emitter overlaid image','FontName', 'Times New Roman')
     %     function img = flatten(img0)
     %         img = img0 - imgaussfilt(img0, 10);
     %     end
     %%
-    s3 = subplot(1, 4, 3)
+    s3 = subplot(1, 4, 3);
 
     for i = 1:length(wgpx)
         hold on
@@ -298,5 +295,50 @@
     end
 
     set(gcf, 'position', [10, 10, 1200, 800])
+    
+% Polygon ROI
+    polyH = drawpolygon(s1, 'Position', [165, 318, 329, 175; 141, 130, 284, 298]');
+    polyListener = addlistener(polyH, 'ROIMoved', @polyMoveCallback);
+    polyPos = polyH.Position;
+    set(get(s1, 'Title'), 'String', 'Middle-click the image to save ROI');
+    fig1.ButtonDownFcn = @ROIConfirm;
+    imH.ButtonDownFcn = @ROIConfirm;
+    s1.ButtonDownFcn = @ROIConfirm;
+    uiwait(fig1);
 
-% end
+    T = [1, 2, 3; 3, 4, 1];
+    TR = triangulation(T, polyPos);
+    hold(s1, 'on');
+    triplot(TR);
+    tri1 = TR.Points(TR.ConnectivityList(1, :), :);
+    tri2 = TR.Points(TR.ConnectivityList(2, :), :);
+    sites = cell(1, length(wgpx));
+    validCnt = 0;
+    for k = 1:length(wgpx)
+        cartPos = [wgpx(k), wgpy(k)];
+        if(inpolygon(wgpx(k), wgpy(k), tri1(:, 1), tri1(:, 2)))
+            baryPos = cartesianToBarycentric(TR, 1, cartPos);
+            validCnt = validCnt + 1;
+            sites{validCnt} = struct('baryPos', baryPos,'triangleInd', 1, 'frequency_THz', wgc(k), 'wavelength_nm', 3e5/wgc(k));
+        elseif(inpolygon(wgpx(k), wgpy(k), tri2(:, 1), tri2(:, 2)))
+            baryPos = cartesianToBarycentric(TR, 2, cartPos);
+            validCnt = validCnt + 1;
+            sites{validCnt} = struct('baryPos', baryPos,'triangleInd', 2, 'frequency_THz', wgc(k), 'wavelength_nm', 3e5/wgc(k));
+        end
+    end
+    sites = sites(1:validCnt);
+    savePath = 'sites.mat';
+    fprintf("Sites data saved to %s", savePath);
+    save(savePath, 'sites');
+    function polyMoveCallback(hObj, event)
+        fprintf("Polygon ROI moved.\n");
+        polyPos = hObj.Position;
+    end
+    function ROIConfirm(hObj, event)
+        if event.Button == 2
+            uiresume;
+            return;
+        end
+    end
+
+end
