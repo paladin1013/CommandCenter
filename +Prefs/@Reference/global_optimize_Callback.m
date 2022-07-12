@@ -55,7 +55,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             start_pos = NaN(1, 3);
             for k = 1:3
                 mp = ms.get_meta_pref(axis_name{k});
-                if ~isempty(mp.reference)
+                if ~isempty(mp)&& isprop(mp, 'reference') && ~isempty(mp.reference)
                     if isprop(mp.reference.parent, 'steponly') && mp.reference.parent.steponly
                         % Step-only preferences should not participate in global optimization. Optimization of step-only references should be done individually in the end of the procedure. 
                         axis_available(k) = 0;

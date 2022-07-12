@@ -8,7 +8,7 @@ classdef MetaStageManager < Base.Manager
         X = [];
         Y = [];
         Z = [];
-        target = []; % A reference for optimization target
+        Target = []; % A reference for optimization Target
     end
         
     properties
@@ -153,7 +153,7 @@ classdef MetaStageManager < Base.Manager
             obj.X = obj.active_module.get_meta_pref('X');
             obj.Y = obj.active_module.get_meta_pref('Y');
             obj.Z = obj.active_module.get_meta_pref('Z');
-            obj.target = obj.active_module.get_meta_pref('Target');
+            obj.Target = obj.active_module.get_meta_pref('Target');
         end
     end
     methods
@@ -538,6 +538,21 @@ classdef MetaStageManager < Base.Manager
         end
         function manualLoadPrefs(obj)
             obj.loadPrefs;
+        end
+        function optimize(obj, axis_name)
+            src = struct('Value', true);  % Use a fake source
+            assert(any(strcmp({'X', 'Y', 'Z', 'Target'}, axis_name)), "axis_name should be 'X', 'Y', 'Z' or 'Target'");
+            ref = obj.(axis_name);
+            if ref.readonly && ~strcmp(axis_name, 'Target')
+                error("Reference %s is read only", ref.reference.name);
+            end
+            if strcmp(axis_name, 'Target')
+                ref.global_optimize_Callback(src);
+            elseif ref.steponly
+                ref.steponly_optimize_Callback(src);
+            else
+                ref.optimize_Callback(src);
+            end
         end
     end
     methods(Access=protected)
