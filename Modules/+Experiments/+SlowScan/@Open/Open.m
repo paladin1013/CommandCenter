@@ -16,13 +16,12 @@ classdef Open < Experiments.SlowScan.SlowScan_invisible
         tune_coarse =           Prefs.Boolean(true,     'help_text', 'Whether to tune to the coarse value before the scan.');
         center_scan =           Prefs.Boolean(false,    'help_text', 'When true, percents will be shifted after tune_coarse completes to compensate position of percent.');
         post_scan_tune_max =    Prefs.Boolean(true,     'help_text', 'Whether to tune to the maximum value after the scan has completed.');
-    end
-    properties(SetObservable,AbortSet)
-        freq_THz =      470;
-        percents =      'linspace(0,100,101)'; %eval(percents) will define percents for open-loop scan [scan_points]
+        freq_THz =      Prefs.Double(470);
+        percents =      Prefs.String("linspace(0,100,101)", 'set', 'set_percents'); %eval(percents) will define percents for open-loop scan [scan_points]
+        percentInitialPosition = Prefs.Double(50); % used to center scan if user wants
+
     end
     properties(SetAccess=private,Hidden)
-        percentInitialPosition = 50; % used to center scan if user wants
     end
     properties(Constant)
         xlabel = 'Percent (%)';
@@ -34,9 +33,10 @@ classdef Open < Experiments.SlowScan.SlowScan_invisible
     end
     methods(Access=private)
         function obj = Open()
-            obj.scan_points = eval(obj.percents);
+            
             obj.prefs = [{'freq_THz','center_scan','tune_coarse','post_scan_tune_max','percents'}, obj.prefs];
             obj.loadPrefs; % Load prefs specified as obj.prefs
+            obj.scan_points = eval(obj.percents);
         end
     end
     
@@ -81,12 +81,12 @@ classdef Open < Experiments.SlowScan.SlowScan_invisible
                 obj.resLaser.tune(obj.resLaser.c/target_max);
             end
         end
-        function set.percents(obj,val)
+        function val = set_percents(obj,val, ~)
             numeric_vals = str2num(val); %#ok<ST2NM> str2num uses eval but is more robust for numeric input
             assert(~isempty(numeric_vals),'Must have at least one value for percents.');
             assert(min(numeric_vals)>=0&&max(numeric_vals)<=100,'Percents must be between 0 and 100 (inclusive).');
             obj.scan_points = numeric_vals;
-            obj.percents = val;
+            val = obj.percents
         end
     end
 end
