@@ -169,6 +169,9 @@ classdef PrefRegister < Base.Singleton
             % Adds pref to the register under the field corresponding to the parent.
             for ii = 1:length(obj.register)
                 if isequal(obj.register{ii}.parent, parent)
+                    % if isempty(pref.property_name)
+                    %     return;
+                    % end
                     obj.register{ii}.prefs.(pref.property_name) = pref;
                     
                     return;

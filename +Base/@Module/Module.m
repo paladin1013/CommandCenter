@@ -264,6 +264,11 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
             % Updating the value is expensive due to having to supress and
             % enable the listeners. So we first determine whether the value
             % changed from the current -- if so, we don't need to update.
+            % if isempty(pref) % Seems not working: How to remove a reference?
+            %     obj.temp_prop.(name) = Prefs.Reference();
+            %     return;
+            % end
+
             shouldUpdate = isfield(obj.temp_prop, name) && ~nanisequal(obj.temp_prop.(name).value, pref.value);
 
             % Update the Pref class to the supplied class
@@ -277,75 +282,78 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
             end
         end
         function pref = get_meta_pref(obj,name)
-            pref = obj.temp_prop.(name);
-            
+            try
+                pref = obj.temp_prop.(name);
+                return;
+            catch
+            end
             % Return the "meta pref" which contains the pref class
             % NOTE: this is a value class, so changing anything in the
             % returned instance does nothing.
             % NOTE: This by-passes pref get listeners
-%             if isfield(obj.ls,name) % Indicates class-based pref
-%                 assert(all([obj.ls.(name).Enabled]),...
-%                     sprintf(['"%s" pref, child of "%s", is in use elsewhere. You may be getting this because you are trying ',...
-%                     'to reload settings in a set/custom_validate/custom_clean method of a meta pref.'],name,class(obj)));
-% %                 assert(obj.ls_enabled)
-%                 obj.prop_listener_ctrl(name,false);
-%                 val = obj.(name);
-%                 obj.prop_listener_ctrl(name,true);
-%                 return
-%             elseif isfield(obj.implicit_mps,name)
-%                 val = obj.implicit_mps.(name);
-%                 return
-%             end
-%             % Anything beyond this point must be an old-stlye pref that was
-%             %   not loaded (or for the first time) in the settings call
-%             % old style prefs: auto generate default type here
-%             val = obj.(name);
-%             prop = findprop(obj,name);
-%             if prop.HasDefault && ...
-%                 (iscell(prop.DefaultValue) || isa(prop.DefaultValue,'function_handle'))
-%                 if iscell(prop.DefaultValue)
-%                     choices = prop.DefaultValue;
-%                 else % function handle
-%                     choices = prop.DefaultValue();
-%                 end
-%                 if iscell(val) || isa(val,'function_handle')
-%                     warning('PREF:oldstyle_pref','Default choice not specified for %s; using empty option',prop.Name);
-%                     val = '';
-%                     obj.(name) = '';
-%                 end
-%                 val = Prefs.MultipleChoice(val,'choices',choices);
-%             elseif isnumeric(val) && numel(val)==1 % There are many numeric classes
-%                 val = Prefs.Double(val);
-%             elseif ismember('Base.Module',superclasses(val))
-%                 warningtext = 'Update to class-based pref! While Prefs.ModuleInstance will protect from bad values set in the UI, it won''t extend to console or elsewhere.';
-%                 warning('PREF:oldstyle_pref',[prop.Name ': ' warningtext]);
-%                 % Deserves an extra annoying warning that cant be turned off
-%                 warndlg([warningtext newline newline 'See console warnings for offending prefs.'],'Update to class-based pref!','modal');
-%                 n = Inf;
-%                 inherits = {};
-%                 if prop.HasDefault
-%                     n = max(size(prop.DefaultValue));
-%                     if n == 0; n = Inf; end
-%                     if isempty(prop.DefaultValue) % if it isn't empty, it must be an actual module defined, not a category
-%                         inherits = {class(prop.DefaultValue)};
-%                     end
-%                 end
-%                 val = Prefs.ModuleInstance(val,'n',n,'inherits',inherits);
-%             elseif isnumeric(val)
-%                 val = Prefs.DoubleArray(val);
-%             else
-%                 switch class(val)
-%                     case {'char'}
-%                         val = Prefs.String(val);
-%                     case {'logical'}
-%                         val = Prefs.Boolean(val);
-%                     otherwise
-%                         sz = num2str(size(val),'%ix'); sz(end) = []; % remove last "x"
-%                         error('PREF:notimplemented','Class-based pref not implemented for %s %s',sz,class(val))
-%                 end
-%             end
-%             val.auto_generated = true;
-%             val.property_name = name;
+            if isfield(obj.ls,name) % Indicates class-based pref
+                assert(all([obj.ls.(name).Enabled]),...
+                    sprintf(['"%s" pref, child of "%s", is in use elsewhere. You may be getting this because you are trying ',...
+                    'to reload settings in a set/custom_validate/custom_clean method of a meta pref.'],name,class(obj)));
+%                 assert(obj.ls_enabled)
+                obj.prop_listener_ctrl(name,false);
+                val = obj.(name);
+                obj.prop_listener_ctrl(name,true);
+                return
+            elseif isfield(obj.implicit_mps,name)
+                val = obj.implicit_mps.(name);
+                return
+            end
+            % Anything beyond this point must be an old-stlye pref that was
+            %   not loaded (or for the first time) in the settings call
+            % old style prefs: auto generate default type here
+            pref = obj.(name);
+            prop = findprop(obj,name);
+            if prop.HasDefault && ...
+                (iscell(prop.DefaultValue) || isa(prop.DefaultValue,'function_handle'))
+                if iscell(prop.DefaultValue)
+                    choices = prop.DefaultValue;
+                else % function handle
+                    choices = prop.DefaultValue();
+                end
+                if iscell(pref) || isa(pref,'function_handle')
+                    warning('PREF:oldstyle_pref','Default choice not specified for %s; using empty option',prop.Name);
+                    pref = '';
+                    obj.(name) = '';
+                end
+                pref = Prefs.MultipleChoice(pref,'choices',choices);
+            elseif isnumeric(pref) && numel(pref)==1 % There are many numeric classes
+                pref = Prefs.Double(pref);
+            elseif ismember('Base.Module',superclasses(pref))
+                warningtext = 'Update to class-based pref! While Prefs.ModuleInstance will protect from bad values set in the UI, it won''t extend to console or elsewhere.';
+                warning('PREF:oldstyle_pref',[prop.Name ': ' warningtext]);
+                % Deserves an extra annoying warning that cant be turned off
+                warndlg([warningtext newline newline 'See console warnings for offending prefs.'],'Update to class-based pref!','modal');
+                n = Inf;
+                inherits = {};
+                if prop.HasDefault
+                    n = max(size(prop.DefaultValue));
+                    if n == 0; n = Inf; end
+                    if isempty(prop.DefaultValue) % if it isn't empty, it must be an actual module defined, not a category
+                        inherits = {class(prop.DefaultValue)};
+                    end
+                end
+                pref = Prefs.ModuleInstance(pref,'n',n,'inherits',inherits);
+            elseif isnumeric(pref)
+                pref = Prefs.DoubleArray(pref);
+            else
+                switch class(pref)
+                    case {'char'}
+                        pref = Prefs.String(pref);
+                    case {'logical'}
+                        pref = Prefs.Boolean(pref);
+                    otherwise
+                        sz = num2str(size(pref),'%ix'); sz(end) = []; % remove last "x"
+                        error('PREF:notimplemented','Class-based pref not implemented for %s %s',sz,class(pref))
+                end
+            end
+            pref.auto_generated = true;
+            pref.property_name = name;
         end
         function prefs = get_class_based_prefs(obj)
             % Get string name of all prefs (MATLAB properties) that were defined as a class-based pref
