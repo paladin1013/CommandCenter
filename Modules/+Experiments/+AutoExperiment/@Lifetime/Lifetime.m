@@ -13,6 +13,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         ax2H;           % Handle to axes (children of figH)
         sitesH;         % Handle to sites scatter plot (children of ax2H)
         sites;          % sites data. Assigned after 
+        msmH;           % Handle to MetaStageManager
     end
     properties(SetObservable, GetObservable)
         imageROI = zeros(2, 2);
@@ -294,7 +295,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
         end
 
         function updateFindedSites(obj, hObj, eventdata)
-            if isempty(obj.finderH) || ~isprop(obj.finderH, 'XData') || isempty(obj.finderH.XData)
+            if isempty(obj.finderH) ||  isempty(obj.finderH.XData)
                 return;
             end
             obj.findedSites.absPos = [obj.finderH.XData', obj.finderH.YData'];
@@ -324,12 +325,13 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             managers.Path.select_path('APD1'); %this may be unnecessary
         end
         function initialize(obj, status, managers, ax)
+            obj.msmH = managers.MetaStage;
             if isempty(obj.sites)
                 try
                     data = load(obj.sitesDataPath);
                     obj.sites = data.sites;
                 catch err
-                    status.String = "Loading sites data failed.\n";
+                    status.String = "Loading sites data failed. Start acquiring sites.";
                     sites = obj.AcquireSites(managers);
                     
                     save(obj.sitesDataPath, 'sites');
@@ -342,7 +344,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
 
             xabs = obj.sites.positions(:, 1);
             yabs = obj.sites.positions(:, 2);
-            markerSize = ones(N, 1)*0.01*min(fig.Position(3), fig.Position(4));
+            markerSize = ones(N, 1)*0.1*min(fig.Position(3), fig.Position(4));
             if obj.includeFreq
                 freqs_THz = obj.sites.freqs_THz;
                 freq_max = max(freqs_THz);
@@ -352,12 +354,13 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             end
             for k = 1:N
                 if obj.includeFreq
-                    h = drawpoint(ax, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k), 'Color', colors(k, :));
+                    h = drawpoint(ax, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k)*100, 'Color', colors(k, :));
                     h.UserData = freqs_THz(k);
                 else
-                    h = drawpoint(ax, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k), 'Color', [0, 0, 1]);
+                    h = drawpoint(ax, 'Position', [xabs(k), yabs(k)], 'MarkerSize', markerSize(k)*100, 'Color', [0, 0, 1]);
                 end
-                if isempty(im.UserData) || ~isprop(im.UserData, 'h') || isempty(im.UserData.h)
+                if isempty(im.UserData) || isempty(im.UserData.h)
+                    im.UserData = struct();
                     im.UserData.h = h;
                 else
                     im.UserData.h(end+1) = h;
@@ -385,7 +388,7 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
 
             for k = 1:N
                 
-                fprintf("Locating site %d/%d", k, N);
+                status.String = sprintf("Locating site %d/%d\n", k, N);
                 h = im.UserData.h(k);
                 h.Color = [1, 0, 0];
                 assert(~obj.abort_request, 'User aborted');
@@ -394,8 +397,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 obj.sites.freqs_THz(k) = newFreq;
                 obj.sites.APDCount(k) = Target.read;
                 h.Position = newAbsPos;
-                h.Color = [0, 0, 1];
-                h.Size = 0.01*min(fig.Position(3), fig.Position(4))*(Target.read/50000);
+                h.Color = [0, 1, 0];
+                h.MarkerSize = min(fig.Position(3), fig.Position(4))*10*(Target.read/10000);
             end
             sites = obj.sites;
             save(obj.sitesDataPath, 'sites');
@@ -448,8 +451,18 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             newFreq = freq;
 
             assert(X.writ(absPos(1))&&Y.writ(absPos(2)), "X and Y values are not properly set");
-            msm.optimize('Target');
-            newAbsPos = [X.read, y.read];
+            msm.optimize('Target', true);
+            newAbsPos = [X.read, Y.read];
+        end
+
+        function abort(obj)
+            obj.fatal_flag = true;
+            obj.abort_request = true;
+            obj.msmH.optimize('Target', false); % interrupt the metastage optimization process
+            if ~isempty(obj.current_experiment)
+                obj.current_experiment.abort;
+            end
+            obj.logger.log('Abort requested');
         end
     end
 end

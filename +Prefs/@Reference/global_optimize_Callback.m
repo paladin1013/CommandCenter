@@ -60,7 +60,7 @@ function obj = global_optimize_Callback(obj, src, evt)
                         % Step-only preferences should not participate in global optimization. Optimization of step-only references should be done individually in the end of the procedure. 
                         axis_available(k) = 0;
                         axis_steponly(k) = 1;
-                    else
+                    elseif ~mp.reference.readonly
                         axis_available(k) = 1;
                         axis_stop(k) = 0;
                         base_step(k) = ms.(sprintf("key_step_%s", lower(axis_name{k})));
@@ -173,8 +173,9 @@ function obj = global_optimize_Callback(obj, src, evt)
                                 step(k) = step(k)/2;
                             end
                             if all(abs(step) <= min_step)
-                                fprintf("All axes reaches local maximum. Abort.\n");
+                                fprintf("All axes reaches local maximum.\n");
                                 finish_ordinary_optimize = true;
+
                                 break;
                             end
                             direction_changed(k) = false;
@@ -187,6 +188,9 @@ function obj = global_optimize_Callback(obj, src, evt)
 
             end % End while loop
             set_pos(fixed_pos);
+            [avg, st] = obj.get_avg_val;
+            fprintf("Final target value: %.2e.\n", avg);
+            fprintf("Final position: %.2e, %.2e, %.2e\n", fixed_pos(1), fixed_pos(2), fixed_pos(3));
             if ms.plot_record
                 obj.plot_records(optimize_dim, axis_available, axis_ref_name);
             end

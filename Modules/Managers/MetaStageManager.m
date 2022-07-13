@@ -539,8 +539,12 @@ classdef MetaStageManager < Base.Manager
         function manualLoadPrefs(obj)
             obj.loadPrefs;
         end
-        function optimize(obj, axis_name)
-            src = struct('Value', true);  % Use a fake source
+        function optimize(obj, axis_name, state)
+            if ~exist('state', 'var')
+                state = true;
+            end
+            src = struct('Value', state);  % Use a fake source
+            
             assert(any(strcmp({'X', 'Y', 'Z', 'Target'}, axis_name)), "axis_name should be 'X', 'Y', 'Z' or 'Target'");
             ref = obj.(axis_name);
             if ref.readonly && ~strcmp(axis_name, 'Target')
