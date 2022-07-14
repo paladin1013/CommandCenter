@@ -327,7 +327,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
         end
     end
     sites = sites(1:validCnt);
-    savePath = 'sites.mat';
+    savePath = 'EMCCD_sites_file.mat';
     fprintf("Sites data saved to %s", savePath);
     save(savePath, 'sites');
     function polyMoveCallback(hObj, event)

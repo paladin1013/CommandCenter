@@ -56,8 +56,7 @@ function acquireSites(obj,managers)
 
     if strcmp(obj.method, 'EMCCD')
         if isempty(obj.emccdSites.baryPos)
-            [file,path] = uigetfile('*.mat','Site Selection',last_path);
-            obj.loadSitesData([path, file]);
+            obj.loadSitesData(obj.emccdDataPath);
         end
         obj.listeners{3} = addlistener(obj, 'emccdSites', 'PostSet', @obj.updateEMCCDSites);
         obj.updateEMCCDSites;

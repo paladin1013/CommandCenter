@@ -7,6 +7,12 @@ function initialize(obj, status, managers, ax)
     if isempty(obj.sites) || ~obj.useSitesMemory
         try
             data = load(obj.sitesDataPath);
+            if isfield(data, 'sites')
+                data = data.sites;
+                if isfield(data, 'sites')
+                    data = data.sites;
+                end
+            end
             loadSuccess = true;
         catch
             loadSuccess = false;
@@ -87,9 +93,9 @@ function initialize(obj, status, managers, ax)
             h = im.UserData.h(k);
             h.Color = [1, 0, 0];
             assert(~obj.abort_request, 'User aborted');
-            [newAbsPos, newFreq] = obj.locateSite(managers.MetaStage, obj.sites.positions(k, 1:2), obj.sites.freqs_THz(k));
+            newAbsPos = obj.locateSite(obj.sites.positions(k, 1:2));
+
             obj.sites.positions(k, 1:2) = newAbsPos;
-            obj.sites.freqs_THz(k) = newFreq;
             count = Target.read;
             obj.sites.APDCount(k) = count;
             h.Position = newAbsPos;

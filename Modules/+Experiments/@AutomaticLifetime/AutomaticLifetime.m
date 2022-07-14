@@ -93,9 +93,9 @@ classdef AutomaticLifetime < Modules.Experiment
         function updateROI(obj,varargin)
             % Updates validROI when polynomial location changes
             obj.validROI = obj.validROIPoly.Position;
-            if strcmp(obj.site_selection, 'Load from file')
+            if strcmp(obj.method, 'EMCCD')
                 obj.updateEMCCDSites;
-            elseif strcmp(obj.site_selection, 'Peak finder')
+            elseif strcmp(obj.method, 'Spectrum')
                 obj.updateFindedSites;
             end
         end
@@ -207,23 +207,21 @@ classdef AutomaticLifetime < Modules.Experiment
             end
         end
 
-        function [newAbsPos, newFreq] = locateSite(obj, msm, absPos, freq)
+        function newAbsPos = locateSite(obj, absPos)
             % Find site location with more accuracy
-            % msm: MetaStageManager; absPos: 1*2 Double; freq: Double, THz; )
-            ms = msm.active_module; % MetaStage instance
+            % msm: MetaStageManager; absPos: 1*2 Double;)
+            ms = obj.msmH.active_module; % MetaStage instance
             X = ms.get_meta_pref('X');
             Y = ms.get_meta_pref('Y');
             
-            % Optimize frequency first ?
-            newFreq = freq;
 
             assert(X.writ(absPos(1))&&Y.writ(absPos(2)), "X and Y values are not properly set");
-            msm.optimize('Target', true);
+            obj.msmH.optimize('Target', true);
             newAbsPos = [X.read, Y.read];
         end
 
         function abort(obj)
-            obj.fatal_flag = true;
+            % obj.fatal_flag = true;
             obj.abort_request = true;
             obj.msmH.optimize('Target', false); % interrupt the metastage optimization process
             % if ~isempty(obj.current_experiment)
