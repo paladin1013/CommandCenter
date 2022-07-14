@@ -1,5 +1,5 @@
-classdef AutomaticLifetime < Experiments
-    %Spec automatically takes Lifetime at sites
+classdef AutomaticLifetime < Modules.Experiment
+    %Automatically takes Lifetime at sites
     
     properties
         sites;          % sites data. Assigned after `acquireSites`
@@ -10,13 +10,16 @@ classdef AutomaticLifetime < Experiments
         ax2H;           % Handle to axes (children of figH)
         sitesH;         % Handle to sites scatter plot (children of ax2H)
         msmH;           % Handle to MetaStageManager
-        prefs = {'useSitesMemory', 'importSiteData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
-        % prefs = {'useSitesMemory', 'importSiteData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
+        data = []; % subclasses should not set this; it can be manipulated in GetData if necessary
+        meta = []; % Store experimental settings
+        abort_request = false; % Flag that will be set to true upon abort. Used in run method.
+        prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
+        % prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
     end
     properties(SetObservable, GetObservable)
         
         useSitesMemory = Prefs.Boolean(true, 'help', 'Will use previous sites memory if avaliable, without loading sites data / acquiring new sites');
-        importSites = Prefs.Boolean(true, 'help', 'Will import previously finded sites.')
+        importSitesData = Prefs.Boolean(true, 'help', 'Will import previously finded sites.');
         method = Prefs.MultipleChoice('Spectrum','choices',{'Spectrum','EMCCD'}, 'help', 'Chose method to get emitter frequency');
         optimizePos = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo mirror.');
 
@@ -35,7 +38,7 @@ classdef AutomaticLifetime < Experiments
         findedSites = struct('absPos', [], 'relSize', []); % For sites founded by `Peak finder`
         sitesDataPath = Prefs.String("sites_data.mat");
         emccdDataPath = Prefs.String('EMCCD_sites_file.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.baryPos`, `data.wavelengths_nm`.',...
-        'custom_validate','loadSitesData');
+        'custom_validate','loadEMCCDData');
         figH;           % Handle to figure
         finderH;        % Handle to peak finder results
 
@@ -46,7 +49,7 @@ classdef AutomaticLifetime < Experiments
             mlock;
             persistent Objects
             if isempty(Objects)
-                Objects = Experiments.AutoExperiment.Lifetime.empty(1,0);
+                Objects = Experiments.AutomaticLifetime.empty(1,0);
             end
             for i = 1:length(Objects)
                 if isvalid(Objects(i)) && isequal(varargin,Objects(i).singleton_id)
@@ -54,22 +57,25 @@ classdef AutomaticLifetime < Experiments
                     return
                 end
             end
-            obj = Experiments.AutoExperiment.Lifetime(varargin{:});
+            obj = Experiments.AutomaticLifetime(varargin{:});
             obj.singleton_id = varargin;
-            obj.site_selection = 'Load from file';
-
+            obj.imaging_source = Sources.Cobolt_PB.instance;
             Objects(end+1) = obj;
         end
     end
     methods(Access=private)
-        function obj = Lifetime()
-            obj.experiments = Experiments.SlowScan.Open.instance;
-            obj.imaging_source = Sources.Cobolt_PB.instance;
+        function obj = AutomaticLifetime()
+            % obj.experiments = Experiments.SlowScan.Open.instance;
+            % obj.imaging_source = Sources.Cobolt_PB.instance;
             obj.loadPrefs;
         end
     end
     methods
         
+        run(obj,statusH,managers,ax);
+        initialize(obj, status, managers, ax);
+        acquireSites(obj,managers);
+
         
 
         function adjustMarkerSize(obj, hObj, eventData)
@@ -88,12 +94,12 @@ classdef AutomaticLifetime < Experiments
             % Updates validROI when polynomial location changes
             obj.validROI = obj.validROIPoly.Position;
             if strcmp(obj.site_selection, 'Load from file')
-                obj.updateemccdSites;
+                obj.updateEMCCDSites;
             elseif strcmp(obj.site_selection, 'Peak finder')
                 obj.updateFindedSites;
             end
         end
-        function updateemccdSites(obj, hObj, eventdata)
+        function updateEMCCDSites(obj, hObj, eventdata)
             N = size(obj.emccdSites.baryPos, 1);
             assert(size(obj.emccdSites.baryPos, 2) == 3, sprintf("Size of obj.emccdSites.baryPos should be N*3 (N=%d)", N));
 
@@ -113,7 +119,7 @@ classdef AutomaticLifetime < Experiments
                 obj.sitesH.YData = cartPos(:, 2);
                 obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
                 cbh = obj.ax2H.Colorbar;
-                if  ~obj.includeFreq
+                if strcmp(obj.method, 'Spectrum')
                     % Draw scatter plot without frequency
                     cbh.Visible = 'off';
                     obj.sitesH.CData = zeros(N, 1);
@@ -168,7 +174,7 @@ classdef AutomaticLifetime < Experiments
             %turn laser off after running
             obj.imaging_source.off;
         end
-        function loadSitesData(obj,val,~)
+        function loadEMCCDData(obj,val,~)
             % Validate input data: data.sites{k} should contain fields baryPos, triangleInd, frequency_THz, wavelength_nm
             if ~isempty(val)
                 flag = exist(val,'file');
@@ -202,6 +208,7 @@ classdef AutomaticLifetime < Experiments
         end
 
         function [newAbsPos, newFreq] = locateSite(obj, msm, absPos, freq)
+            % Find site location with more accuracy
             % msm: MetaStageManager; absPos: 1*2 Double; freq: Double, THz; )
             ms = msm.active_module; % MetaStage instance
             X = ms.get_meta_pref('X');
@@ -219,13 +226,17 @@ classdef AutomaticLifetime < Experiments
             obj.fatal_flag = true;
             obj.abort_request = true;
             obj.msmH.optimize('Target', false); % interrupt the metastage optimization process
-            if ~isempty(obj.current_experiment)
-                obj.current_experiment.abort;
-            end
+            % if ~isempty(obj.current_experiment)
+            %     obj.current_experiment.abort;
+            % end
             obj.logger.log('Abort requested');
         end
-
-        initialize(obj, status, managers, ax);
-        sites = AcquireSites(obj,managers)
+        function dat = GetData(obj,~,~)
+            % Callback for saving methods (note, lots more info in the two managers input!)
+            dat.data = obj.data;
+            dat.meta = obj.meta;
+        end
+        function UpdateRun(obj,~,~,ax)
+        end
     end
 end
