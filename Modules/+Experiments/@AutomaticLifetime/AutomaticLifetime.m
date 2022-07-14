@@ -1,24 +1,29 @@
-classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
+classdef AutomaticLifetime < Experiments
     %Spec automatically takes Lifetime at sites
     
     properties
-        prerun_functions = {''};
-        patch_functions = {''};
-        sites;          % sites data. Assigned after 
-    end
-    properties(Access=private)
-        validROIPoly; % Handle to imrect of validROI
+        sites;          % sites data. Assigned after `acquireSites`
+        validROIPoly;   % Handle to imrect of validROI
         listeners = {}; % Handle of listeners
         axH;            % Handle to axes (children of figH)
         imH;            % Handle to image (children of axH)
         ax2H;           % Handle to axes (children of figH)
         sitesH;         % Handle to sites scatter plot (children of ax2H)
         msmH;           % Handle to MetaStageManager
+        prefs = {'useSitesMemory', 'importSiteData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
+        % prefs = {'useSitesMemory', 'importSiteData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
     end
     properties(SetObservable, GetObservable)
+        
+        useSitesMemory = Prefs.Boolean(true, 'help', 'Will use previous sites memory if avaliable, without loading sites data / acquiring new sites');
+        importSites = Prefs.Boolean(true, 'help', 'Will import previously finded sites.')
+        method = Prefs.MultipleChoice('Spectrum','choices',{'Spectrum','EMCCD'}, 'help', 'Chose method to get emitter frequency');
+        optimizePos = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo mirror.');
+
+        % Related devices
+        imaging_source = Prefs.ModuleInstance(Modules.Source.empty(0),'inherits',{'Modules.Source'});
         imageROI = zeros(2, 2);
         validROI = zeros(4, 2); % Only sites inside this polygon area are valid
-
         % struct of external imported sites (eg. EMCCD wide field scan)
             % baryPos (N*3): barycentric coordinates of sites position
             % triangleIdx (N*1): site belongs to which triangle in ROI triangulation (Idx = 1 or 2)
@@ -26,16 +31,14 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             % freqs_THz (N*1): resonant wavelengths_nm of each emitter 
             % relPos (N*2): (optional, deprecated) relative position based on validROI
             % relSize (N*1): (optional) relative size of each site
-        importedSites = struct('baryPos', [], 'triangleIdx', [], 'relPos', [], 'wavelengths_nm', [], 'freqs_THz', [], 'relSize', []); 
+        emccdSites = struct('baryPos', [], 'triangleIdx', [], 'relPos', [], 'wavelengths_nm', [], 'freqs_THz', [], 'relSize', []); 
         findedSites = struct('absPos', [], 'relSize', []); % For sites founded by `Peak finder`
+        sitesDataPath = Prefs.String("sites_data.mat");
+        emccdDataPath = Prefs.String('EMCCD_sites_file.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.baryPos`, `data.wavelengths_nm`.',...
+        'custom_validate','loadSitesData');
         figH;           % Handle to figure
         finderH;        % Handle to peak finder results
-        includeFreq = Prefs.Boolean(false, 'help', 'Whether resonant frequency is considered in each site. Must be set to false to enable manually select');
-        EMCCDSitesFile = Prefs.File('filter_spec','*.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.baryPos`, `data.wavelengths_nm`.',...
-        'custom_validate','loadSitesData');
-        sitesDataPath = Prefs.String("sites_data.mat");
-        useSitesMemory = Prefs.Boolean(true, 'help', 'Will use previous sites memory if avaliable, without acquiring new sites');
-        optimizeSitesPosition = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo');
+
 
     end
     methods(Static)
@@ -85,24 +88,24 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
             % Updates validROI when polynomial location changes
             obj.validROI = obj.validROIPoly.Position;
             if strcmp(obj.site_selection, 'Load from file')
-                obj.updateImportedSites;
+                obj.updateemccdSites;
             elseif strcmp(obj.site_selection, 'Peak finder')
                 obj.updateFindedSites;
             end
         end
-        function updateImportedSites(obj, hObj, eventdata)
-            N = size(obj.importedSites.baryPos, 1);
-            assert(size(obj.importedSites.baryPos, 2) == 3, sprintf("Size of obj.importedSites.baryPos should be N*3 (N=%d)", N));
+        function updateemccdSites(obj, hObj, eventdata)
+            N = size(obj.emccdSites.baryPos, 1);
+            assert(size(obj.emccdSites.baryPos, 2) == 3, sprintf("Size of obj.emccdSites.baryPos should be N*3 (N=%d)", N));
 
-            if isempty(obj.importedSites.freqs_THz) || all(size(obj.importedSites.freqs_THz) == [N, 1])
+            if isempty(obj.emccdSites.freqs_THz) || all(size(obj.emccdSites.freqs_THz) == [N, 1])
                 % hold(obj.axH, 'on') 
                 P = obj.validROIPoly.Position;
                 T = [1, 2, 3; 3, 4, 1];
                 TR = triangulation(T, P);
                 cartPos = zeros(N, 2);
                 for k = 1:N
-                    triIdx = obj.importedSites.triangleInd(k);
-                    cartPos(k, :) = barycentricToCartesian(TR, triIdx, obj.importedSites.baryPos(k, :));
+                    triIdx = obj.emccdSites.triangleInd(k);
+                    cartPos(k, :) = barycentricToCartesian(TR, triIdx, obj.emccdSites.baryPos(k, :));
                 end
                 hold(obj.ax2H, 'on');
 %                 triplot(TR);
@@ -116,8 +119,8 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                     obj.sitesH.CData = zeros(N, 1);
                 else
                     % Draw scatter plot with frequency
-                    wls = obj.importedSites.wavelengths_nm;
-                    freqs = obj.importedSites.freqs_THz;
+                    wls = obj.emccdSites.wavelengths_nm;
+                    freqs = obj.emccdSites.freqs_THz;
                     cbh.Visible = 'on';
                     obj.sitesH.CData = freqs;
                     ylabel(cbh, 'Resonant frequency (THz)', 'Rotation', 90);
@@ -181,19 +184,19 @@ classdef Lifetime < Experiments.AutoExperiment.AutoExperiment_invisible
                 end
                 assert(isfield(data, 'sites'), "Imported site data file should contain field `sites`\n");
                 N = length(data.sites);
-                obj.importedSites.baryPos = zeros(N, 3);
-                obj.importedSites.triangleInd = zeros(N, 1);
-                obj.importedSites.wavelengths_nm = zeros(N, 1);
-                obj.importedSites.freqs_THz = zeros(N, 1);
+                obj.emccdSites.baryPos = zeros(N, 3);
+                obj.emccdSites.triangleInd = zeros(N, 1);
+                obj.emccdSites.wavelengths_nm = zeros(N, 1);
+                obj.emccdSites.freqs_THz = zeros(N, 1);
                 for k = 1:N
                     siteData = data.sites{k};
-                    obj.importedSites.baryPos(k, :) = siteData.baryPos;
-                    obj.importedSites.triangleInd(k, :) = siteData.triangleInd;
-                    obj.importedSites.wavelengths_nm(k, :) = siteData.wavelength_nm;
-                    obj.importedSites.freqs_THz(k, :) = siteData.frequency_THz;
+                    obj.emccdSites.baryPos(k, :) = siteData.baryPos;
+                    obj.emccdSites.triangleInd(k, :) = siteData.triangleInd;
+                    obj.emccdSites.wavelengths_nm(k, :) = siteData.wavelength_nm;
+                    obj.emccdSites.freqs_THz(k, :) = siteData.frequency_THz;
                 end                    
                 if isfield(data, 'relSize')
-                    obj.importedSites.relSize = data.relSize;
+                    obj.emccdSites.relSize = data.relSize;
                 end
             end
         end

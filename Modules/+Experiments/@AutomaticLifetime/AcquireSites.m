@@ -59,12 +59,12 @@ function sites = AcquireSites(obj,managers)
     obj.listeners{2} = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
 
     if strcmp(obj.site_selection, 'Load from file')
-        if isempty(obj.importedSites.baryPos)
+        if isempty(obj.emccdSites.baryPos)
             [file,path] = uigetfile('*.mat','Site Selection',last_path);
             obj.loadSitesData([path, file]);
         end
-        obj.listeners{3} = addlistener(obj, 'importedSites', 'PostSet', @obj.updateImportedSites);
-        obj.updateImportedSites;
+        obj.listeners{3} = addlistener(obj, 'emccdSites', 'PostSet', @obj.updateemccdSites);
+        obj.updateemccdSites;
         set(get(obj.axH, 'Title'), 'String', sprintf('Drag the ROI rectangle to fit the imported site region\nMiddle click on figure (outside the rectangle area) to confirm\n(DO NOT CLOSE THE FIGURE!)'));
     elseif strcmp(obj.site_selection, 'Peak finder')
         obj.listeners{3} = addlistener(obj, 'findedSites', 'PostSet', @obj.updateFindedSites);
@@ -91,7 +91,7 @@ function sites = AcquireSites(obj,managers)
     obj.validROIPoly.Visible = 'off';
 
     if obj.includeFreq
-        freqs_THz = obj.importedSites.freqs_THz;
+        freqs_THz = obj.emccdSites.freqs_THz;
         freq_max = max(freqs_THz);
         freq_min = min(freqs_THz);
         cmap = colormap(obj.ax2H, 'jet');
