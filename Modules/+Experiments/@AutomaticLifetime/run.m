@@ -29,7 +29,7 @@ function run(obj,status,managers,ax)
     for k = 1:Nsites
         % if strcmp(obj.method, 'Spectrum')
         h = obj.exp_imH.UserData.h(k);
-        h.Color = [1, 0, 0];
+        h.Color = [1, 1, 1];
         assert(~obj.abort_request, "User abort");
         obj.gotoSite(k);
         obj.currentExperiment.run(status, managers, temp_ax);
@@ -43,7 +43,7 @@ function run(obj,status,managers,ax)
             sum_line(k) = copyobj(temp_line, sum_ax);
         end
         set(get(sum_ax, 'Title'), 'String', sprintf('Spectrum of sites %d~%d', 1, k));
-        h.Color = [0, 1, 0];
+        h.Color = cmap(k, :);
         obj.data{1, k} = obj.currentExperiment.GetData;
     end
 

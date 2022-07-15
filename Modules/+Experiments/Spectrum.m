@@ -75,6 +75,9 @@ classdef Spectrum < Modules.Experiment
                 obj.data = obj.WinSpec.acquire([],obj.over_exposed_override);
             end
             
+            % Get rid of the outlier point (usually the last point)
+            obj.data.x = obj.data.x(1:end-1);
+            obj.data.y = obj.data.y(1:end-1);
             if obj.LorentzFit
                 wavelength = obj.data.x(465:549);
                 intensity = obj.data.y(465:549);

@@ -60,7 +60,7 @@ classdef WinSpec < Modules.Driver
             obj.grating = uint8(1); % Default
             % Build TCP connection
             obj.connection = tcpip(ip,36577,'OutputBufferSize',1024,'InputBufferSize',1024);
-            obj.connection.Timeout = 10;
+            obj.connection.Timeout = 30;
             obj.connection.Terminator = 'LF';
             obj.loadPrefs;
             % Verify current state
