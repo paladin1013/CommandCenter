@@ -45,6 +45,7 @@ function initialize(obj, status, managers, ax)
     % Draw all sites in image
     fig = ax.Parent;
     im = imagesc(ax, obj.sites.image);
+    obj.exp_imH = im;
     N = size(obj.sites.positions, 1);
 
     xabs = obj.sites.positions(:, 1);
@@ -72,36 +73,73 @@ function initialize(obj, status, managers, ax)
         end
     end
 
-    if obj.optimizePos
-        ms = managers.MetaStage.active_module; % MetaStage instance
-        X = ms.get_meta_pref('X');
-        Y = ms.get_meta_pref('Y');
-        ni = Drivers.NIDAQ.dev.instance('dev1');
-        X.set_reference(ni.getLines('X', 'out').get_meta_pref);
-        Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
+    ms = managers.MetaStage.active_module; % MetaStage instance
+    X = ms.get_meta_pref('X');
+    Y = ms.get_meta_pref('Y');
+    ni = Drivers.NIDAQ.dev.instance('dev1');
+    X.set_reference(ni.getLines('X', 'out').get_meta_pref);
+    Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
 
-        
-        Z = ms.get_meta_pref('Z');
-        Target = ms.get_meta_pref('Target');
-        counter = Drivers.Counter.instance('APD1', 'CounterSync');
-        Target.set_reference(counter.get_meta_pref('count'));
-        Z.set_reference(counter.get_meta_pref('count')); % Set to an arbitrary readonly preference to ignore when optimizing
-        obj.sites.APDCount = zeros(N, 1);
+    
+    Z = ms.get_meta_pref('Z');
+    Target = ms.get_meta_pref('Target');
+    counter = Drivers.Counter.instance('APD1', 'CounterSync');
+    Target.set_reference(counter.get_meta_pref('count'));
+    Z.set_reference(counter.get_meta_pref('count')); % Set to an arbitrary readonly preference to ignore when optimizing
+    obj.sites.APDCount = zeros(N, 1);
+
+    if obj.optimizePos
         for k = 1:N
-            
+            assert(~obj.abort_request, 'User aborted');
             status.String = sprintf("Locating site %d/%d\n", k, N);
             h = im.UserData.h(k);
             h.Color = [1, 0, 0];
-            assert(~obj.abort_request, 'User aborted');
             newAbsPos = obj.locateSite(obj.sites.positions(k, 1:2));
 
             obj.sites.positions(k, 1:2) = newAbsPos;
-            count = Target.read;
+            [count, st] = Target.get_avg_val;
             obj.sites.APDCount(k) = count;
             h.Position = newAbsPos;
-            h.Color = [0, 1, 0];
+            if strcmp(obj.method, 'EMCCD')
+                h.Color = colors(k, :);
+            else
+                h.Color = [0, 1, 0];
+            end
             h.MarkerSize = min(fig.Position(3), fig.Position(4))*10*(count/10000);
             h.Label = sprintf("  %d", k);
+        end
+    else
+        % Get apd count directly
+        for k = 1:N
+            assert(~obj.abort_request, 'User aborted');
+            
+            obj.gotoSite(k);
+            [count, st] = Target.get_avg_val;
+            obj.sites.APDCount(k) = count;
+            h = obj.exp_imH.UserData.h(k);
+            if strcmp(obj.method, 'EMCCD')
+                h.Color = colors(k, :);
+            else
+                h.Color = [0, 1, 0];
+            end
+            h.MarkerSize = min(fig.Position(3), fig.Position(4))*10*(count/10000);
+            h.Label = sprintf("  %d", k);
+        end
+    end
+    
+    if obj.sortByAPD
+        sites = obj.sites;
+        [obj.sites.APDCount, sitesIdx] = sort(sites.APDCount, 'descend');
+        obj.sites.positions = sites.positions(sitesIdx, :);
+        if strcmp(obj.method, 'EMCCD')
+            obj.sites.freqs_THz = sites.freqs_THz(sitesIdx);
+            if isfield(sites, 'wavelengths_nm') && length(sites.wavelengths_nm) == N
+                obj.sites.wavelengths_nm = sites.wavelengths_nm(sitesIdx);
+            end
+        end
+        obj.exp_imH.UserData.h = obj.exp_imH.UserData.h(sitesIdx);
+        for k = 1:N
+            obj.exp_imH.UserData.h(k).Label = sprintf("  %d", k);
         end
     end
     sites = obj.sites;

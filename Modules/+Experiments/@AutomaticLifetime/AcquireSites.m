@@ -125,6 +125,7 @@ function acquireSites(obj,managers)
             sites.positions(end+1,:) = obj.imH.UserData.h(i).Position;
             if strcmp(obj.method, 'EMCCD')
                 sites.freqs_THz(end+1,1) = obj.imH.UserData.h(i).UserData;
+                sites.wavelengths_nm(end+1) = 3e4/obj.imH.UserData.h(i).UserData;
             end
         end
     end

@@ -5,10 +5,17 @@ classdef AutomaticLifetime < Modules.Experiment
         sites;          % sites data. Assigned after `acquireSites`
         validROIPoly;   % Handle to imrect of validROI
         listeners = {}; % Handle of listeners
+
+        % Figure object handles for acquireSties
         axH;            % Handle to axes (children of figH)
         imH;            % Handle to image (children of axH)
         ax2H;           % Handle to axes (children of figH)
         sitesH;         % Handle to sites scatter plot (children of ax2H)
+
+        % Figure object handles for experiment display
+        exp_axH;
+        exp_imH;
+
         msmH;           % Handle to MetaStageManager
         data = []; % subclasses should not set this; it can be manipulated in GetData if necessary
         meta = []; % Store experimental settings
@@ -22,6 +29,7 @@ classdef AutomaticLifetime < Modules.Experiment
         importSitesData = Prefs.Boolean(true, 'help', 'Will import previously finded sites.');
         method = Prefs.MultipleChoice('Spectrum','choices',{'Spectrum','EMCCD'}, 'help', 'Chose method to get emitter frequency');
         optimizePos = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo mirror.');
+        sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend)S.');
 
         % Related devices
         imaging_source = Prefs.ModuleInstance(Modules.Source.empty(0),'inherits',{'Modules.Source'});
@@ -235,6 +243,13 @@ classdef AutomaticLifetime < Modules.Experiment
             dat.meta = obj.meta;
         end
         function UpdateRun(obj,~,~,ax)
+        end
+        function gotoSite(obj, idx)
+            ms = obj.msmH.active_module;
+            X = ms.get_meta_pref('X');
+            Y = ms.get_meta_pref('Y');
+            X.writ(obj.sites.positions(idx, 1));
+            Y.writ(obj.sites.positions(idx, 2));
         end
     end
 end
