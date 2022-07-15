@@ -29,7 +29,8 @@ classdef AutomaticLifetime < Modules.Experiment
         importSitesData = Prefs.Boolean(true, 'help', 'Will import previously finded sites.');
         method = Prefs.MultipleChoice('Spectrum','choices',{'Spectrum','EMCCD'}, 'help', 'Chose method to get emitter frequency');
         optimizePos = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo mirror.');
-        sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend)S.');
+        sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend).');
+        apdThres = Prefs.Double(10000, 'help', 'Will only keep sites with apd count larger than this value. Only avaliable when sortByAPD is set to true.')
 
         % Related devices
         imaging_source = Prefs.ModuleInstance(Modules.Source.empty(0),'inherits',{'Modules.Source'});

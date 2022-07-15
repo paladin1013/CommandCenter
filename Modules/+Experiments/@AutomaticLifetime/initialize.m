@@ -114,7 +114,7 @@ function initialize(obj, status, managers, ax)
             assert(~obj.abort_request, 'User aborted');
             
             obj.gotoSite(k);
-            [count, st] = Target.get_avg_val;
+            [count, st] = Target.get_avg_val(5, 1);
             obj.sites.APDCount(k) = count;
             h = obj.exp_imH.UserData.h(k);
             if strcmp(obj.method, 'EMCCD')
@@ -131,16 +131,27 @@ function initialize(obj, status, managers, ax)
         sites = obj.sites;
         [obj.sites.APDCount, sitesIdx] = sort(sites.APDCount, 'descend');
         obj.sites.positions = sites.positions(sitesIdx, :);
+        validNum = sum(obj.sites.APDCount>obj.apdThres);
+        obj.sites.APDCount = obj.sites.APDCount(1:validNum);
+        obj.sites.positions = obj.sites.positions(1:validNum, :);
         if strcmp(obj.method, 'EMCCD')
             obj.sites.freqs_THz = sites.freqs_THz(sitesIdx);
+            obj.sites.freqs_THz = obj.sites.freqs_THz(1:validNum);
+
             if isfield(sites, 'wavelengths_nm') && length(sites.wavelengths_nm) == N
                 obj.sites.wavelengths_nm = sites.wavelengths_nm(sitesIdx);
+                obj.sites.wavelengths_nm = obj.sites.wavelengths_nm(1:validNum);
             end
         end
         obj.exp_imH.UserData.h = obj.exp_imH.UserData.h(sitesIdx);
-        for k = 1:N
+        for k = 1:validNum
             obj.exp_imH.UserData.h(k).Label = sprintf("  %d", k);
         end
+        for k = validNum+1:N
+            obj.exp_imH.UserData.h(k).delete;
+        end
+        obj.exp_imH.UserData.h = obj.exp_imH.UserData.h(1:validNum);
+        N = validNum;
     end
     sites = obj.sites;
     save(obj.sitesDataPath, 'sites');
