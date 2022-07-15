@@ -18,6 +18,16 @@ classdef ANC350 < Modules.Driver
         port
         
     end
+    properties(SetObservable, GetObservable)
+        x_output = Prefs.Boolean(true, 'help', 'Enable output on X axis', 'set', 'set_x_output');
+        y_output = Prefs.Boolean(true, 'help', 'Enable output on Y axis', 'set', 'set_y_output');
+        z_output = Prefs.Boolean(true, 'help', 'Enable output on Z axis', 'set', 'set_z_output');
+        x_amplitude = Prefs.Double(60, 'unit', 'V', 'help', 'Single step pulse amplitude', 'set', 'set_x_amplitude');
+        y_amplitude = Prefs.Double(60, 'unit', 'V', 'help', 'Single step pulse amplitude', 'set', 'set_y_amplitude');
+        z_amplitude = Prefs.Double(30, 'unit', 'V', 'help', 'Single step pulse amplitude', 'set', 'set_z_amplitude');
+        new_origin = Prefs.Button('set', 'set_new_origin', 'help', 'Set the curren place as new origin (to avoid maxSteps constraint).');
+    end
+
     properties
         lines;
     end
@@ -117,7 +127,41 @@ classdef ANC350 < Modules.Driver
             end
             pos = obj.com('getPosition', obj.serialNo)*1e6;
         end
-
+        function val = set_x_output(obj, val, ~)
+            obj.lines(1).output = val;
+        end
+        function val = set_y_output(obj, val, ~)
+            obj.lines(2).output = val;
+        end
+        function val = set_z_output(obj, val, ~)
+            obj.lines(3).output = val;
+        end
+        function val = set_x_amplitude(obj, val, ~)
+            obj.lines(1).amplitude = val;
+        end
+        function val = set_y_amplitude(obj, val, ~)
+            obj.lines(2).amplitude = val;
+        end
+        function val = set_z_amplitude(obj, val, ~)
+            obj.lines(3).amplitude = val;
+        end
+        function val = set_new_origin(obj, val, ~)
+            prev_x_output = obj.x_output;
+            prev_y_output = obj.y_output;
+            prev_z_output = obj.z_output;
+            obj.x_output = false;
+            obj.y_output = false;
+            obj.z_output = false;
+            for k = 1:3
+                line = obj.lines(k);
+                mp = line.get_meta_pref('steps_moved');
+                mp.writ(0);
+            end
+            obj.x_output = prev_x_output;
+            obj.y_output = prev_y_output;
+            obj.z_output = prev_z_output;
+        end
+        
     end
   
 end
