@@ -29,6 +29,7 @@ classdef AutomaticLifetime < Modules.Experiment
         useSitesMemory = Prefs.Boolean(true, 'help', 'Will use previous sites memory if avaliable, without loading sites data / acquiring new sites');
         importSitesData = Prefs.Boolean(true, 'help', 'Will import previously finded sites.');
         method = Prefs.MultipleChoice('Spectrum','choices',{'Spectrum','EMCCD'}, 'help', 'Chose method to get emitter frequency');
+        minDistance = Prefs.Double(0.01, 'help', 'Minimum distance between to sites. If a pair of sites are closer than this distance, one of them will be removed.');
         optimizePos = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo mirror.');
         sampleNum = Prefs.Integer(5, 'help', 'Number of samples for each point during optimization.');
         sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend).');
@@ -113,42 +114,52 @@ classdef AutomaticLifetime < Modules.Experiment
         end
         function updateEMCCDSites(obj, hObj, eventdata)
             N = size(obj.emccdSites.baryPos, 1);
-            assert(size(obj.emccdSites.baryPos, 2) == 3, sprintf("Size of obj.emccdSites.baryPos should be N*3 (N=%d)", N));
-
-            if isempty(obj.emccdSites.freqs_THz) || all(size(obj.emccdSites.freqs_THz) == [N, 1])
-                % hold(obj.axH, 'on') 
-                P = obj.validROIPoly.Position;
-                T = [1, 2, 3; 3, 4, 1];
-                TR = triangulation(T, P);
-                cartPos = zeros(N, 2);
-                for k = 1:N
-                    triIdx = obj.emccdSites.triangleInd(k);
-                    cartPos(k, :) = barycentricToCartesian(TR, triIdx, obj.emccdSites.baryPos(k, :));
-                end
-                hold(obj.ax2H, 'on');
-%                 triplot(TR);
-                obj.sitesH.XData = cartPos(:, 1);
-                obj.sitesH.YData = cartPos(:, 2);
-                obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
-                cbh = obj.ax2H.Colorbar;
-                if strcmp(obj.method, 'Spectrum')
-                    % Draw scatter plot without frequency
-                    cbh.Visible = 'off';
-                    obj.sitesH.CData = zeros(N, 1);
-                else
-                    % Draw scatter plot with frequency
-                    wls = obj.emccdSites.wavelengths_nm;
-                    freqs = obj.emccdSites.freqs_THz;
-                    cbh.Visible = 'on';
-                    obj.sitesH.CData = freqs;
-                    ylabel(cbh, 'Resonant frequency (THz)', 'Rotation', 90);
-                    cbh.Label.Position(1) = 3;
-                    if min(freqs)< max(freqs)
-                        caxis(obj.ax2H, [min(freqs), max(freqs)]);
+            assert(size(obj.emccdSites.baryPos, 2) == 3, sprintf("Size of obj.emccdSites.baryPos should be [N*3] (N=%d)", N));
+            assert(all(size(obj.emccdSites.freqs_THz) == [N, 1]), sprintf("EMCCD file should include filed freqs_THz [N*1]"));
+            P = obj.validROIPoly.Position;
+            T = [1, 2, 3; 3, 4, 1];
+            TR = triangulation(T, P);
+            cartPos = zeros(N, 2);
+            n = 0;
+            for k = 1:N
+                triIdx = obj.emccdSites.triangleInd(k);
+                tempPos = barycentricToCartesian(TR, triIdx, obj.emccdSites.baryPos(k, :));
+                overlap = false;
+                for l = 1:n
+                    if (tempPos(1)-cartPos(l, 1))^2-(tempPos(2)-cartPos(l, 2))^2 < obj.minDistance^2
+                        overlap = true;
+                        break;
                     end
                 end
-                obj.ax2H.Visible = 'off';
-            end 
+                if overlap
+                    continue;
+                end
+                n = n+1;
+                cartPos(n, :) = tempPos;
+            end
+            hold(obj.ax2H, 'on');
+%                 triplot(TR);
+            obj.sitesH.XData = cartPos(:, 1);
+            obj.sitesH.YData = cartPos(:, 2);
+            obj.sitesH.SizeData = ones(N, 1)*0.1*min(obj.figH.Position(3), obj.figH.Position(4));
+            cbh = obj.ax2H.Colorbar;
+            if strcmp(obj.method, 'Spectrum')
+                % Draw scatter plot without frequency
+                cbh.Visible = 'off';
+                obj.sitesH.CData = zeros(N, 1);
+            else
+                % Draw scatter plot with frequency
+                wls = obj.emccdSites.wavelengths_nm;
+                freqs = obj.emccdSites.freqs_THz;
+                cbh.Visible = 'on';
+                obj.sitesH.CData = freqs;
+                ylabel(cbh, 'Resonant frequency (THz)', 'Rotation', 90);
+                cbh.Label.Position(1) = 3;
+                if min(freqs)< max(freqs)
+                    caxis(obj.ax2H, [min(freqs), max(freqs)]);
+                end
+            end
+            obj.ax2H.Visible = 'off';
         end
 
         function updateFindedSites(obj, hObj, eventdata)
@@ -164,10 +175,22 @@ classdef AutomaticLifetime < Modules.Experiment
             for k = 1:N
                 if  inpolygon(absPos(k, 1), absPos(k, 2), obj.validROI(:, 1), obj.validROI(:, 2))
                     % Only display sites within the rectangle ROI
+                    overlap = false;
+                    for l = 1:n
+                        if (pos(l, 1)-absPos(k, 1))^2+(pos(l, 2)-absPos(k, 2))^2 < obj.minDistance^2
+                            % Remove the sites too closely together.
+                            overlap = true;
+                            break;
+                        end
+                    end
+                    if overlap
+                        continue;
+                    end
                     n = n + 1;
                     pos(n, :) = absPos(k, :);
                 end
             end
+            pos = pos(1:n, :);
             obj.sitesH.XData = pos(1:n, 1);
             obj.sitesH.YData = pos(1:n, 2);
             

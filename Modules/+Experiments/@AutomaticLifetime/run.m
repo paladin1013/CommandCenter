@@ -31,6 +31,7 @@ function run(obj,status,managers,ax)
         h = obj.exp_imH.UserData.h(k);
         h.Color = [1, 0, 0];
         assert(~obj.abort_request, "User abort");
+        obj.gotoSite(k);
         obj.currentExperiment.run(status, managers, temp_ax);
         temp_line = temp_ax.Children(1);
         set(get(temp_ax, 'Title'), 'String', sprintf('Spectrum of site %d', k));
@@ -43,6 +44,7 @@ function run(obj,status,managers,ax)
         end
         set(get(sum_ax, 'Title'), 'String', sprintf('Spectrum of sites %d~%d', 1, k));
         h.Color = [0, 1, 0];
+        obj.data{1, k} = obj.currentExperiment.GetData;
     end
 
 end
