@@ -74,21 +74,44 @@ function initialize(obj, status, managers, ax)
     end
 
     ms = managers.MetaStage.active_module; % MetaStage instance
+    ms.sample_num = obj.sampleNum;
+    
     X = ms.get_meta_pref('X');
     Y = ms.get_meta_pref('Y');
     ni = Drivers.NIDAQ.dev.instance('dev1');
-    X.set_reference(ni.getLines('X', 'out').get_meta_pref);
-    Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
+
+    if ~strcmp(X.reference.name, 'X')
+        X.set_reference(ni.getLines('X', 'out').get_meta_pref);
+    end
+    if ~strcmp(Y.reference.name, 'Y')
+        Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
+    end
 
     
     Z = ms.get_meta_pref('Z');
     Target = ms.get_meta_pref('Target');
     counter = Drivers.Counter.instance('APD1', 'CounterSync');
-    Target.set_reference(counter.get_meta_pref('count'));
-    Z.set_reference(counter.get_meta_pref('count')); % Set to an arbitrary readonly preference to ignore when optimizing
-    obj.sites.APDCount = zeros(N, 1);
+    if ~strcmp(Target.reference.name, 'count')
+        Target.set_reference(counter.get_meta_pref('count'));
+    end
+    if ~strcmp(Z.reference.name, 'count')
+        Z.set_reference(counter.get_meta_pref('count')); % Set to an arbitrary readonly preference to ignore when optimizing
+    end
+    % obj.sites.APDCount = zeros(N, 1);
+    counter = Drivers.Counter.instance('APD1', 'CounterSync');
+    if ~counter.running
+        counter.start;
+    end
 
     if obj.optimizePos
+        if obj.sampleNum < 5
+            warning("obj.sampleNum for optimization should be at least 5. Set obj.sampleNum to 5.");
+            obj.sampleNum = 5;
+        end
+        prev_key_step_x = ms.key_step_x;
+        prev_key_step_y = ms.key_step_y;
+        ms.key_step_x = 0.0005;
+        ms.key_step_y = 0.0005;
         for k = 1:N
             assert(~obj.abort_request, 'User aborted');
             status.String = sprintf("Locating site %d/%d\n", k, N);
@@ -97,7 +120,7 @@ function initialize(obj, status, managers, ax)
             newAbsPos = obj.locateSite(obj.sites.positions(k, 1:2));
 
             obj.sites.positions(k, 1:2) = newAbsPos;
-            [count, st] = Target.get_avg_val;
+            [count, st] = Target.get_avg_val(obj.sampleNum);
             obj.sites.APDCount(k) = count;
             h.Position = newAbsPos;
             if strcmp(obj.method, 'EMCCD')
@@ -108,13 +131,28 @@ function initialize(obj, status, managers, ax)
             h.MarkerSize = min(fig.Position(3), fig.Position(4))*10*(count/10000);
             h.Label = sprintf("  %d", k);
         end
+        ms.key_step_x = prev_key_step_x;
+        ms.key_step_y = prev_key_step_y;
     else
+        
+        
         % Get apd count directly
         for k = 1:N
             assert(~obj.abort_request, 'User aborted');
+            if obj.sampleNum == 0 
+                try
+                    count = obj.sites.APDCount(k);
+                    assert(count > 0, "APDCount should be a positive number.")
+                catch
+                    warning("Sample count unavailable. Set obj.sampleNum to 1.")
+                    obj.sampleNum = 1;
+                end
+            end
             
-            obj.gotoSite(k);
-            [count, st] = Target.get_avg_val(5, 1);
+            if obj.sampleNum > 0
+                obj.gotoSite(k);
+                [count, st] = Target.get_avg_val(obj.sampleNum, 1);
+            end
             obj.sites.APDCount(k) = count;
             h = obj.exp_imH.UserData.h(k);
             if strcmp(obj.method, 'EMCCD')
@@ -131,7 +169,7 @@ function initialize(obj, status, managers, ax)
         sites = obj.sites;
         [obj.sites.APDCount, sitesIdx] = sort(sites.APDCount, 'descend');
         obj.sites.positions = sites.positions(sitesIdx, :);
-        validNum = sum(obj.sites.APDCount>obj.apdThres);
+        validNum = sum(sites.APDCount>obj.apdThres);
         obj.sites.APDCount = obj.sites.APDCount(1:validNum);
         obj.sites.positions = obj.sites.positions(1:validNum, :);
         if strcmp(obj.method, 'EMCCD')
@@ -151,8 +189,8 @@ function initialize(obj, status, managers, ax)
             obj.exp_imH.UserData.h(k).delete;
         end
         obj.exp_imH.UserData.h = obj.exp_imH.UserData.h(1:validNum);
-        N = validNum;
     end
+    assert(~obj.abort_request, "User abort");
     sites = obj.sites;
     save(obj.sitesDataPath, 'sites');
 

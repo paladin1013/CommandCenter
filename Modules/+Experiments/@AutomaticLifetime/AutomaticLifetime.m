@@ -20,15 +20,17 @@ classdef AutomaticLifetime < Modules.Experiment
         data = []; % subclasses should not set this; it can be manipulated in GetData if necessary
         meta = []; % Store experimental settings
         abort_request = false; % Flag that will be set to true upon abort. Used in run method.
+        currentExperiment = [];
         prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
         % prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
     end
     properties(SetObservable, GetObservable)
-        
+        experiments = Prefs.ModuleInstance(Modules.Experiment.empty(0),'n',Inf,'inherits',{'Modules.Experiment'},'readonly',true);
         useSitesMemory = Prefs.Boolean(true, 'help', 'Will use previous sites memory if avaliable, without loading sites data / acquiring new sites');
         importSitesData = Prefs.Boolean(true, 'help', 'Will import previously finded sites.');
         method = Prefs.MultipleChoice('Spectrum','choices',{'Spectrum','EMCCD'}, 'help', 'Chose method to get emitter frequency');
         optimizePos = Prefs.Boolean(true, 'help', 'Will optimize sites position using galvo mirror.');
+        sampleNum = Prefs.Integer(5, 'help', 'Number of samples for each point during optimization.');
         sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend).');
         apdThres = Prefs.Double(10000, 'help', 'Will only keep sites with apd count larger than this value. Only avaliable when sortByAPD is set to true.')
 
@@ -69,6 +71,7 @@ classdef AutomaticLifetime < Modules.Experiment
             obj = Experiments.AutomaticLifetime(varargin{:});
             obj.singleton_id = varargin;
             obj.imaging_source = Sources.Cobolt_PB.instance;
+            obj.experiments = [Experiments.Spectrum.instance];
             Objects(end+1) = obj;
         end
     end
@@ -233,9 +236,9 @@ classdef AutomaticLifetime < Modules.Experiment
             % obj.fatal_flag = true;
             obj.abort_request = true;
             obj.msmH.optimize('Target', false); % interrupt the metastage optimization process
-            % if ~isempty(obj.current_experiment)
-            %     obj.current_experiment.abort;
-            % end
+            if ~isempty(obj.currentExperiment)
+                obj.currentExperiment.abort;
+            end
             obj.logger.log('Abort requested');
         end
         function dat = GetData(obj,~,~)
