@@ -2,21 +2,21 @@ classdef Spectrum < Modules.Experiment
     %Spectrum Experimental wrapper for Drivers.WinSpec
     
     properties(SetObservable,GetObservable)
-        ip =        Prefs.String('No Server', 'help', 'IP/hostname of computer with the WinSpec server');
-        grating = 	Prefs.MultipleChoice('');
-        position = 	Prefs.Double(NaN,   'unit', 'nm');      % Grating position
-        exposure =  Prefs.Double(NaN,   'unit', 'sec');     % Exposure time
-        
+        ip =        Prefs.String('No Server', 'help', 'IP/hostname of computer with the WinSpec server', 'set', 'set_ip');
+        grating = 	Prefs.MultipleChoice('1200 BLZ=  750NM', 'choices', {'1200 BLZ=  750NM', '600 BLZ=  750NM', '300 BLZ=  750NM'}, 'set', 'set_grating'); % Is there a more elegant way to set the valid values? 
+        position = 	Prefs.Double(NaN,   'unit', 'nm', 'set', 'set_position');      % Grating position
+        exposure =  Prefs.Double(NaN,   'unit', 'sec', 'set', 'set_exposure');     % Exposure time
+        LorentzFit = Prefs.Boolean(false, 'help', 'Applying lorentzian fit to the spectrum output.');
         over_exposed_override = Prefs.Boolean(false);       % override over_exposed error from server and return data regardless
     end
     
-%     properties(Access=private)
-% %         intensity =     Base.Meas([1 1024], 'unit', 'arb')
-% %         wavelength =    Base.Meas([1 1024], 'unit', 'nm')
-%         
-%         measurements = [Base.Meas([1 1024], 'field', 'intensity',  'unit', 'arb') ...
-%                         Base.Meas([1 1024], 'field', 'wavelength', 'unit', 'nm')];
-%     end
+    properties(Access=private)
+        % intensity =     Base.Meas([1 1024], 'unit', 'arb')
+        % wavelength =    Base.Meas([1 1024], 'unit', 'nm')
+        
+        % measurements = [Base.Meas([1 1024], 'field', 'intensity',  'unit', 'arb') ...
+        %                 Base.Meas([1 1024], 'field', 'wavelength', 'unit', 'nm')];
+    end
     
     properties (Hidden, Constant)
         gratingFormat = @(a)sprintf('%i %s', a.grooves, a.name)
@@ -36,8 +36,6 @@ classdef Spectrum < Modules.Experiment
     
     methods(Access=private)
         function obj = Spectrum()
-            'Spectrum init'
-            
             obj.path = 'spectrometer';
             
             try
@@ -77,17 +75,20 @@ classdef Spectrum < Modules.Experiment
                 obj.data = obj.WinSpec.acquire([],obj.over_exposed_override);
             end
             
-            wavelength = obj.data.x(465:549);
-            intensity = obj.data.y(465:549);
-            xx = linspace(wavelength(1),wavelength(end),501);
-            [yprime, params, resnorm, residual] = lorentzfit(wavelength,intensity,[150,619,0.01,100]);
-            amplitude_fit = params(1)./((xx-params(2)).^2+params(3))+params(4);
-            fprintf("  Fit peak: %d\n", params(2));
-            obj.data.lorentzParams = params;
+            if obj.LorentzFit
+                wavelength = obj.data.x(465:549);
+                intensity = obj.data.y(465:549);
+                xx = linspace(wavelength(1),wavelength(end),501);
+                [yprime, params, resnorm, residual] = lorentzfit(wavelength,intensity,[150,619,0.01,100]);
+                amplitude_fit = params(1)./((xx-params(2)).^2+params(3))+params(4);
+                fprintf("  Fit peak: %d\n", params(2));
+                obj.data.lorentzParams = params;
+            end
             if ~isempty(obj.data) && ~isempty(ax)
                 plot(ax,obj.data.x, obj.data.y)
-                line(xx, amplitude_fit, 'parent', ax, 'Color', 'red')
-
+                if obj.LorentzFit
+                    line(xx, amplitude_fit, 'parent', ax, 'Color', 'red')
+                end
                 xlabel(ax,'Wavelength (nm)')
                 ylabel(ax,'Intensity (AU)')
                 if ~isempty(status)
@@ -185,7 +186,9 @@ classdef Spectrum < Modules.Experiment
                 dat.diamondbase.data_type = 'local';
                 dat.wavelength = obj.data.x;
                 dat.intensity = obj.data.y;
-                dat.LorentzianParams = obj.data.lorentzParams;
+                if obj.LorentzFit
+                    dat.LorentzianParams = obj.data.lorentzParams;
+                end
                 dat.meta = rmfield(obj.data,{'x','y'});
             end
         end
@@ -215,18 +218,22 @@ classdef Spectrum < Modules.Experiment
         
         % Experimental Set methods
         function val = set_grating(obj, val, ~)
-            obj.grating = val;
+            % obj.grating = val;
+            if strcmp(val, "")
+                return;
+            end
+
             if isempty(obj.WinSpec); return; end
             d = dbstack;
             if ismember([mfilename '.' mfilename],{d.name}); return; end % Redundant, just to avoid msgbox popup
-            val = find(strcmp(obj.set_grating_values,val)); % Grab index corresponding to option
-            assert(~isempty(val),sprintf('Could not find "%s" grating in WinSpec.gratings_avail',val));
+            idx = find(strcmp(obj.getGratingStrings,val)); % Grab index corresponding to option
+            assert(~isempty(idx),sprintf('Could not find "%s" grating in WinSpec.gratings_avail',idx));
             h = msgbox(sprintf(['Moving grating from %i to %i',newline,...
-                'This may take time.'],obj.WinSpec.grating,val),[mfilename ' grating'],'help','modal');
+                'This may take time.'],obj.WinSpec.grating,idx),[mfilename ' grating'],'help','modal');
             delete(findall(h,'tag','OKButton')); drawnow;
             err = [];
             try
-            obj.setWrapper('Grating', val, []);
+            obj.setWrapper('Grating', idx, []);
             catch err
             end
             delete(h)
