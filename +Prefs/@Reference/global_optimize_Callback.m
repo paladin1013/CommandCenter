@@ -142,6 +142,12 @@ function obj = global_optimize_Callback(obj, src, evt)
                 %   If one trial obtains larger target value, set fixed_pos to this point and clear all `direction_changed` flags. 
                 %   Otherwise, flip the `direction_changed` flag if it is not set or shorten the step length for higher resolution.
                 for k = 1:3
+                    if iteration_num > max_iteration
+                        finish_ordinary_optimize = true;
+                        fprintf("Reach maximum iteration num %d. Abort.\n", max_iteration);
+                        break;
+                    end
+                        
                     if axis_stop(k)
                         continue;
                     end
@@ -152,12 +158,26 @@ function obj = global_optimize_Callback(obj, src, evt)
                     end
                     test_pos = fixed_pos;
                     test_pos(k) = fixed_pos(k)+step(k);
-                    set_pos(test_pos);
-                    [avg, st] = obj.get_avg_val;
-                    record.pos = test_pos;
-                    record.val = avg;
-                    record.st = st;
-                    obj.record_array{end+1} = record;
+
+                    Nrecords = length(obj.record_array);
+                    use_record = false;
+                    for l = 1:Nrecords
+                        if all(test_pos == obj.record_array{l}.pos)
+                            avg = obj.record_array{l}.val;
+                            use_record = true;
+                            break
+                        end
+                    end
+    
+                    if ~use_record
+                        set_pos(test_pos);
+                        [avg, st] = obj.get_avg_val;
+                        record.pos = test_pos;
+                        record.val = avg;
+                        record.st = st;
+                        obj.record_array{end+1} = record;
+                    end
+
 
                     diff = avg-fixed_val;
                     iteration_num = iteration_num + 1;
@@ -187,8 +207,29 @@ function obj = global_optimize_Callback(obj, src, evt)
                 end % End for loop
 
             end % End while loop
+
+            Ntops = 3; % Find the best out of `Ntops` position candidates
+            Nrecords = length(obj.record_array);
+            fprintf("Searching best position in %d top candidates.\n", Ntops);
+            target_vals = zeros(1, Nrecords);
+            for k = 1:Nrecords
+                target_vals(k) = obj.record_array{k}.val;
+            end
+            [sorted_vals, index] = sort(target_vals, 'descend');
+            top_vals = zeros(1, Ntops);
+            for k = 1:Ntops    
+                pos = obj.record_array{index(k)}.pos;
+                set_pos(pos);
+                [avg, st] = obj.get_avg_val;
+                top_vals(k) = avg;
+                fprintf("Top position %d: (%.2e, %.2e, %.2e) count:%.2e\n", k, pos(1), pos(2), pos(3), avg);
+            end
+            [top_val, top_idx] = max(top_vals);
+            fixed_pos = obj.record_array{index(top_idx)}.pos;
             set_pos(fixed_pos);
+
             [avg, st] = obj.get_avg_val;
+
             fprintf("Final target value: %.2e.\n", avg);
             fprintf("Final position: %.2e, %.2e, %.2e\n", fixed_pos(1), fixed_pos(2), fixed_pos(3));
             if ms.plot_record

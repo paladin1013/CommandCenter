@@ -31,6 +31,7 @@ function obj = optimize_Callback(obj, src, evt)
 
             base_step = ms.(sprintf('key_step_%s', lower(obj.name)));
             step = base_step;
+            prev_step = 0;
 
             % Record all tried positions and values
             obj.record_array = {};
@@ -92,25 +93,38 @@ function obj = optimize_Callback(obj, src, evt)
                     break;
                 end
                 test_pos = fixed_pos + step;
-                obj.writ(test_pos);
-                [avg, st] = obj.get_avg_val;
-                record.pos = test_pos;
-                record.val = avg;
-                record.st = st;
-                obj.record_array{end+1} = record;
+                Nrecords = length(obj.record_array);
+                use_record = false;
+                for l = 1:Nrecords
+                    if all(test_pos == obj.record_array{l}.pos)
+                        avg = obj.record_array{l}.val;
+                        use_record = true;
+                        break
+                    end
+                end
+
+                if ~use_record
+                    obj.writ(test_pos);
+                    [avg, st] = obj.get_avg_val;
+                    record.pos = test_pos;
+                    record.val = avg;
+                    record.st = st;
+                    obj.record_array{end+1} = record;
+                end
                 diff = avg - fixed_val;
                 
                 iteration_num = iteration_num + 1;
-                fprintf("Optimizing axis %s (%s) it:%d step:%.2e fixed_pos: %.2e fixed_val: %.2e test_pos: %.2e, try_val: %.2e.\n", obj.name, obj.reference.name, iteration_num, step, fixed_pos, fixed_val, test_pos, avg);
+                fprintf("Optimizing axis %s (%s) it:%d step:%.2e previous_step:%.2e fixed_pos: %.2e fixed_val: %.2e test_pos: %.2e, try_val: %.2e.\n", obj.name, obj.reference.name, iteration_num, step, prev_step, fixed_pos, fixed_val, test_pos, avg);
 
                 if diff > 0 % Is a successful optimization step. Keep moving on this direction.
                     direction_changed = false;
                     fixed_val = avg;
                     fixed_pos = fixed_pos + step;
+                    prev_step = step;
                 else % Fails to optimize: try another direction or shorten the step length.
                     
-                    if direction_changed % If already failed in last iteration, shorten the step length.
-
+                    if direction_changed || prev_step == step% If already failed in last iteration, shorten the step length.
+                        prev_step = step;
                         step = step / 2;
                         if (abs(step) < min_step)
                             fprintf("Reach local maximum. Abort.\n")
@@ -121,6 +135,7 @@ function obj = optimize_Callback(obj, src, evt)
                         end
                         direction_changed = false; % Refresh this flag.
                     else % The first time to fail
+                        prev_step = step;
                         step = -step;
                         direction_changed = true;
                     end
