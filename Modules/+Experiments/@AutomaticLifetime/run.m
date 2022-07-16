@@ -6,9 +6,8 @@ function run(obj,status,managers,ax)
 
     Nsites = size(obj.sites.positions, 1);
     Nexperiments = length(obj.experiments);
-    obj.data = cell(Nexperiments, Nsites);
-    obj.meta = cell(Nexperiments, Nsites);
-
+%     obj.data = cell(Nexperiments, Nsites);
+%     obj.meta = cell(Nexperiments, Nsites);
 
     obj.currentExperiment = obj.experiments(1);
     managers.Path.select_path('spectrometer');
@@ -46,5 +45,42 @@ function run(obj,status,managers,ax)
         h.Color = cmap(k, :);
         obj.data{1, k} = obj.currentExperiment.GetData;
     end
+
+    try close(12); catch; end
+    result_fig = figure(12);
+    result_fig.Name = 'Processed Result';
+    result_fig.NumberTitle = 'off';
+    result_fig.Position = [500, 100, 1200, 1200];
+    
+
+    result = spectrumDataAnalysis(obj.data, obj.specThres);
+    ax = axes('Parent', result_fig);    
+    n = sum(result.hasPeak);
+    cmap = jet(n);
+    validIdx = find(result.hasPeak);
+    for k = 1:n
+        hold(ax, 'on');
+        plot(ax, obj.data{1, validIdx(k)}.wavelength, obj.data{1, validIdx(k)}.intensity, 'Color', cmap(k, :));
+    end
+    l = 0;
+    validSites = struct;
+    validSites.positions = zeros(n, 3);
+    validSites.APDCount = zeros(1, n);
+    validSites.spectrum = cell(1, n);
+    for k = 1:Nsites
+        h = obj.exp_imH.UserData.h(k);
+        if ~result.hasPeak(k)
+            h.Visible = 'off';
+        else
+            l = l+1;
+            h.Color = cmap(l, :);
+            validSites.positions(l, :) = obj.sites.positions(k, :);
+            validSites.APDCount(l) = obj.sites.APDCount(k);
+            validSites.spectrum{l} = obj.data{1, k};
+            
+        end
+    end
+    validSites.image = obj.sites.image;
+    save('spectrum_valid_sites.mat', 'validSites');
 
 end

@@ -21,7 +21,7 @@ classdef AutomaticLifetime < Modules.Experiment
         meta = []; % Store experimental settings
         abort_request = false; % Flag that will be set to true upon abort. Used in run method.
         currentExperiment = [];
-        prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
+        prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos', 'sampleNum', 'sortByAPD', 'apdThres', 'specThres'};
         % prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
     end
     properties(SetObservable, GetObservable)
@@ -34,7 +34,7 @@ classdef AutomaticLifetime < Modules.Experiment
         sampleNum = Prefs.Integer(5, 'help', 'Number of samples for each point during optimization.');
         sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend).');
         apdThres = Prefs.Double(10000, 'help', 'Will only keep sites with apd count larger than this value. Only avaliable when sortByAPD is set to true.')
-
+        specThres = Prefs.Double(50, 'help', 'Only sites with spectrum peak height larger than this value will be kept.')
         % Related devices
         imaging_source = Prefs.ModuleInstance(Modules.Source.empty(0),'inherits',{'Modules.Source'});
         imageROI = zeros(2, 2);
