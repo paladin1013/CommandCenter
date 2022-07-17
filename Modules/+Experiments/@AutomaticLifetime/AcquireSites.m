@@ -55,8 +55,8 @@ function acquireSites(obj,managers)
     obj.listeners{2} = addlistener(obj.figH, 'LocationChanged', @obj.adjustMarkerSize);
 
     if strcmp(obj.method, 'EMCCD')
-        if isempty(obj.emccdSites.baryPos)
-            obj.loadSitesData(obj.emccdDataPath);
+        if ~isprop(obj.emccdSites, 'baryPos') || isempty(obj.emccdSites.baryPos)
+            obj.loadEMCCDData(obj.emccdDataPath(obj.dataDir + "/" + obj.emccdDataPath));
         end
         obj.listeners{3} = addlistener(obj, 'emccdSites', 'PostSet', @obj.updateEMCCDSites);
         obj.updateEMCCDSites;
@@ -132,7 +132,8 @@ function acquireSites(obj,managers)
     sites.positions = [sites.positions, NaN(size(sites.positions,1),1)]; % Add z axis
     % sites.validROI = obj.validROI;
     obj.sites = sites;
-    save(obj.sitesDataPath, 'sites');
+    c = fix(clock);
+    save(obj.dataDir + "/" + sprintf("acquireSites_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6)), 'sites');
     close(obj.figH)
     assert(~isempty(sites.positions),'No positions!')
     function im_clicked(hObj,eventdata)

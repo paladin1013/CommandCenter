@@ -19,10 +19,13 @@ classdef AutomaticLifetime < Modules.Experiment
         msmH;           % Handle to MetaStageManager
         data = []; % subclasses should not set this; it can be manipulated in GetData if necessary
         meta = []; % Store experimental settings
+        specData;
         abort_request = false; % Flag that will be set to true upon abort. Used in run method.
         currentExperiment = [];
+        sitesDataPath = "sites_data.mat";
+        emccdDataPath = "EMCCD_sites_file.mat"; % Data file to import sites coordinates and frequencies. Should contain field `data.baryPos`, `data.wavelengths_nm`.',...
+        % 'custom_validate
         prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos', 'sampleNum', 'sortByAPD', 'apdThres', 'specThres'};
-        % prefs = {'useSitesMemory', 'importSitesData', 'sitesDataPath', 'method', 'emccdDataPath', 'optimizePos'};
     end
     properties(SetObservable, GetObservable)
         experiments = Prefs.ModuleInstance(Modules.Experiment.empty(0),'n',Inf,'inherits',{'Modules.Experiment'},'readonly',true);
@@ -34,6 +37,7 @@ classdef AutomaticLifetime < Modules.Experiment
         sampleNum = Prefs.Integer(5, 'help', 'Number of samples for each point during optimization.');
         sortByAPD = Prefs.Boolean(true, 'help', 'Will sort all sites based on APD counts (descend).');
         apdThres = Prefs.Double(10000, 'help', 'Will only keep sites with apd count larger than this value. Only avaliable when sortByAPD is set to true.')
+        skipSpectrum = Prefs.Boolean(false, 'help', 'Will skip acquiring spectrometer data, and use imported sites spectrum (if exist).');
         specThres = Prefs.Double(50, 'help', 'Only sites with spectrum peak height larger than this value will be kept.')
         % Related devices
         imaging_source = Prefs.ModuleInstance(Modules.Source.empty(0),'inherits',{'Modules.Source'});
@@ -48,9 +52,8 @@ classdef AutomaticLifetime < Modules.Experiment
             % relSize (N*1): (optional) relative size of each site
         emccdSites = struct('baryPos', [], 'triangleIdx', [], 'relPos', [], 'wavelengths_nm', [], 'freqs_THz', [], 'relSize', []); 
         findedSites = struct('absPos', [], 'relSize', []); % For sites founded by `Peak finder`
-        sitesDataPath = Prefs.String("sites_data.mat");
-        emccdDataPath = Prefs.String('EMCCD_sites_file.mat','help','Data file to import sites coordinates and frequencies. Should contain field `data.baryPos`, `data.wavelengths_nm`.',...
-        'custom_validate','loadEMCCDData');
+        dataDir = Prefs.String("Data/AutomaticLifetimeData", 'help', 'Data will be stored under this directory.')
+        
         figH;           % Handle to figure
         finderH;        % Handle to peak finder results
 
@@ -88,6 +91,7 @@ classdef AutomaticLifetime < Modules.Experiment
         run(obj,statusH,managers,ax);
         initialize(obj, status, managers, ax);
         acquireSites(obj,managers);
+        doSpectrum(obj, status, managers);
 
         
 
@@ -209,7 +213,7 @@ classdef AutomaticLifetime < Modules.Experiment
             %turn laser off after running
             obj.imaging_source.off;
         end
-        function loadEMCCDData(obj,val,~)
+        function loadEMCCDData(obj,val)
             % Validate input data: data.sites{k} should contain fields baryPos, triangleInd, frequency_THz, wavelength_nm
             if ~isempty(val)
                 flag = exist(val,'file');

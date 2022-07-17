@@ -6,13 +6,17 @@ function initialize(obj, status, managers, ax)
 
     if isempty(obj.sites) || ~obj.useSitesMemory
         try
-            data = load(obj.sitesDataPath);
+            data = load(obj.dataDir + "/" + obj.sitesDataPath);
             if isfield(data, 'sites')
                 data = data.sites;
                 if isfield(data, 'sites')
                     data = data.sites;
                 end
             end
+            if isfield(data, 'validSites')
+                data = data.validSites;
+            end
+
             loadSuccess = true;
         catch
             loadSuccess = false;
@@ -38,7 +42,8 @@ function initialize(obj, status, managers, ax)
     end
     
     sites = obj.sites;
-    save(obj.sitesDataPath, 'sites');
+    c = fix(clock);
+    save(obj.dataDir + "/" + sprintf("initialized1_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6)), 'sites');
 
     % By now, sites absolute position should be stored in obj.sites
 
@@ -192,6 +197,7 @@ function initialize(obj, status, managers, ax)
     end
     assert(~obj.abort_request, "User abort");
     sites = obj.sites;
-    save(obj.sitesDataPath, 'sites');
+    c = fix(clock);
+    save(obj.dataDir + "/" + sprintf("initialized2_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6)), 'sites');
 
 end
