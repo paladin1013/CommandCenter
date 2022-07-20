@@ -8,7 +8,7 @@ function run(obj,status,managers,ax)
     Nexperiments = length(obj.experiments);
 
     if strcmp(obj.method, 'Spectrum')
-        obj.doSpectrum(managers, status);
+        obj.doSpectrum(status, managers);
     end
 
 end

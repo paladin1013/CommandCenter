@@ -56,7 +56,7 @@ function acquireSites(obj,managers)
 
     if strcmp(obj.method, 'EMCCD')
         if ~isprop(obj.emccdSites, 'baryPos') || isempty(obj.emccdSites.baryPos)
-            obj.loadEMCCDData(obj.emccdDataPath(obj.dataDir + "/" + obj.emccdDataPath));
+            obj.loadEMCCDData(obj.dataDir + "/" + obj.emccdDataPath);
         end
         obj.listeners{3} = addlistener(obj, 'emccdSites', 'PostSet', @obj.updateEMCCDSites);
         obj.updateEMCCDSites;

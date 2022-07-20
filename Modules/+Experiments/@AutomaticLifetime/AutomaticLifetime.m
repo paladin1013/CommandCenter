@@ -129,12 +129,12 @@ classdef AutomaticLifetime < Modules.Experiment
                 triIdx = obj.emccdSites.triangleInd(k);
                 tempPos = barycentricToCartesian(TR, triIdx, obj.emccdSites.baryPos(k, :));
                 overlap = false;
-                for l = 1:n
-                    if (tempPos(1)-cartPos(l, 1))^2-(tempPos(2)-cartPos(l, 2))^2 < obj.minDistance^2
-                        overlap = true;
-                        break;
-                    end
-                end
+                % for l = 1:n
+                %     if (tempPos(1)-cartPos(l, 1))^2-(tempPos(2)-cartPos(l, 2))^2 < obj.minDistance^2
+                %         overlap = true;
+                %         break;
+                %     end
+                % end
                 if overlap
                     continue;
                 end

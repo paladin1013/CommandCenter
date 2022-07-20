@@ -558,6 +558,7 @@ classdef MetaStageManager < Base.Manager
                 ref.optimize_Callback(src);
             end
         end
+        result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotResult, sampleNum, sample_interval_s);
     end
     methods(Access=protected)
         function savePrefs(obj)

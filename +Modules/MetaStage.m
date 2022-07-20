@@ -15,7 +15,7 @@ classdef MetaStage < Base.Module
         joy_step_z = Prefs.Double(0.1);
         sweep_num = Prefs.Integer(0, 'min', 0, 'max', 10, 'help', 'Do parameter sweep before hill-climbing optimization to avoid being trapped into local maximum.');
         sample_num = Prefs.Integer(5, 'min', 1, 'max', 100, 'help', 'Number of samples to average in each optimization step.')
-        sample_interval = Prefs.Double(0.1, 'min', 0, 'max', 10, 'help', 'Time delay between two samples.')
+        sample_interval = Prefs.Double(0.1, 'min', 0, 'max', 10, 'help', 'Time delay between two samples.', 'unit', 's')
         plot_record = Prefs.Boolean(false, 'help', 'Whether to plot the intermediate results during the optimization.')
         min_step_ratio = Prefs.Double(0.1, 'min', 0.01, 'max', 1, 'help', 'The minimum step (resolution) of the optimiaztion')
     end
