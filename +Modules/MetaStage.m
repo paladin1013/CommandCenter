@@ -18,6 +18,9 @@ classdef MetaStage < Base.Module
         sample_interval = Prefs.Double(0.1, 'min', 0, 'max', 10, 'help', 'Time delay between two samples.', 'unit', 's')
         plot_record = Prefs.Boolean(false, 'help', 'Whether to plot the intermediate results during the optimization.')
         min_step_ratio = Prefs.Double(0.1, 'min', 0.01, 'max', 1, 'help', 'The minimum step (resolution) of the optimiaztion')
+        sweep_axes = Prefs.String('["X"]', 'help', 'Sweep axes (string array format, items can only be "X", "Y", "Z")');
+        sweep_points = Prefs.String('{linspace(-1, 1, 21)}', 'help', 'Sweeping points (cell array format, each cell contains a string to generate the sweeping points)');
+        observe_axes = Prefs.String('["Target"]', 'help', 'Observe axes (string array format, items can only be "X", "Y", "Z", "Target"');
     end
     properties(SetAccess=immutable)
         name;

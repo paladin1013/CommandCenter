@@ -29,6 +29,7 @@ classdef MetaStageManager < Base.Manager
         joyserver = [];
         joystatus = [];
         joytcpip = [];
+        sweep = [];
     end
     
     % Keyboard constants
@@ -74,7 +75,7 @@ classdef MetaStageManager < Base.Manager
             B = (w+p)/6;
             b = B-p;
             
-            H = 2*B+3*p+h;
+            H = 2*B+3*p+2*h;
             
             base.Position(2) = base.Position(2) - (w/2 - base.Position(4));
             base.Position(4) = H;
@@ -117,6 +118,11 @@ classdef MetaStageManager < Base.Manager
             obj.joycheck =  uicontrol(panel, 'Style', 'checkbox', 'String', 'Joystick', 'Callback', @obj.joystick_Callback, 'Tooltip', 'Whether to use a joystick for user input.', 'Position', [x y+2*h 2*b h2]);
             obj.joyserver = uicontrol(panel, 'Style', 'edit', 'String', 'No Server', 'Enable', 'off', 'Callback', @obj.joyserver_Callback, 'Tooltip', 'Server ip of joystick.', 'Position', [x y+h 2*b h2]);
             obj.joystatus = uicontrol(panel, 'Style', 'edit', 'String', 'No Server', 'Enable', 'off', 'Tooltip', 'Joystick module version.', 'Position', [x y 2*b h2]);
+
+            y = H-2*h-2*p-2*B;
+            x = m;
+            
+            obj.sweep = uicontrol(panel, 'Style', 'pushbutton', 'String', 'Sweep References', 'Callback', @(~,~)obj.referenceSweep(eval(obj.active_module.sweep_axes), eval(obj.active_module.sweep_points), eval(obj.active_module.observe_axes), true), 'Tooltip', 'Start reference sweep with parameters in the activated MetaStage', 'Position', [x y 3*b h2]);
             
             obj.loadPrefs;
             panel.Units = 'characters';

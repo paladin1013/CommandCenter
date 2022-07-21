@@ -33,6 +33,13 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
         assert(any(strcmp(axis_name, allAxes)), sprintf("observeAxes(%d):'%s' does not belong to ['X', 'Y', 'Z', 'Target'].", k, axis_name));
         assert(~any(strcmp(axis_name, sweepAxes)), sprintf("observeAxes should not overlap with sweepAxes"));
         observeRefs(k) = ms.get_meta_pref(axis_name);
+        if strcmp(observeRefs(k).reference.name, 'count')
+            counter = observeRefs(k).reference.parent;
+            running = counter.running;
+            if ~running
+                counter.start;
+            end
+        end
     end
     
 
