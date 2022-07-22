@@ -82,10 +82,12 @@ classdef Spectrum < Modules.Experiment
                 wavelength = obj.data.x(465:549);
                 intensity = obj.data.y(465:549);
                 xx = linspace(wavelength(1),wavelength(end),501);
-                [yprime, params, resnorm, residual] = lorentzfit(wavelength,intensity,[150,619,0.01,100]);
-                amplitude_fit = params(1)./((xx-params(2)).^2+params(3))+params(4);
-                fprintf("  Fit peak: %d\n", params(2));
-                obj.data.lorentzParams = params;
+                % guess = struct("amplitudes", 150, "locations", 619, "widths", 0.01, "background", 100);
+                [vals,confs,fit_results,gofs,init,stop_condition] = fitpeaks(wavelength,intensity, "FitType", "lorentz");
+                % amplitude_fit = params(1)./((xx-params(2)).^2+params(3))+params(4);
+                amplitude_fit = fit_results{2}(xx);
+                fprintf("  Fit peak: %d\n", val.locations(1));
+                obj.data.lorentzFitObj = fit_results{2};
             end
             if ~isempty(obj.data) && ~isempty(ax)
                 plot(ax,obj.data.x, obj.data.y)
@@ -190,7 +192,7 @@ classdef Spectrum < Modules.Experiment
                 dat.wavelength = obj.data.x;
                 dat.intensity = obj.data.y;
                 if obj.LorentzFit
-                    dat.LorentzianParams = obj.data.lorentzParams;
+                    dat.LorentzianParams = obj.data.lorentzFitObj;
                 end
                 dat.meta = rmfield(obj.data,{'x','y'});
             end
