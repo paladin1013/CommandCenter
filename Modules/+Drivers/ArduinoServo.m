@@ -12,6 +12,7 @@ classdef ArduinoServo < Modules.Driver
     end
     properties (GetObservable, SetObservable)
         angle = Prefs.Double(NaN, 'min', 0, 'max', 180, 'set', 'set_angle', 'allow_nan', true);
+        locked = Prefs.Boolean(false, 'set', 'set_locked');
     end
     methods(Static)
         function obj = instance(host, pin)
@@ -31,7 +32,12 @@ classdef ArduinoServo < Modules.Driver
             end
             obj = Drivers.ArduinoServo(resolvedIP, pin);
             obj.singleton_id = singleton_id;
+            obj.locked = false;
             Objects(end+1) = obj;
+        end
+        function [arg_names, default_vals] = get_default_args()
+            arg_names = {'host', 'pin'};
+            default_vals = {'"localhost"', '2'};
         end
     end
     methods(Access=private)
@@ -51,11 +57,18 @@ classdef ArduinoServo < Modules.Driver
         function val = set_angle(obj,val,~)     % Locks to new angle (0 -> 180 standard), then unlocks.
             obj.com(['s ' num2str(obj.pin) ' ' num2str(val)]);
         end
+        function val = set_locked(obj, val, ~)
+            if val
+                obj.com(['l ' num2str(obj.pin)]);
+            else
+                obj.com('u');
+            end
+        end
         function lock(obj)                      % Tells the arduino to get the servo to apply electronic feedback against any force. Without the lock, the servo can spin ~freely by hand. With the lock, this is more difficult. Only works for one pin at a time at the moment.
-            obj.com(['l ' num2str(obj.pin)]);
+            obj.locked = true;
         end
         function unlock(obj)                    % Unlocks any locked pin.
-            obj.com('u');
+            obj.locked = false;
         end
     end
 end
