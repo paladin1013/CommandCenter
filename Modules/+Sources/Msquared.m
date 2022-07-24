@@ -98,6 +98,12 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         % PULSEBLASTER prefs
         PB_host =           Prefs.String(Sources.Msquared.no_server, 'set', 'set_PB_host');
         PB_line =           Prefs.Integer(1, 'min', 1, 'set', 'set_PB_line', 'help_text', 'Indexed from 1.');
+
+        % POWER CONTROL prefs
+        arduino_host =      Prefs.String(Sources.Msquared.no_server, 'set', 'set_arduino_host', 'help_text', 'The host for AdruinoServo. Seting host triggers CommandCenter to connect to Arduino.');
+        arduino_pin =       Prefs.Integer(2, 'help_text', 'The pin connected to the servo motor. Setting pin does not trigger CommandCenter to connect Arduino!');
+        OD_angle =          Prefs.Double(NaN,  'min', 0, 'max', 180, 'help_text', 'Set the rotary OD filter via ArduinoServo.', 'allow_nan', true, 'set', 'set_angle')
+        Arduino = Drivers.ArduinoServo.empty(0, 1); % Handle of arduino servo for rotary OD filter.
     end
     
     methods(Access=private)
@@ -667,6 +673,21 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
             if resulting_wavelength <= 0    % Account for wavemeter errorcodes.
                 resulting_wavelength = NaN;
             end
+        end
+        function val = set_arduino_host(obj, val, ~)
+            if ~isnan(obj.arduino_pin)
+                try
+                    obj.Arduino = Drivers.ArduinoServo.instance(val, obj.arduino_pin);
+                catch err
+                    warning(sprintf("Setting ArduinoServo error: %s", err.message));
+                    val = "Not Set";
+                    obj.Arduino = Drivers.ArduinoServo.empty(1, 0);
+                end
+            end
+        end
+        function val = set_angle(obj, val, ~)
+            assert(~isempty(obj.Arduino), "obj.Arduino is empty! Please set arduino host and pin to establish connection");
+            obj.Arduino.angle = val;
         end
     end
 end
