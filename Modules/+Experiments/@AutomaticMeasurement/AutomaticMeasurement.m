@@ -1,4 +1,4 @@
-classdef AutomaticLifetime < Modules.Experiment
+classdef AutomaticMeasurement < Modules.Experiment
     %Automatically takes Lifetime at sites
     
     properties
@@ -52,7 +52,7 @@ classdef AutomaticLifetime < Modules.Experiment
             % relSize (N*1): (optional) relative size of each site
         emccdSites = struct('baryPos', [], 'triangleIdx', [], 'relPos', [], 'wavelengths_nm', [], 'freqs_THz', [], 'relSize', []); 
         findedSites = struct('absPos', [], 'relSize', []); % For sites founded by `Peak finder`
-        dataDir = Prefs.String("Data/AutomaticLifetimeData", 'help', 'Data will be stored under this directory.')
+        dataDir = Prefs.String("Data/AutomaticMeasurementData", 'help', 'Data will be stored under this directory.')
         
         figH;           % Handle to figure
         finderH;        % Handle to peak finder results
@@ -64,7 +64,7 @@ classdef AutomaticLifetime < Modules.Experiment
             mlock;
             persistent Objects
             if isempty(Objects)
-                Objects = Experiments.AutomaticLifetime.empty(1,0);
+                Objects = Experiments.AutomaticMeasurement.empty(1,0);
             end
             for i = 1:length(Objects)
                 if isvalid(Objects(i)) && isequal(varargin,Objects(i).singleton_id)
@@ -72,7 +72,7 @@ classdef AutomaticLifetime < Modules.Experiment
                     return
                 end
             end
-            obj = Experiments.AutomaticLifetime(varargin{:});
+            obj = Experiments.AutomaticMeasurement(varargin{:});
             obj.singleton_id = varargin;
             obj.imaging_source = Sources.Cobolt_PB.instance;
             obj.experiments = [Experiments.Spectrum.instance];
@@ -80,7 +80,7 @@ classdef AutomaticLifetime < Modules.Experiment
         end
     end
     methods(Access=private)
-        function obj = AutomaticLifetime()
+        function obj = AutomaticMeasurement()
             % obj.experiments = Experiments.SlowScan.Open.instance;
             % obj.imaging_source = Sources.Cobolt_PB.instance;
             obj.loadPrefs;
