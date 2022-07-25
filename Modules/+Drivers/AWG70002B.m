@@ -1,4 +1,3 @@
-%%
 classdef AWG70002B < Modules.Driver
     %%% updated: 03.07.2022
     %%% Kevin C. Chen (inherited Ed Chen/Matt Trusheim's AWG code)

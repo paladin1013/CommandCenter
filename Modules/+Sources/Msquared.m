@@ -43,6 +43,13 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         abort =             Prefs.Button('unit', 'Stop Tuning',     'set', 'set_abort', ...
                                                                     'help_text', 'Stop the current tuning operation.');
         
+        % POWER CONTROL prefs
+        arduino_host =      Prefs.String(Sources.Msquared.no_server, 'set', 'set_arduino_host', 'help_text', 'The host for AdruinoServo. Seting host triggers CommandCenter to connect to Arduino.');
+        arduino_pin =       Prefs.Integer(2, 'help_text', 'The pin connected to the servo motor. Setting pin does not trigger CommandCenter to connect Arduino!');
+        OD_angle =          Prefs.Double(NaN,  'min', 0, 'max', 180, 'help_text', 'Set the rotary OD filter via ArduinoServo.', 'allow_nan', true, 'set', 'set_angle')
+        Arduino = Drivers.ArduinoServo.empty(0, 1); % Handle of arduino servo for rotary OD filter.
+        
+
         % WAVELENGTH prefs
         setpoint_ =         Prefs.Double(NaN,   'unit', 'nm',  'set', 'set_target_wavelength', ...
                                                                     'help_text', 'Use this knob to tune the laser to a certain wavelength. Availible ranges: ECD-X (350-525), EMM (515-582/580-661), SolsTiS (700-1100). The laser will decide the appropriate module to use based on the chosen wavelength');
@@ -99,11 +106,6 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         PB_host =           Prefs.String(Sources.Msquared.no_server, 'set', 'set_PB_host');
         PB_line =           Prefs.Integer(1, 'min', 1, 'set', 'set_PB_line', 'help_text', 'Indexed from 1.');
 
-        % POWER CONTROL prefs
-        arduino_host =      Prefs.String(Sources.Msquared.no_server, 'set', 'set_arduino_host', 'help_text', 'The host for AdruinoServo. Seting host triggers CommandCenter to connect to Arduino.');
-        arduino_pin =       Prefs.Integer(2, 'help_text', 'The pin connected to the servo motor. Setting pin does not trigger CommandCenter to connect Arduino!');
-        OD_angle =          Prefs.Double(NaN,  'min', 0, 'max', 180, 'help_text', 'Set the rotary OD filter via ArduinoServo.', 'allow_nan', true, 'set', 'set_angle')
-        Arduino = Drivers.ArduinoServo.empty(0, 1); % Handle of arduino servo for rotary OD filter.
     end
     
     methods(Access=private)

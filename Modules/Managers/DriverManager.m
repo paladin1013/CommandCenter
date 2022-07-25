@@ -125,7 +125,22 @@ classdef DriverManager < Base.Manager
                     end
                     assert(ismember(sprintf('Modules.%s',singular_type),super),'Superclass of %s must be Modules.%s',class_str{i},singular_type)
                     Nargin = nargin(sprintf('%s.instance',class_str{i}));
-                    if Nargin == 0
+                    if Nargin == -1
+                        try
+                            [arg_names, default_vals] = eval(sprintf('%s.get_default_args',class_str{i}));
+                            Nargin = numel(arg_names);
+                            result = inputdlg(arg_names, 'Driver initialization arguments', Nargin, default_vals);
+                        catch err
+                            fprintf("Nargin is -1 and get_default_args is not implemented in %s", class_str{i});
+                            rethrow(err)
+                        end
+                        argstrcell = join(result, ',');
+                        modules_temp{end+1} = eval(sprintf('%s.instance(%s)',class_str{i},argstrcell{1} )); %#ok<AGROW>
+                        module_struct = struct();
+                        module_struct.name = class_str{i};
+                        module_struct.argstr = argstrcell{1};
+                        obj.module_args{end+1} = module_struct;
+                    elseif Nargin == 0
                         modules_temp{end+1} = eval(sprintf('%s.instance',class_str{i})); %#ok<AGROW>
                         module_struct = struct();
                         module_struct.name = class_str{i};
