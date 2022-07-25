@@ -10,5 +10,5 @@ function run(obj,status,managers,ax)
     if strcmp(obj.method, 'Spectrum')
         obj.doSpectrum(status, managers);
     end
-
+    obj.doPLE(status, managers);
 end
