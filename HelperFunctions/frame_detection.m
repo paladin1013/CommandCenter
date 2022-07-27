@@ -1,7 +1,13 @@
 function processed_image = frame_detection(input_image, plot, args)
     % Args: struct with fields {}
     if isstring(input_image) || ischar(input_image)
-        input_image = imread(input_image);
+        try
+            input_image = imread(input_image);
+        catch
+            input_mat = load(input_image);
+            input_image = input_mat.image.image;
+            input_image = uint8(floor(double(input_image)*256/double(max(input_image, [], 'all'))));
+        end
     end
 
     if exist('args', 'var') && isfield(args, 'bin1_thres_ratio')

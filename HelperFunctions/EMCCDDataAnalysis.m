@@ -1,32 +1,35 @@
 function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
     if ~exist('EMCCD_data_path', 'var')
-        EMCCD_data_path = 'Experiments_ResonanceEMCCDonly2022_04_06_13_28_15.mat';
+        EMCCD_data_path = 'Data/EMCCD_raw_data.mat';
     end
     if ~exist('WL_data_path', 'var')
-        WL_data_path = 'sep3W243d124_wl.mat';
+        WL_data_path = 'Data/wightlight_data.mat';
     end
     if ~exist('processed_data_path', 'var')
-        processed_data_path = 'EMCCD_processed_data.mat';
+        processed_data_path = 'Data/EMCCD_processed_data.mat';
     end
 
     try
         d = load(processed_data_path);
         d = d.d;
     catch
-        frpintf("%s file does not exist, loading original from %d\n", processed_data_path, EMCCD_data_path);
+        fprintf("%s file does not exist, loading original data from %s\n", processed_data_path, EMCCD_data_path);
         d = load(EMCCD_data_path);
     end
     wl = load(WL_data_path);
-    freqs = d.data.data.data.freqMeasured;
-    imgs = d.data.data.data.images_EMCCD(:, :, :);
+
+    % Find the number of non-NaN elements:
+    validFrameNum = sum(~isnan(d.data.data.data.freqMeasured));
+    freqs = d.data.data.data.freqMeasured(1:validFrameNum);
+    imgs = d.data.data.data.images_EMCCD(:, :, 1:validFrameNum);
 
     %%
     % Emitter filter
-    mincount = 8000; %filter emitter
-    rxmin = 100;
-    rymin = 220;
-    rxmax = 275;
-    rymax = 305;
+    mincount = 6000; %filter emitter
+    rxmin = 0;
+    rymin = 0;
+    rxmax = 500;
+    rymax = 500;
 
     %display
     ylim_min = 00;
@@ -49,7 +52,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
 
     imgs2 = d.imgs2(:, :, 1:length(freqs));
 
-    fig1 = figure(1)
+    fig1 = figure(1);
 
     allpts0 = reshape(imgs2, [512 * 512, length(freqs)]);
     allpts0(max(allpts0, [], 2) < mincount, :) = [];
@@ -326,12 +329,12 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
             sites{validCnt} = struct('baryPos', baryPos,'triangleInd', 2, 'frequency_THz', wgc(k), 'wavelength_nm', 3e5/wgc(k));
         end
     end
+
     sites = sites(1:validCnt);
-    savePath = 'EMCCD_sites_file.mat';
-    fprintf("Sites data saved to %s", savePath);
+    savePath = 'Data/EMCCD_sites_file.mat';
+    fprintf("Sites data saved to %s\n", savePath);
     save(savePath, 'sites');
     function polyMoveCallback(hObj, event)
-        fprintf("Polygon ROI moved.\n");
         polyPos = hObj.Position;
     end
     function ROIConfirm(hObj, event)
