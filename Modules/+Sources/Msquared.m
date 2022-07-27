@@ -148,6 +148,7 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
                         rethrow(err);
                     end
                 else
+                    rethrow(err);
                     % obj.hwserver_host = obj.no_server;
                 end
             end
@@ -166,7 +167,7 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
 
                     obj.status =            obj.statusList{reply.status+1};
                     obj.tuning =            reply.status == 2;
-                    obj.NIR_wavelength =    reply.current_wavelength;
+                    obj.NIR_wavelength =    reply.wavelength;
                     obj.wavelength_lock =   logical(reply.lock_status);
                     obj.locked =            logical(reply.lock_status);
                 catch
@@ -193,6 +194,7 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
                     obj.resonator_voltage = reply.resonator_voltage;
                     obj.output_monitor =    reply.output_monitor;
                     obj.armed =             obj.get_armed();
+                    
                 catch
                     warning('SolsTiS status call failed; leaving variables unchanged.')
                 end
