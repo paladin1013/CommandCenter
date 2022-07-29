@@ -1,4 +1,4 @@
-function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
+function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, processed_data_path)
     if ~exist('EMCCD_data_path', 'var')
         EMCCD_data_path = 'Data/EMCCD_raw_data.mat';
     end
@@ -9,23 +9,27 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
         processed_data_path = 'Data/EMCCD_processed_data.mat';
     end
 
-    try
-        d = load(processed_data_path);
-        d = d.d;
-    catch
-        fprintf("%s file does not exist, loading original data from %s\n", processed_data_path, EMCCD_data_path);
+    if exist('load_processed_data', 'var') && (load_processed_data==true)
+        try
+            d = load(processed_data_path);
+            d = d.d;
+        catch
+            fprintf("%s file does not exist, loading original data from %s\n", processed_data_path, EMCCD_data_path);
+            d = load(EMCCD_data_path);
+        end
+    else
         d = load(EMCCD_data_path);
     end
     wl = load(WL_data_path);
 
     % Find the number of non-NaN elements:
-    validFrameNum = sum(~isnan(d.data.data.data.freqMeasured));
+    validFrameNum = sum(~isnan(d.data.data.data.freqMeasured))-1;
     freqs = d.data.data.data.freqMeasured(1:validFrameNum);
     imgs = d.data.data.data.images_EMCCD(:, :, 1:validFrameNum);
 
     %%
     % Emitter filter
-    mincount = 6000; %filter emitter
+    mincount = 10000; %filter emitter
     rxmin = 0;
     rymin = 0;
     rxmax = 500;
@@ -48,10 +52,12 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
             %             d.imgs2(:,:,ii) = flatten(imgaussfilt(remove_spikes(imgs(:,:,ii), 3),1));
             d.imgs2(:, :, ii) = imgaussfilt(remove_spikes(imgs(:, :, ii), 3), 1);
         end
+        save(processed_data_path, 'd');
     end
 
     imgs2 = d.imgs2(:, :, 1:length(freqs));
 
+    try close(1); catch; end
     fig1 = figure(1);
 
     allpts0 = reshape(imgs2, [512 * 512, length(freqs)]);
@@ -133,20 +139,15 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
 
     end
 
-    % c=jet(length(wgpx));
-
     markerlist = ['o'; '+'; 'x'; 's'; 'd'; '^'; 'v'; '>'; '<'; 'p'; 'h'; '*'; '_'; '|'];
     markerlist2 = ['-o'; '-+'; '-x'; '-s'; '-d'; '-^'; '-v'; '->'; '-<'; '-p'; '-h'; '-*'; ];
     c = [1 0 0; 1 0.5 0; 1 1 0; 0.5 1 0; 0 1 0; 0 1 1; 0 0.5 1; 0 0 1; 0.5 0 1; 1 0 1];
-    if length(wgpx) < 40
-
-    end
-
+    figureHandles = cell(length(wgpx), 3);
     if length(wgpx) >= 40
-        s2 = subplot(1, 4, 2)
+        s2 = subplot(1, 4, 2);
         for i = 1:39
             hold on
-            plot(wgx(i, :) - wgx(i, find(wgy(i, :) == max(wgy(i, :)))) * ones(1, length(wgx(i, :))), i + wgy(i, :) / max(wgy(i, :)), markerlist2(1 + floor(i / 10)), 'linewidth', 2, 'Color', c(1 + (i - floor(i / 10) * 10), :))
+            figureHandles{i, 2} = plot(wgx(i, :) - wgx(i, find(wgy(i, :) == max(wgy(i, :)))) * ones(1, length(wgx(i, :))), i + wgy(i, :) / max(wgy(i, :)), markerlist2(1 + floor(i / 10)), 'linewidth', 2, 'Color', c(1 + (i - floor(i / 10) * 10), :));
             %     labels=[labels;strcat(num2str(i),':',{num2str((data.FOV.wgc(i)+0*(data.FOV.wgc(i)-484)*10000))},{'THz & '},{num2str(floor(data.FOV.wgw(i)))},{'MHz'})];
             %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
             %     set(t1,'Color',[0 0 0]);
@@ -164,10 +165,10 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
         % yticks([])
 
         set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
-        s4 = subplot(1, 4, 4)
+        s4 = subplot(1, 4, 4);
         for i = 40:length(wgpx)
             hold on
-            plot(wgx(i, :) - wgx(i, find(wgy(i, :) == max(wgy(i, :)))) * ones(1, length(wgx(i, :))), i + wgy(i, :) / max(wgy(i, :)), markerlist2(1 + floor(i / 10)), 'linewidth', 2, 'Color', c(1 + (i - floor(i / 10) * 10), :))
+            figureHandles{i, 2} = plot(wgx(i, :) - wgx(i, find(wgy(i, :) == max(wgy(i, :)))) * ones(1, length(wgx(i, :))), i + wgy(i, :) / max(wgy(i, :)), markerlist2(1 + floor(i / 10)), 'linewidth', 2, 'Color', c(1 + (i - floor(i / 10) * 10), :));
             %     labels=[labels;strcat(num2str(i),':',{num2str((data.FOV.wgc(i)+0*(data.FOV.wgc(i)-484)*10000))},{'THz & '},{num2str(floor(data.FOV.wgw(i)))},{'MHz'})];
             %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
             %     set(t1,'Color',[0 0 0]);
@@ -186,12 +187,12 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
 
         set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
     else
-        s2 = subplot(1, 4, 2)
+        s2 = subplot(1, 4, 2);
         %  wgpx_max = max(wgpx, 1);
         for i = 1:length(wgpx)
             hold on
             % wgx_relative =wgx(i,:)-wgpx_max(1) ;
-            plot(wgx(i, :) - wgx(i, find(wgy(i, :) == max(wgy(i, :)))) * ones(1, length(wgx(i, :))), i + wgy(i, :) / max(wgy(i, :)), markerlist2(1 + floor(i / 10)), 'linewidth', 2, 'Color', c(1 + (i - floor(i / 10) * 10), :))
+            figureHandles{i, 2} = plot(wgx(i, :) - wgx(i, find(wgy(i, :) == max(wgy(i, :)))) * ones(1, length(wgx(i, :))), i + wgy(i, :) / max(wgy(i, :)), markerlist2(1 + floor(i / 10)), 'linewidth', 2, 'Color', c(1 + (i - floor(i / 10) * 10), :));
             %     labels=[labels;strcat(num2str(i),':',{num2str((data.FOV.wgc(i)+0*(data.FOV.wgc(i)-484)*10000))},{'THz & '},{num2str(floor(data.FOV.wgw(i)))},{'MHz'})];
             %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
             %     set(t1,'Color',[0 0 0]);
@@ -211,9 +212,6 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
         set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
 
     end
-
-    % legend(labels)
-    %%
 
     s1 = subplot(1, 4, 1);
 
@@ -236,7 +234,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
         hold on
         %     if (realx(i)<rxmax) & (realx(i)>rxmin) & (realy(i)<rymax) & (realy(i)>rymin)
         %         scatter(wgpx(i),wgpy(i),30, c(1+(i-floor(i/10)*10),:),markerlist(1+floor(i/10)),'Linewidth',2)
-        scatter(wgpx(i), wgpy(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2)
+        figureHandles{i, 1} = scatter(wgpx(i), wgpy(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
         %     end
     end
 
@@ -244,30 +242,17 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
     scatter(rymax, rxmax, 'w', 'filled', 's')
 
     hold off
-    % set(s1,'DataAspectRatio',[1 1 1])
-    % xticks([0 100 200 300 400])
-    % yticks([0 100 200 300 400])
-    % xlabel('y')
-    % ylabel('x')
 
     xlim([xlim_min xlim_max])
     ylim([ylim_min ylim_max])
     xticks([])
     yticks([])
     set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
-
-    
-    % view(45,20)
-    % title('(a) Emitter overlaid image','FontName', 'Times New Roman')
-    %     function img = flatten(img0)
-    %         img = img0 - imgaussfilt(img0, 10);
-    %     end
-    %%
     s3 = subplot(1, 4, 3);
 
     for i = 1:length(wgpx)
         hold on
-        scatter(wgc(i), wgym(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2)
+        figureHandles{i, 3} = scatter(wgc(i), wgym(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
         %     labels=[labels;strcat(num2str(i),':',{num2str((data.FOV.wgc(i)+0*(data.FOV.wgc(i)-484)*10000))},{'THz & '},{num2str(floor(data.FOV.wgw(i)))},{'MHz'})];
         %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
         %     set(t1,'Color',[0 0 0]);
@@ -299,8 +284,10 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
 
     set(gcf, 'position', [10, 10, 1200, 800])
     
+
 % Polygon ROI
-    polyH = drawpolygon(s1, 'Position', [165, 318, 329, 175; 141, 130, 284, 298]');
+    validSites = ones(1, length(wgpx));
+    polyH = drawpolygon(s1, 'Position', [rxmin, rxmax, rxmax, rxmin; rymin, rymin, rymax, rymax]');
     polyListener = addlistener(polyH, 'ROIMoved', @polyMoveCallback);
     polyPos = polyH.Position;
     set(get(s1, 'Title'), 'String', 'Middle-click the image to save ROI');
@@ -319,6 +306,9 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
     validCnt = 0;
     for k = 1:length(wgpx)
         cartPos = [wgpx(k), wgpy(k)];
+        if ~validSites(k)
+            continue
+        end
         if(inpolygon(wgpx(k), wgpy(k), tri1(:, 1), tri1(:, 2)))
             baryPos = cartesianToBarycentric(TR, 1, cartPos);
             validCnt = validCnt + 1;
@@ -331,11 +321,25 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
     end
 
     sites = sites(1:validCnt);
-    savePath = 'Data/EMCCD_sites_file.mat';
+    savePath = 'Data/AutomaticMeasurementData/EMCCD_sites_file.mat';
     fprintf("Sites data saved to %s\n", savePath);
     save(savePath, 'sites');
     function polyMoveCallback(hObj, event)
         polyPos = hObj.Position;
+        % line1 = polyPos(1:2)
+        for idx = 1:length(wgpx)
+            if inpolygon(wgpx(idx), wgpy(idx), polyPos(:, 1), polyPos(:, 2))
+                validSites(idx) = 1;
+                for figIdx = 1:3
+                    figureHandles{idx, figIdx}.Visible = true;
+                end
+            else
+                validSites(idx) = 0;
+                for figIdx = 1:3
+                    figureHandles{idx, figIdx}.Visible = false;
+                end
+            end
+        end
     end
     function ROIConfirm(hObj, event)
         if event.Button == 2
@@ -343,5 +347,4 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, processed_data_path)
             return;
         end
     end
-
 end
