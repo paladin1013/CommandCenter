@@ -230,11 +230,14 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     %     end
     % end
 
+    SizeData = zeros(1, length((wgpx)));
     for i = 1:length(wgpx)
+
+        SizeData(i) = (wgym(i)-mincount)/(max(wgym)-mincount)*100+30;
         hold on
         %     if (realx(i)<rxmax) & (realx(i)>rxmin) & (realy(i)<rymax) & (realy(i)>rymin)
         %         scatter(wgpx(i),wgpy(i),30, c(1+(i-floor(i/10)*10),:),markerlist(1+floor(i/10)),'Linewidth',2)
-        figureHandles{i, 1} = scatter(wgpx(i), wgpy(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
+        figureHandles{i, 1} = scatter(wgpx(i), wgpy(i), SizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
         %     end
     end
 
@@ -249,10 +252,9 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     yticks([])
     set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
     s3 = subplot(1, 4, 3);
-
     for i = 1:length(wgpx)
         hold on
-        figureHandles{i, 3} = scatter(wgc(i), wgym(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
+        figureHandles{i, 3} = scatter(wgc(i), wgym(i), SizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
         %     labels=[labels;strcat(num2str(i),':',{num2str((data.FOV.wgc(i)+0*(data.FOV.wgc(i)-484)*10000))},{'THz & '},{num2str(floor(data.FOV.wgw(i)))},{'MHz'})];
         %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
         %     set(t1,'Color',[0 0 0]);
@@ -327,12 +329,28 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     function polyMoveCallback(hObj, event)
         polyPos = hObj.Position;
         % line1 = polyPos(1:2)
+        line1 = polyPos(1:2, :);
+        line2 = polyPos(2:3, :);
+        line3 = polyPos(3:4, :);
+        line4 = polyPos([4, 1], :);
+        minlen1 = min(norm(line1(1, :)-line1(2, :)), norm(line3(1, :)-line3(2, :)));
+        minlen2 = min(norm(line2(1, :)-line2(2, :)), norm(line4(1, :)-line4(2, :)));
+
         for idx = 1:length(wgpx)
-            if inpolygon(wgpx(idx), wgpy(idx), polyPos(:, 1), polyPos(:, 2))
+            space_ratio = 0.05; % To ignore sites that is to close to the boundary
+            % space_thres = 
+            exist_space_line1 = GetPointLineDistance(wgpx(idx), wgpy(idx), line1(1, 1), line1(1, 2), line1(2, 1), line1(2, 2)) > minlen2*space_ratio;
+            exist_space_line2 = GetPointLineDistance(wgpx(idx), wgpy(idx), line2(1, 1), line2(1, 2), line2(2, 1), line2(2, 2)) > minlen1*space_ratio;
+            exist_space_line3 = GetPointLineDistance(wgpx(idx), wgpy(idx), line3(1, 1), line3(1, 2), line3(2, 1), line3(2, 2)) > minlen2*space_ratio;
+            exist_space_line4 = GetPointLineDistance(wgpx(idx), wgpy(idx), line4(1, 1), line4(1, 2), line4(2, 1), line4(2, 2)) > minlen1*space_ratio;
+            exist_space_all = exist_space_line1 && exist_space_line2 && exist_space_line3 && exist_space_line4;
+
+            if inpolygon(wgpx(idx), wgpy(idx), polyPos(:, 1), polyPos(:, 2)) && exist_space_all
                 validSites(idx) = 1;
                 for figIdx = 1:3
                     figureHandles{idx, figIdx}.Visible = true;
                 end
+                figureHandles{idx, 2}
             else
                 validSites(idx) = 0;
                 for figIdx = 1:3
@@ -346,5 +364,26 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
             uiresume;
             return;
         end
+    end
+
+    function distance = GetPointLineDistance(x3,y3,x1,y1,x2,y2)
+        % Get the distance from a point (x3, y3) to
+        % a line defined by two points (x1, y1) and (x2, y2);
+        try
+	        
+	        % Find the numerator for our point-to-line distance formula.
+	        numerator = abs((x2 - x1) * (y1 - y3) - (x1 - x3) * (y2 - y1));
+	        
+	        % Find the denominator for our point-to-line distance formula.
+	        denominator = sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2);
+	        
+	        % Compute the distance.
+	        distance = numerator ./ denominator;
+        catch ME
+	        errorMessage = sprintf('Error in program %s.\nError Message:\n%s',...
+		        mfilename, ME.message);
+	        uiwait(errordlg(errorMessage));
+        end
+        return; % from GetPointLineDistance()
     end
 end
