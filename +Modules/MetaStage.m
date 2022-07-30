@@ -32,7 +32,7 @@ classdef MetaStage < Base.Module
     
     properties(SetObservable, AbortSet)
         show_prefs = {'X', 'Y', 'Z', 'Target'};
-        prefs = {'X', 'Y', 'Z', 'Target', 'key_step_x', 'key_step_y', 'key_step_z', 'joy_step_x', 'joy_step_y', 'joy_step_z', 'sweep_num', 'smaple_num', 'sample_interval', 'min_step_ratio'};
+        prefs = {'X', 'Y', 'Z', 'Target', 'key_step_x', 'key_step_y', 'key_step_z', 'joy_step_x', 'joy_step_y', 'joy_step_z', 'sweep_num', 'smaple_num', 'sample_interval', 'plot_record', 'min_step_ratio', 'sweep_axes', 'sweep_points', 'observe_axes'};
     end
     methods(Static)
         function obj = instance(name, manager)

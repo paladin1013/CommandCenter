@@ -35,17 +35,15 @@ classdef PM100 < Modules.Driver
         function obj = PM100(varargin)
             obj.id = findInstrument('0x8072'); % model number for the PM100
 %             obj.id = findInstrument('0x8076'); % model number for the PM100
-            obj.id
             obj.channel = visa('ni', obj.id);
             obj.channel.Timeout = obj.timeout;
-            obj.channel
             
             obj.command('SENS:POW:UNIT W');     % Make sure that we are measuring power.
             
             obj.idn =           obj.get_idn;
             obj.wavelength =    obj.get_wavelength;
             obj.freq =          obj.get_measure_frequency;
-            c = obj.get_average_count
+            c = obj.get_average_count;
             obj.averages =      obj.get_average_count;
             obj.power =         obj.get_power();
         end

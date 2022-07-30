@@ -49,6 +49,22 @@ classdef DriverManager < Base.Manager
             end
             obj.modules(mask) = [];
         end
+        % % Header Menu functions
+        % function getAvail(obj,parent_menu)
+        %     % Override. Show stages in order. Edit option at bottom.
+        %     module_strs = obj.get_modules_str;
+        %     if isempty(module_strs)
+        %         uimenu(parent_menu,'label','No Modules Loaded','enable','off');
+        %     end
+        %     for i = 1:numel(module_strs)
+        %         module_str = module_strs{i};
+        %         uimenu(parent_menu,'label',module_str,'enable','off');
+        %     end
+        %     uimenu(parent_menu, 'separator', 'on', 'label', 'New MetaStage',...
+        %         'callback', @obj.new_callback);
+        %     uimenu(parent_menu, 'separator', 'on', 'label', 'Delete MetaStage',...
+        %         'callback', @obj.delete_callback);
+        % end
     end
     % methods(Static)
     %     function getAvailModules(package, parent_menu, fun_callback, fun_in_use)
@@ -124,14 +140,14 @@ classdef DriverManager < Base.Manager
                         singular_type = obj.type(1:end-1);
                     end
                     assert(ismember(sprintf('Modules.%s',singular_type),super),'Superclass of %s must be Modules.%s',class_str{i},singular_type)
-                    Nargin = nargin(sprintf('%s.instance',class_str{i}));
+                    Nargin = eval(sprintf('nargin(@%s.instance)',class_str{i}));
                     if Nargin == -1
                         try
                             [arg_names, default_vals] = eval(sprintf('%s.get_default_args',class_str{i}));
                             Nargin = numel(arg_names);
                             result = inputdlg(arg_names, 'Driver initialization arguments', Nargin, default_vals);
                         catch err
-                            fprintf("Nargin is -1 and get_default_args is not implemented in %s", class_str{i});
+                            fprintf("Nargin is -1 and get_default_args is not implemented in %s\n", class_str{i});
                             rethrow(err)
                         end
                         argstrcell = join(result, ',');
@@ -148,7 +164,7 @@ classdef DriverManager < Base.Manager
                     else
                         try
                             [arg_names, default_vals] = eval(sprintf('%s.get_default_args',class_str{i}));
-                            assert(length(arg_names) == Nargin, "Number of default args (%d) is inconsistent with Nargin (%d).");
+                            assert(length(arg_names) == Nargin, "Number of default args (%d) is inconsistent with Nargin (%d).\n");
                             result = inputdlg(arg_names, 'Driver initialization arguments', Nargin, default_vals);
 
                         catch

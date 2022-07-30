@@ -1,6 +1,8 @@
 function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotResult, sampleNum, sampleInterval_s)
     % sweepPoints: should be a {1*Nsweep} cell array, each cell element contains a list with all sweeping points.
     % result: {val, st} (st stands for standard variation)
+    user_abort = false;
+    boxH = abortBox(@(~,~)abort);
     Nsweep = length(sweepAxes);
     Nobserve = length(observeAxes);
 
@@ -49,14 +51,20 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
             fig = figure(20);
             fig.NumberTitle = 'off';
             fig.Name = 'Reference sweep result';
-            ax = axes('Parent', fig); 
         end
         points = sweepPoints{1};
         pointNum = length(points);
         result = struct('val', zeros(pointNum, Nobserve), 'st', zeros(pointNum, Nobserve));
         for k = 1:pointNum
+            if user_abort
+                fprintf("User aborted.\n");
+                break;
+            end
             val = points(k);
             sweepRefs(1).writ(val);
+            if k == 1
+                pause(sampleInterval_s*sampleNum);
+            end
             for l = 1:Nobserve
                 tempResult = zeros(1, sampleNum);
                 for m = 1:sampleNum
@@ -66,19 +74,38 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
                 result.val(k, l) = mean(tempResult);
                 result.st(k, l) = std(tempResult);
             end
-            updatePlot(points, result, k, ax)
+            if plotResult
+                updatePlot(points, result, k)
+            end
         end
     end
+    delete(boxH);
+    function abort()
+        user_abort = true;
+    end
+    
+    function updatePlot(points, result, pointNum)
+        Nobserve = size(result.val, 2);
+        plotH = cell(1, Nobserve);
+        colors = lines(Nobserve);
+        figure(20);
+        for idx = 1:Nobserve
+            ax = subplot(Nobserve, 1, idx);
+            plotH{idx} = errorfill(points(1:pointNum),result.val(1:pointNum, idx)',result.st(1:pointNum, idx)','parent',ax, 'color', colors(idx, :));
+            set(get(ax, 'XLabel'), 'String', sweepRefs(1).reference.name);
+            set(get(ax, 'YLabel'), 'String', observeRefs(idx).reference.name);
+        end
+    end
+
 end
 
-function updatePlot(points, result, pointNum, ax)
-    while ~isempty(ax.Children)
-        ax.Children(1).delete;
-    end
-    Nobserve = size(result.val, 2);
-    plotH = cell(1, Nobserve);
-    colors = lines(Nobserve);
-    for l = 1:Nobserve
-        plotH{l} = errorfill(points(1:pointNum),result.val(1:pointNum, l)',result.st(1:pointNum, l)','parent',ax, 'color', colors(l, :));
-    end
+
+function boxH = abortBox(abort_callback)
+    boxH = msgbox('Reference sweep started');
+    boxH.KeyPressFcn='';  % Prevent esc from closing window
+    boxH.CloseRequestFcn = abort_callback;
+    % Repurpose the OKButton
+    button = findall(boxH,'tag','OKButton');
+    set(button,'tag','AbortButton','string','Abort',...
+        'callback',abort_callback)
 end

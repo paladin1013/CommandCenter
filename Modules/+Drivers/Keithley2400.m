@@ -18,6 +18,9 @@ classdef Keithley2400 < Modules.Driver
         current =   Prefs.Double(0, 'set', 'set_current', ...
                                                                 'help_text', 'Setpoint current of the source. This is different from measured current in the case the the source is operating in VOLT mode.');
     end
+    properties
+        prefs = {'output', 'mode', 'voltage', 'current'};
+    end
     
     % Constructor functions
     methods (Static)
