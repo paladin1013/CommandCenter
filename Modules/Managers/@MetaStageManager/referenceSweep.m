@@ -64,6 +64,15 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
             sweepRefs(1).writ(val);
             if k == 1
                 pause(sampleInterval_s*sampleNum);
+                for l = 1:Nobserve
+                    tempResult = zeros(1, sampleNum);
+                    for m = 1:sampleNum
+                        pause(sampleInterval_s);
+                        tempResult(m) = observeRefs(l).read;
+                    end
+                    result.val(k, l) = mean(tempResult);
+                    result.st(k, l) = std(tempResult);
+                end
             end
             for l = 1:Nobserve
                 tempResult = zeros(1, sampleNum);
@@ -79,9 +88,12 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
             end
         end
     end
-    delete(boxH);
+    if isvalid(boxH)
+        delete(boxH);
+    end
     function abort()
         user_abort = true;
+        delete(boxH);
     end
     
     function updatePlot(points, result, pointNum)
