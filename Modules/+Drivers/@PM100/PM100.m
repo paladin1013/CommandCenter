@@ -25,6 +25,8 @@ classdef PM100 < Modules.Driver
         plt;
         ax;
         textH;
+        fig;
+        display_unit = "uW"; % Options: W, mW, uW, nW; Only impact the display unit in popup window. The unit of `obj.power` is always mW.  
     end
     
     methods(Access=private)
@@ -75,6 +77,7 @@ classdef PM100 < Modules.Driver
             end
             obj.set_stop;
             delete(obj.channel)
+            obj.close_req;
         end
 
         function command(obj, msg, varargin)
@@ -122,6 +125,9 @@ classdef PM100 < Modules.Driver
 
         function update_power(obj, varargin)
             obj.power = obj.get_power;
+            if ~isempty(obj.fig)
+                obj.update_view;
+            end
         end
         
         function val = set_refresh(obj, val, ~)
@@ -132,7 +138,12 @@ classdef PM100 < Modules.Driver
             if obj.running
                 obj.set_stop;
             end
-            obj.timerH = timer('ExecutionMode','fixedRate','name','Counter',...
+            if isempty(obj.fig)
+                obj.view;
+            else
+                figure(obj.fig);  % Bring to foreground
+            end
+            obj.timerH = timer('ExecutionMode','fixedRate','name','PowerMeter',...
                 'period',obj.update_rate,'timerfcn',@obj.update_power);
             start(obj.timerH);
             obj.running = true;
@@ -151,32 +162,40 @@ classdef PM100 < Modules.Driver
             end
         end
 
-        function updateView(obj,counts,samples)
+        view(obj);
+
+        function update_view(obj)
             % Default GUI callback
-            counts = round(counts);
-            title(obj.ax,sprintf('Power %.3e mW (%i Samples Averaged)',obj.power, obj.averages));
-            x = get(obj.plt,'xdata');
-            y = get(obj.plt,'ydata');
+            assert(~isempty(find(strcmp(obj.display_unit, {'W', 'mW', 'uW', 'nW'}))), "obj.display_unit should be one of {'W', 'mW', 'uW', 'nW'}");
+            unit_ratio_to_mW = 10^(3*find(strcmp(obj.display_unit, {'W', 'mW', 'uW', 'nW'}))) / 1e6; % W: 1e-3; mW: 1; uW: 1e3; nW: 1e6
+            display_power = obj.power * unit_ratio_to_mW;
+            title(obj.ax,sprintf('Power %.3f (%s) (%i Samples Averaged)', display_power, obj.display_unit, obj.averages));
             xmax = round(obj.window_max/obj.update_rate);
+            x = obj.fig.UserData.x;
+            y = obj.fig.UserData.y;
             if numel(x) > xmax
                 delta = numel(x)-xmax;
-                y = [y(1+delta:end) counts];
-                x = [x(1+delta:end) x(end)+obj.update_rate];
+                obj.fig.UserData.y = [y(1+delta:end) obj.power];
+                obj.fig.UserData.x = [x(1+delta:end) x(end)+obj.update_rate];
             else
-                y(end+1) = counts;
-                x(end+1) = x(end)+obj.update_rate;
+                obj.fig.UserData.y(end+1) = obj.power;
+                obj.fig.UserData.x(end+1) = x(end)+obj.update_rate;
             end
-            set(obj.plt,'xdata',x,'ydata',y);
+            x = obj.fig.UserData.x;
+            y = obj.fig.UserData.y;
+            set(obj.plt,'xdata',x,'ydata',y*unit_ratio_to_mW);
             xlim = [x(1) x(end)+(x(end)-x(1))*0.1];
             set(obj.ax,'xlim',xlim)
-            set(obj.textH,'string',sprintf('%i',counts))
+            set(obj.textH,'string',sprintf('%.3f %s',display_power, obj.display_unit))
+            ylabel(obj.ax, sprintf('Power (%s)', obj.display_unit))
+            ylim(obj.ax, 'auto');
             drawnow limitrate;
         end
 
         % Callbacks from GUI
-        function closeReq(obj,varargin)
+        function close_req(obj,varargin)
             if ~isempty(obj.fig)&&isvalid(obj.fig)
-                obj.reset;
+                obj.set_stop;
                 delete(obj.fig)
                 obj.fig = [];
             end
@@ -189,9 +208,21 @@ classdef PM100 < Modules.Driver
             end
         end
         function val = set_window_max(obj,val, ~)
+
         end
-        
-    end
-    
+        function update_rate_callback(obj,hObj,varargin)
+            val = str2double(get(hObj,'string'));
+            obj.update_rate = val;
+        end
+        function window_max_callback(obj,hObj,varargin)
+            val = str2double(get(hObj,'string'));
+            obj.window_max = val;
+        end
+        function update_unit_callback(obj, hObj, varargin)
+            str = hObj.String;
+            val = hObj.Value;
+            obj.display_unit = str{val};
+        end
+    end    
 end
 
