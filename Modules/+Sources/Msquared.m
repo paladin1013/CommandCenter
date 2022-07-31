@@ -15,7 +15,8 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
     end
     
     properties
-        prefs = {'hwserver_host', 'moduleName', 'center_percent', 'early_abort', 'arduino_host_pin', 'hwserver_host', 'do_etalon_lock', 'do_wavelength_lock', 'NIR_channel', 'VIS_channel', 'PB_line', 'PB_host'}
+        % prefs = {'hwserver_host', 'moduleName', 'center_percent', 'early_abort', 'arduino_host_pin', 'hwserver_host', 'do_etalon_lock', 'do_wavelength_lock', 'NIR_channel', 'VIS_channel', 'PB_line', 'PB_host'}
+        prefs = {'hwserver_host', 'moduleName', 'center_percent', 'early_abort', 'do_etalon_lock', 'do_wavelength_lock', 'NIR_channel', 'VIS_channel', 'PB_line', 'PB_host'}
         show_prefs = {};
     end
     
@@ -43,10 +44,10 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         abort =             Prefs.Button('unit', 'Stop Tuning',     'set', 'set_abort', ...
                                                                     'help_text', 'Stop the current tuning operation.');
         
-        % POWER CONTROL prefs
-        arduino_host_pin =      Prefs.String('NotSet_NaN', 'set', 'set_arduino_host_pin', 'help_text', 'The host_pin for AdruinoServo. Use `_` to connect host and pin, eg. `localhost_2`. Triggers CommandCenter to connect to Arduino.');
-        OD_angle =          Prefs.Double(NaN,  'min', 0, 'max', 180, 'help_text', 'Set the rotary OD filter via ArduinoServo.', 'allow_nan', true, 'set', 'set_angle')
-        Arduino = Drivers.ArduinoServo.empty(0, 1); % Handle of arduino servo for rotary OD filter.
+        % % POWER CONTROL prefs
+        % arduino_host_pin =      Prefs.String('NotSet_NaN', 'set', 'set_arduino_host_pin', 'help_text', 'The host_pin for AdruinoServo. Use `_` to connect host and pin, eg. `localhost_2`. Triggers CommandCenter to connect to Arduino.');
+        % OD_angle =          Prefs.Double(NaN,  'min', 0, 'max', 180, 'help_text', 'Set the rotary OD filter via ArduinoServo.', 'allow_nan', true, 'set', 'set_angle')
+        % Arduino = Drivers.ArduinoServo.empty(0, 1); % Handle of arduino servo for rotary OD filter.
         
 
         % WAVELENGTH prefs
@@ -677,27 +678,27 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
                 resulting_wavelength = NaN;
             end
         end
-        function val = set_arduino_host_pin(obj, val, ~)
-            underscoreIdx = strfind(val, '_');
-            assert(length(underscoreIdx) == 1, "host_pin should contain exactly one `_` to separate host and pin. Eg: localhost_2"); 
-            pin = str2num(extractAfter(val, '_'));
-            host = extractBefore(val, '_');
-            try
-                obj.Arduino = Drivers.ArduinoServo.instance(host, pin);
-            catch err
-                warning(sprintf("Setting ArduinoServo error: %s", err.message));
-                val = "NotSet_NaN";
-                obj.Arduino = Drivers.ArduinoServo.empty(1, 0);
-                return;
-            end
-            try 
-                obj.OD_angle = obj.Arduino.angle;
-            catch
-            end
-        end
-        function val = set_angle(obj, val, ~)
-            assert(~isempty(obj.Arduino), "obj.Arduino is empty! Please set arduino host and pin to establish connection");
-            obj.Arduino.angle = val;
-        end
+        % function val = set_arduino_host_pin(obj, val, ~)
+        %     underscoreIdx = strfind(val, '_');
+        %     assert(length(underscoreIdx) == 1, "host_pin should contain exactly one `_` to separate host and pin. Eg: localhost_2"); 
+        %     pin = str2num(extractAfter(val, '_'));
+        %     host = extractBefore(val, '_');
+        %     try
+        %         obj.Arduino = Drivers.ArduinoServo.instance(host, pin);
+        %     catch err
+        %         warning(sprintf("Setting ArduinoServo error: %s", err.message));
+        %         val = "NotSet_NaN";
+        %         obj.Arduino = Drivers.ArduinoServo.empty(1, 0);
+        %         return;
+        %     end
+        %     try 
+        %         obj.OD_angle = obj.Arduino.angle;
+        %     catch
+        %     end
+        % end
+        % function val = set_angle(obj, val, ~)
+        %     assert(~isempty(obj.Arduino), "obj.Arduino is empty! Please set arduino host and pin to establish connection");
+        %     obj.Arduino.angle = val;
+        % end
     end
 end
