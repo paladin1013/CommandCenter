@@ -104,8 +104,8 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
         for idx = 1:Nobserve
             ax = subplot(Nobserve, 1, idx);
             plotH{idx} = errorfill(points(1:pointNum),result.val(1:pointNum, idx)',result.st(1:pointNum, idx)','parent',ax, 'color', colors(idx, :));
-            set(get(ax, 'XLabel'), 'String', sweepRefs(1).reference.name);
-            set(get(ax, 'YLabel'), 'String', observeRefs(idx).reference.name);
+            set(get(ax, 'XLabel'), 'String', sprintf("%s (%s)", sweepRefs(1).reference.name, sweepRefs(1).reference.unit));
+            set(get(ax, 'YLabel'), 'String', sprintf("%s (%s)", observeRefs(idx).reference.name, observeRefs(1).reference.unit));
         end
     end
 

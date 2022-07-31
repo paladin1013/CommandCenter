@@ -8,7 +8,7 @@ classdef Counter < Modules.Driver
         pltH;
     end
     properties(SetObservable, GetObservable)
-        count = Prefs.Double(0, 'readonly', true);                % Counts per second. For other modules to inspect.
+        count = Prefs.Double(0, 'readonly', true, 'unit', 'cps');                % Counts per second. For other modules to inspect.
         dwell = Prefs.Double(1);              % ms (clock speed of PulseTrain).  Takes effect at start.
         update_rate = Prefs.Double(0.1);      % s (time between Matlab reading DAQ).  Takes effect at start.
         WindowMax = Prefs.Double(60);         % Max axes width in seconds

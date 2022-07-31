@@ -40,7 +40,7 @@ function fig = plot_records(obj, dim, axis_available, axis_name)
             hold on;
             colors = flip(hot(n));
             for k = 1:n
-                line(x(k), val(k), 'Color', colors(k, :), 'Marker', '.', 'MarkerSize', ceil(50*(val(k)-minval+1)/(maxval-minval)));
+                line(x(k), val(k), 'Color', colors(k, :), 'Marker', '.', 'MarkerSize', ceil(50*(val(k)-minval+1e-10)/(maxval-minval+1e-10)));
             end
 
             if exist('axis_name', 'var')
@@ -72,7 +72,7 @@ function fig = plot_records(obj, dim, axis_available, axis_name)
             hold on;
             colors = flip(hot(n));
             for k = 1:n
-                line(x(k), y(k), val(k), 'Color', colors(k, :), 'Marker', '.', 'MarkerSize', ceil(50*(val(k)-minval+1)/(maxval-minval)));
+                line(x(k), y(k), val(k), 'Color', colors(k, :), 'Marker', '.', 'MarkerSize', ceil(50*(val(k)-minval+1e-10)/(maxval-minval+1e-10)));
             end
 %                     plot3(x, y, val, '-');
             if exist('axis_name', 'var')

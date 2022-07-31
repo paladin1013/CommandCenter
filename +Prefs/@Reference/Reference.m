@@ -102,6 +102,9 @@ classdef Reference < Base.Pref
                     st = st_new;
                 end
             end
+            if strcmp(obj.parent.optimize_option, "minimize")
+                avg = -avg;
+            end
         end
 
         

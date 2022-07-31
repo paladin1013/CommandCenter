@@ -16,13 +16,7 @@ function obj = steponly_optimize_Callback(obj, src, evt)
                 src.Value = false;
                 return;
             end
-            if strcmp(ms.get_meta_pref('Target').reference.name, 'count')
-                counter = ms.get_meta_pref('Target').reference.parent;
-                running = counter.running;
-                if ~running
-                    counter.start;
-                end
-            end
+            ms.start_target;
 
             optimizing = obj.name;
             start_pos = obj.read;
@@ -108,6 +102,13 @@ function obj = steponly_optimize_Callback(obj, src, evt)
                 max_val = max(temp_val, max_val);
 
             end % End while loop
+            
+            if strcmp(ms.optimize_option, "minimize")
+                for k = 1:length(obj.record_array)
+                    obj.record_array{k}.val = -obj.record_array{k}.val;
+                end
+            end
+            
             if ms.plot_record
                 obj.plot_records(1, 1, obj.name);
             end
@@ -122,8 +123,6 @@ function obj = steponly_optimize_Callback(obj, src, evt)
             optimizing = "";
         end
     end
-    
-    
     
     
     

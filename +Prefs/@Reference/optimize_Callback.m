@@ -5,7 +5,7 @@ function obj = optimize_Callback(obj, src, evt)
         optimizing = "";
     end
     if src.Value == true
-        if optimizing ~= ""
+        if ~strcmp(optimizing, "")
             warning("Optimization on %s is already started. Please stop the running optimization to start a new one.", optimizing);
             src.Value = false;
 
@@ -16,13 +16,7 @@ function obj = optimize_Callback(obj, src, evt)
                 src.Value = false;
                 return;
             end
-            if strcmp(ms.get_meta_pref('Target').reference.name, 'count')
-                counter = ms.get_meta_pref('Target').reference.parent;
-                running = counter.running;
-                if ~running
-                    counter.start;
-                end
-            end
+            ms.start_target;
 
             optimizing = obj.name;
             start_pos = obj.read;
@@ -57,8 +51,7 @@ function obj = optimize_Callback(obj, src, evt)
                 obj.record_array{end+1} = record;
             end
 
-                
-            max_val = 0;
+            max_val = -1e10;
             for l = 1:length(obj.record_array)
                 record = obj.record_array{l};
                 if record.val >= max_val
@@ -141,6 +134,11 @@ function obj = optimize_Callback(obj, src, evt)
                     end
                 end
             end % End while loop
+            if strcmp(ms.optimize_option, "minimize")
+                for k = 1:length(obj.record_array)
+                    obj.record_array{k}.val = -obj.record_array{k}.val;
+                end
+            end
             if ms.plot_record
                 obj.plot_records(1, 1, obj.name);
             end

@@ -3,17 +3,17 @@
 AWG=AWG70002B('visa',"18.25.28.214");
 %% Setting up AWG parameters
 AWG.Amplitude = 0.75;   %Normalized units
-AWG.SampleRate =1*1e9;
+AWG.SampleRate =10;
 AWG.phaseOffset = 0;
-sampling = AWG.SampleRate;
+sampling = AWG.SampleRate*1e9;
 phase = AWG.phaseOffset;
 vpp = AWG.Amplitude;
 %
 AWG.SetSampleRate();
 AWG.setRunMode('c');
-freq_start = 0.01;  % in GHz
-freq_end = 0.3;    % in GHz
-points=10;
+freq_start = 1.2;  % in GHz
+freq_end = 2.8;    % in GHz
+points=400;
 loops=1000;
 %
 repumpTime_set= 0.5 % in us
@@ -28,7 +28,7 @@ repump_type='Every Point';
 repumpTime = ceil(repumpTime_set*sampling*1e-06);
 resTime = ceil(resTime_set*sampling*1e-06);
 paddingTime = ceil(paddingTime_set*sampling*1e-06);    % delay between repump and res
-
+%%
 
             if strcmp(ple_type,'fast')
                 if strcmp(repump_type,'Every Point')
@@ -61,10 +61,12 @@ paddingTime = ceil(paddingTime_set*sampling*1e-06);    % delay between repump an
             dir_save=[savePath '\\' ple_type '\\fs_' num2str(sampling*1e-09) '_fst_' num2str(freq_start) '_fen_' num2str(freq_end) '_points_' num2str(points)];
             load_dir=[load_dir '\\' ple_type '\\fs_' num2str(sampling*1e-09) '_fst_' num2str(freq_start) '_fen_' num2str(freq_end) '_points_' num2str(points)];
             seq_save_dir=['Z:\\Experiments\\AWG70002B\\sequences\\' ple_type '\\'];
-            
+
+            %% LOCAL SAVE OVERIDE
+            dir_save='C:\Users\Experiment\Desktop\LocalSave';
 %%           
                 if strcmp(ple_type,'fast') % one long waveform, looping "samples" times
-                    AWG.initSequence(SeqName,1)
+                    
                     channel1 = [];
                     channel2 = [];
                     c1m1=[];
@@ -98,7 +100,7 @@ paddingTime = ceil(paddingTime_set*sampling*1e-06);    % delay between repump an
 
                         writeWavHouston([dir_save '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
                         writeWavHouston([dir_save '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
-                           
+                        AWG.initSequence(SeqName,1)   
                         AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1},'", "' load_dir  '\\' fName{1}, '",TXT8']));
                         AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2},'", "' load_dir  '\\' fName{2}, '",TXT8']));
                         % Loads from .txt file on Houston 
@@ -145,7 +147,8 @@ paddingTime = ceil(paddingTime_set*sampling*1e-06);    % delay between repump an
 
                         writeWavHouston([dir_save '\\' fName{1}],channel1,c1m1,c1m2);% writes to .txt file on Houston 
                         writeWavHouston([dir_save '\\' fName{2}],channel2,c2m1,c2m2);% writes to .txt file on Houston 
-                           
+                        
+                        AWG.initSequence(SeqName,1)   
                         AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{1},'", "' load_dir  '\\' fName{1}, '",TXT8']));
                         AWG.writeToSocket(sprintf(['MMEM:IMP "', sequenceList{2},'", "' load_dir  '\\' fName{2}, '",TXT8']));
                         % Loads from .txt file on Houston 

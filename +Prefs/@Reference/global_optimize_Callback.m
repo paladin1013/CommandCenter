@@ -34,13 +34,8 @@ function obj = global_optimize_Callback(obj, src, evt)
 
         else % No optimization process has been started yet.
             optimizing = "Target";
-            if strcmp(ms.get_meta_pref('Target').reference.name, 'count')
-                counter = ms.get_meta_pref('Target').reference.parent;
-                running = counter.running;
-                if ~running
-                    counter.start;
-                end
-            end
+            ms.start_target;
+            
 
             % Record all avalable references
             
@@ -107,7 +102,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             end
 
             % Find the maximum within the sweep results to be a starting point
-            max_val = 0;
+            max_val = -1e10;
             for l = 1:length(obj.record_array)
                 record = obj.record_array{l};
                 if record.val >= max_val
@@ -232,6 +227,12 @@ function obj = global_optimize_Callback(obj, src, evt)
 
             fprintf("Final target value: %.2e.\n", avg);
             fprintf("Final position: %.2e, %.2e, %.2e\n", fixed_pos(1), fixed_pos(2), fixed_pos(3));
+            
+            if strcmp(ms.optimize_option, "minimize")
+                for k = 1:length(obj.record_array)
+                    obj.record_array{k}.val = -obj.record_array{k}.val;
+                end
+            end
             if ms.plot_record
                 obj.plot_records(optimize_dim, axis_available, axis_ref_name);
             end
