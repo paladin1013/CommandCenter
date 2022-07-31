@@ -10,13 +10,21 @@ classdef PM100 < Modules.Driver
         
         power       = Prefs.Double(NaN, 'allow_nan', true, 'unit', 'mW', 'get', 'get_power', 'readonly', true,  'help_text', 'Last reading.');
         refresh     = Prefs.Button('Poll Powermeter', 'set', 'set_refresh', 'help_text', 'Poll the powermeter for a new reading.');
-        
+        window_max  = Prefs.Double(60, 'unit', 's', 'help', 'Max axes width in seconds', 'set', 'set_window_max');
+        update_rate = Prefs.Double(0.1, 'unit', 's', 'help', 'Timer function refreshing period.', 'set', 'set_update_rate');  
+        start_btn   = Prefs.Button('Start timer update', 'set', 'set_start', 'help_text', 'Start continuous update with period `update_rate`.');
+        stop_btn    = Prefs.Button('Stop timer update', 'set', 'set_stop', 'help_text', 'Stop continuous update.');
+        running     = Prefs.Boolean(false, 'readonly', true, 'help_text', 'Whether the continuous mode is running.');
     end
     
     properties %(Access=private, Hidden)
         channel;
         id;
         timeout = .1;
+        timerH;
+        plt;
+        ax;
+        textH;
     end
     
     methods(Access=private)
@@ -43,7 +51,6 @@ classdef PM100 < Modules.Driver
             obj.idn =           obj.get_idn;
             obj.wavelength =    obj.get_wavelength;
             obj.freq =          obj.get_measure_frequency;
-            c = obj.get_average_count;
             obj.averages =      obj.get_average_count;
             obj.power =         obj.get_power();
         end
@@ -66,6 +73,7 @@ classdef PM100 < Modules.Driver
             if ~isempty(obj.channel) && isvalid(obj.channel) && strcmp(obj.channel.status,'open')
                 fclose(obj.channel);
             end
+            obj.set_stop;
             delete(obj.channel)
         end
 
@@ -111,10 +119,78 @@ classdef PM100 < Modules.Driver
             out = obj.query('MEAS:POW?');
             out = str2double(out) * 1e3;   % Convert from watts to milliwatts.
         end
+
+        function update_power(obj, varargin)
+            obj.power = obj.get_power;
+        end
         
         function val = set_refresh(obj, val, ~)
             obj.power = obj.get_power();
         end
+
+        function val = set_start(obj, val, ~)
+            if obj.running
+                obj.set_stop;
+            end
+            obj.timerH = timer('ExecutionMode','fixedRate','name','Counter',...
+                'period',obj.update_rate,'timerfcn',@obj.update_power);
+            start(obj.timerH);
+            obj.running = true;
+        end
+
+        function val = set_stop(obj, val, ~)
+            try
+                if ~isempty(obj.timerH) && isvalid(obj.timerH)
+                    stop(obj.timerH);
+                    delete(obj.timerH);
+                end
+                obj.timerH = [];
+                obj.running = false;
+            catch err
+                warning(sprintf("Error stopping PM100 timer:\n%s", err.message));
+            end
+        end
+
+        function updateView(obj,counts,samples)
+            % Default GUI callback
+            counts = round(counts);
+            title(obj.ax,sprintf('Power %.3e mW (%i Samples Averaged)',obj.power, obj.averages));
+            x = get(obj.plt,'xdata');
+            y = get(obj.plt,'ydata');
+            xmax = round(obj.window_max/obj.update_rate);
+            if numel(x) > xmax
+                delta = numel(x)-xmax;
+                y = [y(1+delta:end) counts];
+                x = [x(1+delta:end) x(end)+obj.update_rate];
+            else
+                y(end+1) = counts;
+                x(end+1) = x(end)+obj.update_rate;
+            end
+            set(obj.plt,'xdata',x,'ydata',y);
+            xlim = [x(1) x(end)+(x(end)-x(1))*0.1];
+            set(obj.ax,'xlim',xlim)
+            set(obj.textH,'string',sprintf('%i',counts))
+            drawnow limitrate;
+        end
+
+        % Callbacks from GUI
+        function closeReq(obj,varargin)
+            if ~isempty(obj.fig)&&isvalid(obj.fig)
+                obj.reset;
+                delete(obj.fig)
+                obj.fig = [];
+            end
+        end
+        function val = set_update_rate(obj,val, ~)
+            if ~isempty(obj.timerH) && isvalid(obj.timerH)
+                stop(obj.timerH)
+                obj.timerH.Period = val;
+                start(obj.timerH)
+            end
+        end
+        function val = set_window_max(obj,val, ~)
+        end
+        
     end
     
 end
