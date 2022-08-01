@@ -29,7 +29,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
 
     %%
     % Emitter filter
-    mincount = 10000; %filter emitter
+    mincount = 20000; %filter emitter
     rxmin = 0;
     rymin = 0;
     rxmax = 500;
@@ -41,17 +41,14 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     xlim_min = 0;
     xlim_max = 500;
     %
-
+    imgs2 = imgs;
     if ~isfield(d, 'imgs2')
-        d.imgs2 = imgs;
 
-        for ii = 1:length(freqs)
-            if ~mod(ii, 10)
-                ii;
-            end
+        parfor ii = 1:length(freqs) % 
             %             d.imgs2(:,:,ii) = flatten(imgaussfilt(remove_spikes(imgs(:,:,ii), 3),1));
-            d.imgs2(:, :, ii) = imgaussfilt(remove_spikes(imgs(:, :, ii), 3), 1);
+            imgs2(:, :, ii) = imgaussfilt(remove_spikes(imgs(:, :, ii), 3), 1);
         end
+        d.imgs2 = imgs2;
         save(processed_data_path, 'd');
     end
 
@@ -259,7 +256,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
         %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
         %     set(t1,'Color',[0 0 0]);
         if (i / 10 - floor(i / 10)) == 0
-            line([wgc(i) wgc(i)], [mincount 6.5e4], 'Color', 'k', 'LineStyle', '--')
+            line([wgc(i) wgc(i)], [mincount 6.5e4], 'Color', 'k', 'LineStyle', '--');
         end
     end
     set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
