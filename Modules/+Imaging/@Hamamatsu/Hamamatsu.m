@@ -319,6 +319,20 @@ classdef Hamamatsu < Modules.Imaging
                 obj.core.startContinuousSequenceAcquisition(100);
             end
         end
+        function startSnapping(obj)
+            if obj.core.isSequenceRunning
+                obj.core.stopSequenceAcquisition;
+            end
+            obj.core.startContinuousSequenceAcquisition(100);
+        end
+        function im = fetchSnapping(obj)
+            while(obj.core.getRemainingImageCount == 0)
+                pause(0.01);
+            end
+            im = obj.core.popNextImage;
+            obj.core.stopSequenceAcquisition;
+        end
+
         function snap(obj,hImage)
             % This function calls snapImage and applies to hImage.
             im = obj.snapImage;

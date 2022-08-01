@@ -168,7 +168,11 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
 
                     obj.status =            obj.statusList{reply.status+1};
                     obj.tuning =            reply.status == 2;
-                    obj.NIR_wavelength =    reply.wavelength;
+                    if isfield(reply, 'wavelength')
+                        obj.NIR_wavelength =    reply.wavelength;
+                    elseif isfield(reply, 'current_wavelength')
+                        obj.NIR_wavelength = reply.current_wavelength;
+                    end
                     obj.wavelength_lock =   logical(reply.lock_status);
                     obj.locked =            logical(reply.lock_status);
                 catch
@@ -522,7 +526,6 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         
         function val = set_resonator_percent(obj, val, ~)
             if isnan(val); return; end % Short circuit on NaN
-            t = tic;
             obj.getFrequency(); % costs ~1s
             
 
@@ -580,6 +583,10 @@ classdef Msquared < Modules.Source & Sources.TunableLaser_invisible
         function TunePercent(obj, target)
             assert(target >= 0 && target <= 100, 'Target must be a percentage')
             obj.resonator_percent = target;
+        end
+        function TunePercentFast(obj, target)
+            assert(target >= 0 && target <= 100, 'Target must be a percentage')
+            obj.hwserver.com_noresponse(obj.moduleName, 'set_resonator_val', 'solstis', target);
         end
         function TuneSetpoint(obj, target)
             obj.tune(obj.c/target);

@@ -27,26 +27,25 @@ function run( obj,status,managers,ax )
     obj.data.freqMeasured = NaN(1,length(obj.scan_points));
     if obj.wavemeter_override
         obj.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu',obj.wavemeter_channel,false);
+        obj.wavemeter.SetSwitcherSignalState(1);
     end
     
     for i = 1 : length(obj.scan_points)
         drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
-        
         % change laser wavelength
-        obj.resLaser.TunePercent(obj.scan_points(i));
-%         obj.resLaser.set_resonator_percent_limitrate(obj.scan_points(i));
-        
-        obj.data.images_EMCCD(:,:,i) = obj.cameraEMCCD.snapImage();
-        
+        % obj.resLaser.TunePercent(obj.scan_points(i));
+        obj.cameraEMCCD.startSnapping; % Start snapping EMCCD image in background (micro-controller)
+        obj.resLaser.TunrPercentFast(obj.scan_points(i)); % No response / laser locking to save time.
+%         obj.resLaser.set_resonator_percent_limitrate(obj.scan_points(i));        
         if obj.wavemeter_override
             
-            obj.wavemeter.SetSwitcherSignalState(1);
             %obj.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu', obj.wavemeter_channel, false);
             obj.data.freqMeasured(i) = obj.wavemeter.getFrequency;
         else
             obj.data.freqMeasured(i) = obj.resLaser.getFrequency;
         end
         
+        obj.data.images_EMCCD(:,:,i) = obj.cameraEMCCD.fetchSnapping;
         imagesc(ax,obj.data.images_EMCCD(:,:,i));
         title(obj.data.freqMeasured(i));
         %imagesc(obj.ax1, obj.data.images_camera(:,:,i))

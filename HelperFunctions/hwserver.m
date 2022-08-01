@@ -96,8 +96,53 @@ classdef hwserver < handle
                 rethrow(err)
             end
         end
-        
+        function com_noresponse(obj,hwname,funcname,varargin)
+            % Server always replies and always closes connection after msg
+            % assert funcname is a string, and cast varargin (cell array)
+            % to strings (use cellfun - operates on each entry of cell)
+            %
+            % last input is the keep_alive; for now, functionality not
+            % included
+            assert(ischar(hwname),'hwname must be a string');
+            % Prepare both parts of message in case one errors
+            handshake = urlencode(jsonencode(struct('name',hwname)));
+            msg = struct('function',funcname,'args',{varargin},'keep_alive',false);
+            msg = urlencode(jsonencode(msg));
+            abort = struct('function',NaN,'args',{{}},'keep_alive',false);
+            abort = urlencode(jsonencode(abort));
+            fopen(obj.connection);
+            err = [];
+            try
+                try
+                    fprintf(obj.connection,'%s\n',handshake);
+                    obj.receive; % Error handling in method
+                catch handshake_err
+                    if strcmp(handshake_err.identifier, 'HWSERVER:empty')
+                        error('HWSERVER:failed_handshake', ['Failed handshake: ' handshake_err.message])
+                    else
+                        rethrow(handshake_err)
+                    end
+                end
+                while length(msg) > 0
+                    fprintf(obj.connection,'%s',msg(1:min(length(msg), obj.connection.OutputBufferSize-1)));
+                    msg = msg(min(length(msg)+1, obj.connection.OutputBufferSize):end);
+                end
+
+                fprintf(obj.connection, "\n");
+                % For faster communication, do not receive any response from target hwserver
+            catch err
+                % For future use in more parallel hwserver;
+                % for now, it is redundant with keep_alive: false and is
+                % error-prone server-side if called too quickly
+                % fprintf(obj.connection,'%s\n',abort);
+            end
+            fclose(obj.connection);
+            if ~isempty(err)
+                rethrow(err)
+            end
+        end
     end
+
     methods(Access=protected)
         function response = basic_com(obj, handshake)
             % This is a special method to invoke server replies directly by
