@@ -323,13 +323,21 @@ classdef Hamamatsu < Modules.Imaging
             if obj.core.isSequenceRunning
                 obj.core.stopSequenceAcquisition;
             end
+            while(obj.core.getRemainingImageCount > 0)
+                obj.core.popNextImage;
+            end
             obj.core.startContinuousSequenceAcquisition(100);
         end
-        function im = fetchSnapping(obj)
+        function dat = fetchSnapping(obj)
             while(obj.core.getRemainingImageCount == 0)
                 pause(0.01);
             end
-            im = obj.core.popNextImage;
+            dat = obj.core.popNextImage;
+            width = obj.core.getImageWidth();
+            height = obj.core.getImageHeight();
+            dat = typecast(dat, 'uint16');
+            dat = reshape(dat, [width, height]);
+            dat = flipud(transpose(dat));  % Fix Y inversion
             obj.core.stopSequenceAcquisition;
         end
 

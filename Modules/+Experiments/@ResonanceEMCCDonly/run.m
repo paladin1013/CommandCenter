@@ -35,7 +35,7 @@ function run( obj,status,managers,ax )
         % change laser wavelength
         % obj.resLaser.TunePercent(obj.scan_points(i));
         obj.cameraEMCCD.startSnapping; % Start snapping EMCCD image in background (micro-controller)
-        obj.resLaser.TunrPercentFast(obj.scan_points(i)); % No response / laser locking to save time.
+        obj.resLaser.TunePercentFast(obj.scan_points(i)); % No response / laser locking to save time.
 %         obj.resLaser.set_resonator_percent_limitrate(obj.scan_points(i));        
         if obj.wavemeter_override
             
