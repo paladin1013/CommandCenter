@@ -38,7 +38,7 @@ classdef Slider < Modules.Driver
         end
         function [arg_names, default_vals] = get_default_args()
             arg_names = {'host', 'name'};
-            default_vals = {'"localhost"', '"ZPL_PSB_SLIDER"'};
+            default_vals = {'"18.25.29.30"', '"ZPL_PSB_SLIDER"'};
         end
     end
     methods(Access=private)

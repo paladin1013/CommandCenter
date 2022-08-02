@@ -37,7 +37,7 @@ classdef ArduinoServo < Modules.Driver
         end
         function [arg_names, default_vals] = get_default_args()
             arg_names = {'host', 'pin'};
-            default_vals = {'"localhost"', '2'};
+            default_vals = {'"18.25.29.30"', '2'};
         end
     end
     methods(Access=private)

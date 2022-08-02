@@ -3,9 +3,9 @@ function APD_PSB()
     try
         apt = Drivers.APTFilterFlipper.instance(37000231, 'APD1');
         apt.setState(2, 1);
-        sl1 = Drivers.Elliptec.Slider.instance("localhost", "ZPL_PSB_SLIDER");
+        sl1 = Drivers.Elliptec.Slider.instance("18.25.29.30", "ZPL_PSB_SLIDER");
         sl1.set_position(2);
-        sl2 = Drivers.Elliptec.Slider.instance("localhost", "CONFOCAL_WIDEFIELD_SLIDER");
+        sl2 = Drivers.Elliptec.Slider.instance("18.25.29.30", "CONFOCAL_WIDEFIELD_SLIDER");
         sl2.set_position(1);
     catch err
         warning("APD_PSB path is not successfully set. Please turn off Kinesis or reconnect.");

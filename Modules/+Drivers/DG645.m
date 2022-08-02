@@ -35,7 +35,7 @@ classdef DG645 < Modules.Driver
         end
         function [arg_names, default_vals] = get_default_args()
             arg_names = {'host_ip'};
-            default_vals = {'"localhost"'};
+            default_vals = {'"18.25.29.30"'};
         end
     end
     methods(Access=private)
