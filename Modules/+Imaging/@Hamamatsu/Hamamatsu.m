@@ -335,10 +335,18 @@ classdef Hamamatsu < Modules.Imaging
             dat = obj.core.popNextImage;
             width = obj.core.getImageWidth();
             height = obj.core.getImageHeight();
+            obj.core.stopSequenceAcquisition;
             dat = typecast(dat, 'uint16');
             dat = reshape(dat, [width, height]);
-            dat = flipud(transpose(dat));  % Fix Y inversion
-            obj.core.stopSequenceAcquisition;
+            if obj.ImRot90 > 0
+                dat = rot90(dat,obj.ImRot90);
+            end
+            if obj.FlipVer
+                dat = flipud(dat);
+            end
+            if obj.FlipHor
+                dat = fliplr(dat);
+            end
         end
 
         function snap(obj,hImage)

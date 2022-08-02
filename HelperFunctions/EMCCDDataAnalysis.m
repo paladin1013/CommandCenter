@@ -1,16 +1,23 @@
-function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, processed_data_path)
-    if ~exist('EMCCD_data_path', 'var')
-        EMCCD_data_path = 'Data/EMCCD_raw_data.mat';
+function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file, EMCCD_data_file, WL_data_file, sites_save_path)
+    % For `processed_data_file`, pass a struct directly (including fields {freqs, EMCCD_imgs, filtered_imgs, wl_img, poly_pos}) is also valid.
+    if ~exist('EMCCD_data_file', 'var')
+        EMCCD_data_file = 'EMCCD_raw_data.mat';
     end
-    if ~exist('WL_data_path', 'var')
-        WL_data_path = 'Data/wightlight_data.mat';
+    if ~exist('WL_data_file', 'var')
+        WL_data_file = 'wightlight_data.mat';
     end
-    if ~exist('processed_data_path', 'var')
-        processed_data_path = 'Data/EMCCD_processed_data.mat';
+    if ~exist('processed_data_file', 'var')
+        processed_data_file = 'EMCCD_processed_data.mat';
     end
-
+    if ~exist('working_dir', 'var')
+        working_dir = 'Data';
+    end
+    if ~exist('sites_save_path', 'var')
+        sites_save_path = 'EMCCD_emitter_sites.mat';
+    end
+    
     if load_processed_data == false
-        wl = load(WL_data_path);
+        wl = load(fullfile(working_dir, WL_data_file));
         try close(42); catch; end
         roi_fig = figure(42);
         ax2 = axes('Parent', roi_fig);
@@ -18,7 +25,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
         colormap(ax2, 'bone')
         im_size = size(wl.image.image(:, :));
         rectH = images.roi.Rectangle(ax2, 'Position', [1, 1, im_size(1)-1, im_size(2)-1]);
-        set(get(ax2, 'Title'), 'String', sprintf('Please adjust ROI to trim the image and accelarate image processing\nMiddle click unconvered image to confirm ROI'));
+        set(get(ax2, 'Title'), 'String', sprintf('Please adjust ROI to trim the image and accelarate image processing\nRight click unconvered image to confirm ROI'));
         ax2.ButtonDownFcn = @ROIConfirm;
         im2H.ButtonDownFcn = @ROIConfirm;
         uiwait(roi_fig);
@@ -40,17 +47,17 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
         y_size = size(wl_img, 1);
         size(wl_img, 1);
         polyH = drawpolygon(ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
-        set(get(ax, 'Title'), 'String', sprintf('Middle-click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
+        set(get(ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
         wlH.ButtonDownFcn = @ROIConfirm;
         uiwait(result_fig);
-        polyPos = polyH.Position;
+        poly_pos = polyH.Position;
         delete(ax);
 
         fprintf("Finish trimming & setting ROI. Start loading image data.\n")
         
         
         
-        d = load(EMCCD_data_path);
+        d = load(fullfile(working_dir, EMCCD_data_file));
         if isfield(d, 'd')
             d = d.d;
         end
@@ -67,9 +74,20 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
             %             d.filtered_imgs(:,:,ii) = flatten(imgaussfilt(remove_spikes(EMCCD_imgs(:,:,ii), 3),1));
             filtered_imgs(:, :, ii) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, ii), 3), 1);
         end
-        save(processed_data_path, 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'polyPos');
-    else %Load data from .mat file
-        load(processed_data_path, 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'polyPos');
+        save(fullfile(working_dir, processed_data_file), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+    else 
+        if isstruct(processed_data_file) % Pass the structure directly
+            freqs = processed_data_file.freqs;
+            EMCCD_imgs = processed_data_file.EMCCD_imgs;
+            filtered_imgs = processed_data_file.filtered_imgs;
+            wl_img = processed_data_file.wl_img;
+            poly_pos = processed_data_file.poly_pos;
+            clear('processed_data_file'); % To save memory
+        else % Load data from .mat file
+            load(fullfile(working_dir, processed_data_file), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+        end
+        try close(41); catch; end
+        result_fig = figure(41);
     end
 
 
@@ -114,7 +132,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     
 
     T = [1, 2, 3; 3, 4, 1];
-    TR = triangulation(T, polyPos);
+    TR = triangulation(T, poly_pos);
     
     hold(s1, 'on');
     axes(s1);
@@ -137,9 +155,9 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     end
 
     sites = sites(1:validCnt);
-    savePath = 'Data/AutomaticMeasurementData/EMCCD_sites_file.mat';
-    fprintf("Sites data saved to %s\n", savePath);
-    save(savePath, 'sites');
+    fprintf("Sites data saved to %s\n", sites_save_path);
+    save(fullfile(working_dir, sites_save_path), 'sites');
+
 
     
 
@@ -212,7 +230,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     
         yy = allpts0(reali, :);
     
-        valid = spacialFilter(polyPos, realy, realx);
+        valid = spacialFilter(poly_pos, realy, realx);
         for i = 1:length(fres)
             hold on
             if valid(i) == 1
@@ -272,7 +290,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     
             hold off
             box on
-            ylim([40 length(wgpx)])
+            ylim([40 length(wgpx)+1])
             xlim([-1.6 1.6])
             yticks([0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100]);
             yticklabels({'0' 'o' '10' '+' '20' 'x' '30' 's' '40' 'd' '50' '^' '60' 'v' '70' '>' '80' '<' '90' 'p' '100'});
@@ -296,7 +314,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
     
             hold off
             box on
-            ylim([0 length(wgpx)])
+            ylim([1 length(wgpx)+1])
             xlim([-1.6 1.6])
             yticks([0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100]);
             yticklabels({'0' 'o' '10' '+' '20' 'x' '30' 's' '40' 'd' '50' '^' '60' 'v' '70' '>' '80' '<' '90' 'p' '100'});
@@ -385,7 +403,7 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
         answer = questdlg('Are you sure to abort analysis?', 'Abort confirm', 'Yes', 'No', 'No');
         switch answer
         case 'Yes'
-            if strcmp(hObj.Style, 'pushbutton')
+            if isprop(hObj, 'Style') && strcmp(hObj.Style, 'pushbutton')
                 delete(hObj.Parent);
             else
                 delete(hObj);
@@ -409,12 +427,12 @@ function EMCCDDataAnalysis(EMCCD_data_path, WL_data_path, load_processed_data, p
 end
 
 
-function validSites = spacialFilter(polyPos, x, y)
+function validSites = spacialFilter(poly_pos, x, y)
     validSites = zeros(1, length(x));
-    line1 = polyPos(1:2, :);
-    line2 = polyPos(2:3, :);
-    line3 = polyPos(3:4, :);
-    line4 = polyPos([4, 1], :);
+    line1 = poly_pos(1:2, :);
+    line2 = poly_pos(2:3, :);
+    line3 = poly_pos(3:4, :);
+    line4 = poly_pos([4, 1], :);
     minlen1 = min(norm(line1(1, :)-line1(2, :)), norm(line3(1, :)-line3(2, :)));
     minlen2 = min(norm(line2(1, :)-line2(2, :)), norm(line4(1, :)-line4(2, :)));
 
@@ -427,7 +445,7 @@ function validSites = spacialFilter(polyPos, x, y)
         exist_space_line4 = getPointLineDistance(x(idx), y(idx), line4(1, 1), line4(1, 2), line4(2, 1), line4(2, 2)) > minlen1*space_ratio;
         exist_space_all = exist_space_line1 && exist_space_line2 && exist_space_line3 && exist_space_line4;
 
-        if inpolygon(x(idx), y(idx), polyPos(:, 1), polyPos(:, 2)) && exist_space_all
+        if inpolygon(x(idx), y(idx), poly_pos(:, 1), poly_pos(:, 2)) && exist_space_all
             validSites(idx) = 1;
         else
             validSites(idx) = 0;
@@ -458,7 +476,7 @@ function distance = getPointLineDistance(x3,y3,x1,y1,x2,y2)
 end
 
 function ROIConfirm(hObj, event)
-    if event.Button == 2
+    if event.Button == 3
         uiresume;
         return;
     end
