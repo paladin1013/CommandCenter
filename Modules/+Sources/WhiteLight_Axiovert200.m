@@ -25,7 +25,7 @@ classdef WhiteLight_Axiovert200 < Modules.Source
 %                 obj.ni.view;
 %                 rethrow(err)
 %             end
-            obj.source_on = boolean(obj.ZeissDriver.HaloLampState);
+            obj.source_on = logical(obj.ZeissDriver.HaloLampState);
             obj.listeners = addlistener(obj.ZeissDriver,'HaloLampState','PostSet',@obj.update);
             obj.listeners(2) = addlistener(obj.ZeissDriver,'HaloLampIntensity','PostSet',@obj.update);
         end
@@ -74,7 +74,7 @@ classdef WhiteLight_Axiovert200 < Modules.Source
             obj.intensity = val;
         end
         function update(obj,varargin)
-            obj.source_on = boolean(obj.ZeissDriver.HaloLampState);
+            obj.source_on = logical(obj.ZeissDriver.HaloLampState);
         end
     end
 end

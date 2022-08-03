@@ -16,7 +16,7 @@ classdef Laser532_nidaq_nidaq < Modules.Source
                 obj.ni.view;
                 rethrow(err)
             end
-            obj.armed = boolean(line.state);
+            obj.armed = logical(line.state);
         end
     end
     methods(Static)

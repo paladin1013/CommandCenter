@@ -25,7 +25,7 @@ classdef Laser532CW_slider < Modules.Source
                 obj.ni.view;
                 rethrow(err)
             end
-            obj.source_on = boolean(line.state);
+            obj.source_on = logical(line.state);
             obj.listeners = addlistener(line,'state','PostSet',@obj.update);
         end
     end
@@ -80,7 +80,7 @@ classdef Laser532CW_slider < Modules.Source
         end
         function update(obj,varargin)
             line = obj.ni.getLines('Laser532CW','out');
-            obj.source_on = boolean(line.state);
+            obj.source_on = logical(line.state);
             if ~isempty(obj.sliderH)&&isvalid(obj.sliderH)&&obj.source_on
                 set(obj.sliderH,'value',line.state*20)
             end
