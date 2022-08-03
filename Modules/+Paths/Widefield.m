@@ -4,6 +4,6 @@ function widefield()
         sl2 = Drivers.Elliptec.Slider.instance("18.25.29.30", "CONFOCAL_WIDEFIELD_SLIDER");
         sl2.set_position(2);
     catch err
-        warning("APD_ZPL path is not successfully set. Please turn off Kinesis or reconnect.");
+        warning("widefield path is not successfully set. Please turn off Kinesis or reconnect.");
     end
 end
