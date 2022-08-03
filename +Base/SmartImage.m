@@ -23,7 +23,7 @@ classdef SmartImage < handle
         contextmenu             % Handle to contextmenu for this image
         ROIMenu                 % Handle to child of context menu
         crosshairMenu           % Handle to child of context menu
-        crosshairs              % (x,y) handles to both line objects.
+        crosshair              % (x,y) handles to both line objects.
         roiRect                 % Handle to imrect for ROI
         listeners               % Listeners to stage pos and imager ROI
     end
@@ -141,8 +141,12 @@ classdef SmartImage < handle
             xlim(1) = min(xlim(1),xmin); xlim(2) = max(xlim(2),xmax);
             ylim = get(ax,'ylim');
             ylim(1) = min(ylim(1),ymin); ylim(2) = max(ylim(2),ymax);
-            obj.crosshairs = plot(ax,[pos(1) pos(1)],ylim,'b','HitTest','off');
-            obj.crosshairs(2) = plot(ax,xlim,[pos(2) pos(2)],'b','HitTest','off');
+            
+            if ~isnan(pos(1)) && ~isnan(pos(2))
+                obj.crosshair = drawcrosshair(ax, 'Position', [pos(1), pos(2)], 'LineWidth', 1);
+            else
+                obj.crosshair = drawcrosshair(ax, 'Position', [(xmin+xmax)/2, (ymin+ymax)/2], 'LineWidth', 1);
+            end
             hold(ax,'off');
             
             % Create ROI
@@ -213,9 +217,9 @@ classdef SmartImage < handle
             end
         end
         function set.crosshairVisible(obj,val)
-            if isvalid(obj.crosshairs)
-                set(obj.crosshairs,'visible',val);
+            if isvalid(obj.crosshair)
                 set(obj.crosshairMenu,'checked',val)
+                obj.crosshair.Visible = val;
                 obj.crosshairVisible = val;
             else
                 obj.crosshairVisible = 'off';
@@ -249,7 +253,7 @@ classdef SmartImage < handle
             obj.ROIVisible = val;
         end
         function delete(obj,varargin)
-            todelete = {obj.listeners,obj.crosshairs,obj.roiRect,obj.contextmenu};
+            todelete = {obj.listeners,obj.crosshair,obj.roiRect,obj.contextmenu};
             for i = 1:numel(todelete)
                 for j = 1:numel(todelete{i})
                     if isvalid(todelete{i}(j))
@@ -262,7 +266,7 @@ classdef SmartImage < handle
             obj.crosshairVisible = 'off';
             obj.ROIVisible = 'off';
             % Delete stage-related stuff
-            todelete = {obj.listeners,obj.crosshairs,obj.roiRect,findall(Base.getParentFigure(obj.ax),'tag','smartimage')};
+            todelete = {obj.listeners,obj.crosshair,obj.roiRect,findall(Base.getParentFigure(obj.ax),'tag','smartimage')};
             for i = 1:numel(todelete)
                 for j = 1:numel(todelete{i})
                     if isvalid(todelete{i}(j))
@@ -295,7 +299,7 @@ classdef SmartImage < handle
             NewAx = axes('parent',newFig);
             colormap(newFig,colormap(obj.ax))
             Base.SmartImage(obj.info,NewAx,managers.Stages,...
-                                            Managers.MetaStage,...
+                                            managers.MetaStage,...
                                            managers.Sources,...
                                            managers.Imaging);
             newFig.UserData.Managers = managers; % For popout in new figure
@@ -382,7 +386,6 @@ classdef SmartImage < handle
         function updatePos(obj,varargin)
             pos = obj.stage.position-obj.info.globalPos;
             % First get rid of them to determine the smallest axlim
-            set(obj.crosshairs,'xdata',NaN,'ydata',NaN)
             xlim = get(obj.ax,'xlim');
             ylim = get(obj.ax,'ylim');
             if pos(1) < xlim(1) || pos(1) > xlim(2)
@@ -391,8 +394,9 @@ classdef SmartImage < handle
             if pos(2) < ylim(1) || pos(2) > ylim(2)
                 pos(2) = NaN;
             end
-            set(obj.crosshairs(1),'xdata',[pos(1) pos(1)],'ydata',ylim);
-            set(obj.crosshairs(2),'xdata',xlim,'ydata',[pos(2) pos(2)]);
+            if ~isnan(pos(1)) && ~isnan(pos(2))
+                obj.crosshair.Position = [pos(1), pos(2)];
+            end
         end
     end
     
