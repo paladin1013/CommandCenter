@@ -363,11 +363,11 @@ classdef SweepProcessed < handle
                 if ~isempty(d)
                     switch ii
                         case 1  % sum
-                            p2 = nanmean(p, d);
+                            p2 = mean(p, d, 'omitnan');
                             p = nansum(p, d);
                             p(isnan(p2)) = NaN;
                         case 2  % mean
-                            p = nanmean(p, d);
+                            p = mean(p, d, 'omitnan');
                         case 3  % median
                             p = nanmedian(p, d);
                         case 4  % min

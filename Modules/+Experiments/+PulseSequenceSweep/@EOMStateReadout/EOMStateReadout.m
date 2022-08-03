@@ -73,8 +73,8 @@ classdef EOMStateReadout < Experiments.PulseSequenceSweep.PulseSequenceSweep_inv
         
         function UpdateRun(obj,~,~,ax,~,~)
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,1));
-                meanError = squeeze(nanmean(obj.data.stdCounts,1));
+                averagedData = squeeze(mean(obj.data.sumCounts,1, 'omitnan'));
+                meanError = squeeze(mean(obj.data.stdCounts,1, 'omitnan'));
             else
                 averagedData = obj.data.sumCounts;
                 meanError = obj.data.stdCounts;

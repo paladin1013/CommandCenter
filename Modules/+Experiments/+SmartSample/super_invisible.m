@@ -179,7 +179,7 @@ classdef super_invisible < handle
                 if sum(~isnan(obj.navigation.times)) < 1
                     msg = sprintf('%0.2f%% complete.',100*num_done/num_total);
                 else
-                    t = (num_total-num_done)*nanmean(obj.navigation.times);
+                    t = (num_total-num_done)*mean(obj.navigation.times, 'omitnan');
                     hrs = floor(t/3600);
                     minutes = round((t - hrs*3600)/60);
                     h_plural = 's'; m_plural = 's';

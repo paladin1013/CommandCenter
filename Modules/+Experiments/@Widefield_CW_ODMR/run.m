@@ -92,13 +92,13 @@ function run( obj,status,managers,ax )
                 obj.data(j,i,2,:,:) = obj.Camera.snapImage(1);
 
                 % Update plot
-                averagedData = squeeze(nanmean(obj.data,1));
+                averagedData = squeeze(mean(obj.data,1, 'omitnan'));
                 norm   = squeeze(averagedData(:, 1,:,:));
                 signal = squeeze(averagedData(:, 2,:,:));
                 data = 2 * signal ./ (signal + norm);
-                plotH(1).YData = nanmean(data, [2 3]);
-                plotH(2).YData = nanmean(signal, [2 3]);
-                plotH(3).YData = nanmean(norm, [2 3]);
+                plotH(1).YData = mean(data, [2 3], 'omitnan');
+                plotH(2).YData = mean(signal, [2 3], 'omitnan');
+                plotH(3).YData = mean(norm, [2 3], 'omitnan');
                 for k = 1:n_pts
                     plotH(1+3*k).YData = data(:, obj.pixel_x(k), obj.pixel_y(k));
                     plotH(2+3*k).YData = signal(:, obj.pixel_x(k), obj.pixel_y(k));

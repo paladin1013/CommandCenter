@@ -121,7 +121,7 @@ classdef PolarizationAndReadoutEOM_tttr < Experiments.PulseSequenceSweep.PulseSe
         
         function UpdateRun(obj,~,~,ax,~,~)
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.counts,1));
+                averagedData = squeeze(mean(obj.data.counts,1, 'omitnan'));
             else
                 averagedData = obj.data.counts;
             end

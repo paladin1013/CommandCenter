@@ -79,7 +79,7 @@ classdef Rabi_singleLaser < Experiments.PulseSequenceSweep.PulseSequenceSweep_in
         
         function UpdateRun(obj,~,~,ax,~,~)
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,1));
+                averagedData = squeeze(mean(obj.data.sumCounts,1, 'omitnan'));
             else
                 averagedData = squeeze(obj.data.sumCounts);
             end

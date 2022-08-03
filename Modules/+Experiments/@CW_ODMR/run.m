@@ -63,7 +63,7 @@ function run( obj,status,managers,ax )
                 obj.data(j,i,2) = ctr.singleShot(obj.Exposure_ms, 1);
 
                 % Update plot
-                averagedData = squeeze(nanmean(obj.data,1));
+                averagedData = squeeze(mean(obj.data,1, 'omitnan'));
                 norm   = averagedData(:, 1);
                 signal = averagedData(:, 2);
                 data = 2 * signal ./ (signal + norm);

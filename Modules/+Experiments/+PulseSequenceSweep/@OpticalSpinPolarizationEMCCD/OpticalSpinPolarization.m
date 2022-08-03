@@ -52,8 +52,8 @@ classdef OpticalSpinPolarization < Experiments.PulseSequenceSweep.PulseSequenceS
         end
         function UpdateRun(obj,~,~,ax,~,~)
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,1))';
-                meanError = squeeze(nanmean(obj.data.stdCounts,1))'*sqrt(obj.samples);
+                averagedData = squeeze(mean(obj.data.sumCounts,1, 'omitnan'))';
+                meanError = squeeze(mean(obj.data.stdCounts,1, 'omitnan'))'*sqrt(obj.samples);
             else
                 averagedData = obj.data.sumCounts;
                 meanError = obj.data.stdCounts;

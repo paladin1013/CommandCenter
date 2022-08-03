@@ -563,8 +563,8 @@ end
                     if ~isempty(experiment.data) &&  ~any(exp_inds(i) == analysis.sites(site_index,4).ignore)
                         % Add marker on closed loop axes
                         plot(ax(4),freq, ax(4).YLim(1),'Color',cs(i,1,:),'MarkerFaceColor',cs(i,1,:),'Marker','v','MarkerSize',5,'tag','superres');
-                        repumpGray = squeeze(nanmean(experiment.data.data.sumCounts(:,:,:,1),1))';
-                        resGray = squeeze(nanmean(experiment.data.data.sumCounts(:,:,:,2),1))';
+                        repumpGray = squeeze(mean(experiment.data.data.sumCounts(:,:,:,1),1, 'omitnan'))';
+                        resGray = squeeze(mean(experiment.data.data.sumCounts(:,:,:,2),1, 'omitnan'))';
                         if ax(5).UIContextMenu.UserData.id == 1 % gray, side by side
                             gray = cat(2,repumpGray/max(repumpGray(:)), resGray/max(resGray(:)));
                             color = cat(3, gray, gray, gray);

@@ -133,8 +133,8 @@ classdef Stroboscopic_invisible < Modules.Experiment
 %
 %         function UpdateRun(obj,~,~,ax,~,~)
 %             if obj.averages > 1
-%                 averagedData = squeeze(nanmean(obj.data.sumCounts,3));
-%                 meanError = squeeze(nanmean(obj.data.stdCounts,3));
+%                 averagedData = squeeze(mean(obj.data.sumCounts,3, 'omitnan'));
+%                 meanError = squeeze(mean(obj.data.stdCounts,3, 'omitnan'));
 %             else
 %                 averagedData = obj.data.sumCounts;
 %                 meanError = obj.data.stdCounts;

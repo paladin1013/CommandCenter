@@ -85,7 +85,7 @@ function run( obj,status,managers,ax )
                     continue
                 end
             end
-            obj.data.laser_power(i) = nanmean(PWall(i,:)); % Save average power measured
+            obj.data.laser_power(i) = mean(PWall(i,:), 'omitnan'); % Save average power measured
             obj.data.laser_power_all(i,:) = PWall(i,:); % Save average power measured
             obj.data.laser_wavelength(i) = Sources.TunableLaser_invisible.c/obj.resLaser.getFrequency; % Get exact wavelength from wavemeter
             

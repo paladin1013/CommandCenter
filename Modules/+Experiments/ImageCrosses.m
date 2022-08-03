@@ -123,7 +123,7 @@ classdef ImageCrosses < Modules.Experiment
                 if sum(~isnan(times)) < 1
                     msg = sprintf('%0.2f%% complete.',100*num_done/num_total);
                 else
-                    t = (num_total-num_done)*nanmean(times);
+                    t = (num_total-num_done)*mean(times, 'omitnan');
                     hrs = floor(t/3600);
                     minutes = round((t - hrs*3600)/60);
                     h_plural = 's'; m_plural = 's';

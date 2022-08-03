@@ -162,7 +162,7 @@ classdef awgPLEscan < Modules.Experiment
         end
         function UpdateRun(obj,~,~,ax)
             if obj.averages > 1
-                %averagedData = squeeze(nanmean(obj.data.rawCounts,1))*obj.pts*obj.averages;
+                %averagedData = squeeze(mean(obj.data.rawCounts,1, 'omitnan'))*obj.pts*obj.averages;
                 %meanError = squeeze(nanstd(obj.data.rawCounts,0,1))*sqrt(obj.samples*obj.averages);
                 averagedData = mean(obj.data.sumCounts,'omitnan');
                 meanError = mean(obj.data.stdCounts,'omitnan')*sqrt(obj.samples);

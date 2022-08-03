@@ -104,7 +104,7 @@ for i = 1:size(pos,1)
 end
 % Go through and get rid of ones not a std dev above mean
 im_cropped = im_cropped(ylim(1):ylim(2),xlim(1):xlim(2));
-im_mean = nanmean(im_cropped(:));
+im_mean = mean(im_cropped(:), 'omitnan');
 im_std = nanstd(im_cropped(:));
 remove = [];
 for i = 1:size(pos,1)

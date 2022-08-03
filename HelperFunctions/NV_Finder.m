@@ -16,7 +16,7 @@ dx = diff(edges);
 x = edges(1:end-1)+dx;
 g = fittype('gauss1');
 opt = fitoptions(g);
-opt.StartPoint = [max(N),nanmean(temp(:)),nanstd(temp(:))];
+opt.StartPoint = [max(N),mean(temp(:), 'omitnan'),nanstd(temp(:))];
 opt.Lower = [0,0,0];
 f = fit(x',N',g,opt);
 %figure; plot(x,N); hold on; plot(f);

@@ -38,7 +38,7 @@ while ~runFlag || isnan(datSNR) || datSNR < SNR
     title(ax,sprintf('Determining averages: %i',s.repeat));
     apdPS.stream(p);
     countsON = p.YData;
-    datSNR = nanmean(countsON)/(nanstd(countsON)/sqrt(s.repeat));
+    datSNR = mean(countsON, 'omitnan')/(nanstd(countsON)/sqrt(s.repeat));
     runFlag = 1;
 end
 
@@ -50,9 +50,9 @@ title(ax,sprintf('Determining off reference. Using %i avgs.',s.repeat))
 apdPS.stream(p);
 countsOFF = p.YData;
 
-meanON = nanmean(countsON);
+meanON = mean(countsON, 'omitnan');
 stderrON = nanstd(countsON)/sqrt(s.repeat);
-meanOFF = nanmean(countsOFF);
+meanOFF = mean(countsOFF, 'omitnan');
 stderrOFF = nanstd(countsOFF)/sqrt(s.repeat);
 
 %get reference zero delay measurement
@@ -61,7 +61,7 @@ apdPS = APDPulseSequence(nidaq,pb,s);
 apdPS.start(maxCounts);
 title(ax,sprintf('Determining off reference. Using %i avgs.',s.repeat))
 apdPS.stream(p);
-mean0 = nanmean(p.YData);
+mean0 = mean(p.YData, 'omitnan');
 
 %determine necessary search directions
 searchDir = [];

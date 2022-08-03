@@ -55,8 +55,8 @@ classdef WidefieldSlowScan_invisible < Modules.Experiment
             obj.data.freqs_measured(average,freqIndex) = obj.resLaser.getFrequency;
             
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,3));
-                meanError = squeeze(nanmean(obj.data.stdCounts,3))*sqrt(obj.samples);
+                averagedData = squeeze(mean(obj.data.sumCounts,3, 'omitnan'));
+                meanError = squeeze(mean(obj.data.stdCounts,3, 'omitnan'))*sqrt(obj.samples);
             else
                 averagedData = obj.data.sumCounts;
                 meanError = obj.data.stdCounts*sqrt(obj.samples);
@@ -67,7 +67,7 @@ classdef WidefieldSlowScan_invisible < Modules.Experiment
             ax.UserData.plots{1}.YNegativeDelta = meanError(1,:);
             ax.UserData.plots{1}.YPositiveDelta = meanError(1,:);
             ax.UserData.plots{1}.update;
-            ax.UserData.plots{2}.YData = nanmean(obj.data.freqs_measured,1);
+            ax.UserData.plots{2}.YData = mean(obj.data.freqs_measured,1, 'omitnan');
             drawnow limitrate;
         end
     end

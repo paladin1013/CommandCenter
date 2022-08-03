@@ -59,8 +59,8 @@ classdef AllOpticalT1 < Experiments.PulseSequenceSweep.PulseSequenceSweep_invisi
         
         function UpdateRun(obj,~,~,ax,~,~)
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,1));
-                meanError = squeeze(nanmean(obj.data.stdCounts,1));
+                averagedData = squeeze(mean(obj.data.sumCounts,1, 'omitnan'));
+                meanError = squeeze(mean(obj.data.stdCounts,1, 'omitnan'));
             else
                 averagedData = squeeze(obj.data.sumCounts);
                 meanError = squeeze(obj.data.stdCounts);

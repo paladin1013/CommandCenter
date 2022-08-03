@@ -129,8 +129,8 @@ classdef Open2APD < Experiments.SlowScan.SlowScan_invisible
             end
             
             if obj.averages > 1
-                averagedData1 = squeeze(nanmean(obj.data.data1.sumCounts,3));
-                averagedData2 = squeeze(nanmean(obj.data.data2.sumCounts,3));
+                averagedData1 = squeeze(mean(obj.data.data1.sumCounts,3, 'omitnan'));
+                averagedData2 = squeeze(mean(obj.data.data2.sumCounts,3, 'omitnan'));
             else
                 averagedData1 = obj.data.data1.sumCounts;
                 averagedData2 = obj.data.data2.sumCounts;
@@ -138,7 +138,7 @@ classdef Open2APD < Experiments.SlowScan.SlowScan_invisible
             
             %grab handles to data from axes plotted in PreRun
             ax.UserData.plots{1}.YData = averagedData1(1,:);
-            ax.UserData.plots{2}.YData = nanmean(obj.data.freqs_measured,1);
+            ax.UserData.plots{2}.YData = mean(obj.data.freqs_measured,1, 'omitnan');
             ax.UserData.plots{3}.YData = averagedData2(1,:);
 
             drawnow limitrate;

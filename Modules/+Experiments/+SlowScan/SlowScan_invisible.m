@@ -96,8 +96,8 @@ classdef SlowScan_invisible < Experiments.PulseSequenceSweep.PulseSequenceSweep_
             end
             
             if obj.averages > 1
-                averagedData = squeeze(nanmean(obj.data.sumCounts,3));
-                meanError = squeeze(nanmean(obj.data.stdCounts,3))*sqrt(obj.samples);
+                averagedData = squeeze(mean(obj.data.sumCounts,3,'omitnan'));
+                meanError = squeeze(mean(obj.data.sumCounts,3,'omitnan'))*sqrt(obj.samples);
             else
                 averagedData = obj.data.sumCounts;
                 meanError = obj.data.stdCounts*sqrt(obj.samples);
@@ -108,7 +108,7 @@ classdef SlowScan_invisible < Experiments.PulseSequenceSweep.PulseSequenceSweep_
             ax.UserData.plots{1}.YNegativeDelta = meanError(1,:);
             ax.UserData.plots{1}.YPositiveDelta = meanError(1,:);
             ax.UserData.plots{1}.update;
-            ax.UserData.plots{2}.YData = nanmean(obj.data.freqs_measured,1);
+            ax.UserData.plots{2}.YData = mean(obj.data.freqs_measured,1,'omitnan');
             drawnow limitrate;
         end
     end

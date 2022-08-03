@@ -62,8 +62,8 @@ classdef SuperResScan < Experiments.PulseSequenceSweep.PulseSequenceSweep_invisi
         end
         function UpdateRun(obj,~,~,ax,~,~,~)
             % UpdateRun(obj,status,managers,ax,average,xInd,yInd)
-            ax.UserData(1).CData = squeeze(nanmean(obj.data.sumCounts(:,:,:,1),1))';
-            ax.UserData(2).CData = squeeze(nanmean(obj.data.sumCounts(:,:,:,2),1))';
+            ax.UserData(1).CData = squeeze(mean(obj.data.sumCounts(:,:,:,1),1, 'omitnan'))';
+            ax.UserData(2).CData = squeeze(mean(obj.data.sumCounts(:,:,:,2),1, 'omitnan'))';
         end
         function s = BuildPulseSequence(obj,xInd,yInd)
             %BuildPulseSequence Builds pulse sequence for repump pulse followed by APD
