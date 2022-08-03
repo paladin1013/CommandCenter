@@ -13,7 +13,6 @@ classdef Reference < Base.Pref
         % Also, errors may occor when it come back to a previously set value.
         % This reference will be no longer allowed to participate in global optimization, and the steponly_optimizate requires the endpoint to be the maximal position. 
         lsh = [];
-        record_array;
     end
 
     methods
@@ -69,43 +68,7 @@ classdef Reference < Base.Pref
         end
 
 
-        function [avg, st] = get_avg_val(obj, sample_num, max_std_ratio)
-            target = obj.parent.get_meta_pref('Target');
-            if ~exist('sample_num', 'var')
-                sample_num = obj.parent.sample_num;
-            end
-            if ~exist('max_std_ratio', 'var')
-                max_std_ratio = 0.2;
-            end
-            test_vals = zeros(1, sample_num);
-            for k = 1:sample_num
-                pause(obj.parent.sample_interval);
-                test_vals(k) = target.read;
-            end
-            avg = mean(test_vals);
-            st = std(test_vals);
-            if abs(st/avg) > max_std_ratio
-                % The standart deviation is too large. Retake the measurement.
-                sample_num = sample_num*2;
-                test_vals_new = zeros(1, sample_num);
-                for k = 1:sample_num
-                    test_vals_new(k) = target.read;
-                    pause(obj.parent.sample_interval);
-                end
-                avg_new = mean(test_vals_new);
-                st_new = std(test_vals_new);
-                if abs(st_new/avg_new) > max_std_ratio
-                    avg = mean([test_vals, test_vals_new]);
-                    st = std([test_vals, test_vals_new]);
-                else
-                    avg = avg_new;
-                    st = st_new;
-                end
-            end
-            if strcmp(obj.parent.optimize_option, "minimize")
-                avg = -avg;
-            end
-        end
+        
 
         
         function obj = link_callback(obj,callback)
@@ -164,9 +127,5 @@ classdef Reference < Base.Pref
                 notify(msm, 'updated');
             end
         end
-        obj = optimize_Callback(obj, src, evt);
-        obj = global_optimize_Callback(obj, src, evt);
-        obj = steponly_optimize_Callback(obj, src, evt);
-        fig = plot_records(obj, dim, axis_available, axis_name);
     end
 end

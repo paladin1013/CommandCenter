@@ -1,5 +1,6 @@
 function obj = global_optimize_Callback(obj, src, evt)
-    ms = obj.parent; % MetaStage
+    ms = obj.active_module; % MetaStage
+    pref = ms.get_meta_pref('Target');
     global optimizing; % How to let different callback functions share a same variable?
 
     function set_pos(test_pos)
@@ -69,7 +70,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             obj.record_array = {};
             optimize_dim = sum(axis_available);
             
-            [avg, st] = obj.get_avg_val;
+            [avg, st] = obj.get_target_avg;
             record = struct;
             record.pos = start_pos;
             record.val = avg;
@@ -91,7 +92,7 @@ function obj = global_optimize_Callback(obj, src, evt)
                     test_pos(k) = test_pos(k) + 2*l*base_step(k);
                     set_pos(test_pos);
 
-                    [avg, st] = obj.get_avg_val;
+                    [avg, st] = obj.get_target_avg;
 
                     % Record results
                     record.pos = test_pos;
@@ -125,7 +126,7 @@ function obj = global_optimize_Callback(obj, src, evt)
 
 
 
-            while(optimizing == obj.name && ~finish_ordinary_optimize)
+            while(optimizing == pref.name && ~finish_ordinary_optimize)
                 if all(axis_stop)
                     fprintf("No available axis to be optimized. Abort.\n");
                     finish_ordinary_optimize = true;
@@ -166,7 +167,7 @@ function obj = global_optimize_Callback(obj, src, evt)
     
                     if ~use_record
                         set_pos(test_pos);
-                        [avg, st] = obj.get_avg_val;
+                        [avg, st] = obj.get_target_avg;
                         record.pos = test_pos;
                         record.val = avg;
                         record.st = st;
@@ -215,7 +216,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             for k = 1:Ntops    
                 pos = obj.record_array{index(k)}.pos;
                 set_pos(pos);
-                [avg, st] = obj.get_avg_val;
+                [avg, st] = obj.get_target_avg;
                 top_vals(k) = avg;
                 fprintf("Top position %d: (%.2e, %.2e, %.2e) count:%.2e\n", k, pos(1), pos(2), pos(3), avg);
             end
@@ -223,7 +224,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             fixed_pos = obj.record_array{index(top_idx)}.pos;
             set_pos(fixed_pos);
 
-            [avg, st] = obj.get_avg_val;
+            [avg, st] = obj.get_target_avg;
 
             fprintf("Final target value: %.2e.\n", avg);
             fprintf("Final position: %.2e, %.2e, %.2e\n", fixed_pos(1), fixed_pos(2), fixed_pos(3));
@@ -236,14 +237,13 @@ function obj = global_optimize_Callback(obj, src, evt)
             if ms.plot_record
                 obj.plot_records(optimize_dim, axis_available, axis_ref_name);
             end
-            if optimizing == obj.name
+            if optimizing == pref.name
                 % Optimize step-only references
                 for k = 1:3
                     if axis_steponly(k)
-                        mp = ms.get_meta_pref(axis_name{k});
                         src.Value = true;
                         optimizing = "";
-                        mp.steponly_optimize_Callback(src);
+                        obj.steponly_optimize_Callback(src, [], axis_name{k});
                     end
                 end
             end
@@ -251,11 +251,11 @@ function obj = global_optimize_Callback(obj, src, evt)
             src.Value = false;
         end
     else % src.Value == false
-        if obj.name == optimizing
+        if pref.name == optimizing
             optimizing = ""; % to end an optimization
-            fprintf("Optimization of axis %s (%s) is interrupted.\n", obj.name, obj.reference.name);
-        else % obj.name ~= optimizing, which should not happen if operated correctly
-            warning("Optimization of axis %s is interrupted by button in %s.\n", optimizing, obj.name);
+            fprintf("Optimization of axis %s (%s) is interrupted.\n", pref.name, pref.reference.name);
+        else % pref.name ~= optimizing, which should not happen if operated correctly
+            warning("Optimization of axis %s is interrupted by button in %s.\n", optimizing, pref.name);
             optimizing = "";
         end
     end

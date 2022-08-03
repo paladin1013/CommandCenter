@@ -13,6 +13,7 @@ classdef MetaStageManager < Base.Manager
         
     properties
         fps = 5;
+        record_array;
     end
 
     events 
@@ -557,14 +558,55 @@ classdef MetaStageManager < Base.Manager
                 error("Reference %s is read only", ref.reference.name);
             end
             if strcmp(axis_name, 'Target')
-                ref.global_optimize_Callback(src);
+                obj.global_optimize_Callback(src);
             elseif ref.steponly
-                ref.steponly_optimize_Callback(src);
+                obj.steponly_optimize_Callback(src);
             else
-                ref.optimize_Callback(src);
+                obj.optimize_Callback(src);
+            end
+        end
+        function [avg, st] = get_target_avg(obj, sample_num, max_std_ratio)
+            target = obj.active_module.get_meta_pref('Target');
+            if ~exist('sample_num', 'var')
+                sample_num = obj.active_module.sample_num;
+            end
+            if ~exist('max_std_ratio', 'var')
+                max_std_ratio = 0.2;
+            end
+            test_vals = zeros(1, sample_num);
+            for k = 1:sample_num
+                pause(obj.active_module.sample_interval);
+                test_vals(k) = target.read;
+            end
+            avg = mean(test_vals);
+            st = std(test_vals);
+            if abs(st/avg) > max_std_ratio
+                % The standart deviation is too large. Retake the measurement.
+                sample_num = sample_num*2;
+                test_vals_new = zeros(1, sample_num);
+                for k = 1:sample_num
+                    test_vals_new(k) = target.read;
+                    pause(obj.active_module.sample_interval);
+                end
+                avg_new = mean(test_vals_new);
+                st_new = std(test_vals_new);
+                if abs(st_new/avg_new) > max_std_ratio
+                    avg = mean([test_vals, test_vals_new]);
+                    st = std([test_vals, test_vals_new]);
+                else
+                    avg = avg_new;
+                    st = st_new;
+                end
+            end
+            if strcmp(obj.active_module.optimize_option, "minimize")
+                avg = -avg;
             end
         end
         result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotResult, sampleNum, sample_interval_s);
+        obj = optimize_Callback(obj, src, evt, axis_name);
+        obj = global_optimize_Callback(obj, src, evt);
+        obj = steponly_optimize_Callback(obj, src, evt, axis_name);
+        fig = plot_records(obj, dim, axis_available, axis_name);
     end
     methods(Access=protected)
         function savePrefs(obj)
