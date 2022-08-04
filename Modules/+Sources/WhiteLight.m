@@ -53,13 +53,12 @@ classdef WhiteLight < Modules.Source
             delete(obj.listeners)
         end
         function val = set_intensity(obj,val, ~)
-            obj.intensity = val;
             err = [];
             try
                 if obj.source_on %#ok<*MCSUP>
                     obj.on;  % Reset to this value
                     line = obj.ni.getLine('LED',obj.ni.OutLines);
-                    obj.intensity = line.state*20;
+                    val = line.state*20;
                 end
             catch err
             end

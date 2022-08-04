@@ -248,6 +248,15 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
     end
     
     methods                             % Methods for getting and setting prefs
+        function set_value_only(obj, name, val)
+            % This method will only set the value without calling its listener (usually a `set_xxx` method) to avoid redundant communication.
+            % Designed for fetching and synchronizing data from device to CommandCenter.
+            pref = obj.temp_prop.(name);
+            obj.prop_listener_ctrl(name, false);
+            pref.value = val;
+            obj.set_meta_pref(name, pref);
+            obj.prop_listener_ctrl(name, true);
+        end
         function set_meta_pref(obj, name, pref)
             % Set the "meta pref" for property "name".
             % If the property's default value is not a class-based pref
