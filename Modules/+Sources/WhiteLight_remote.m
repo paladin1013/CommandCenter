@@ -43,6 +43,15 @@ classdef WhiteLight_remote < Modules.Source
         function response = send_commands(obj, commands)
             response = obj.com('dispatch_commands', commands);
         end
+        function result = parse_response(obj, response, idx)
+            if iscell(response)
+                result = response{idx};
+            elseif isvector(response)
+                result = response(idx);
+            else 
+                error("Response type error");
+            end
+        end
         function task = inactive(obj)
             task = '';
             if obj.source_on
@@ -58,7 +67,7 @@ classdef WhiteLight_remote < Modules.Source
             try
                 if obj.source_on %#ok<*MCSUP>
                     obj.on;  % Reset to this value
-                    results = obj.send_commands(["wl = Sources.WhiteLight.instance", sprintf("wl.intensity = %d", val)]);
+                    results = obj.send_commands(["wl = Sources.WhiteLight.instance;", sprintf("wl.intensity = %d;", val), "wl.intensity;"]);
                 end
             catch err
             end
@@ -69,7 +78,7 @@ classdef WhiteLight_remote < Modules.Source
                 try
                     if obj.source_on.value %#ok<*MCSUP>
                         obj.on;  % Reset to this value
-                        results = obj.send_commands(["wl = Sources.WhiteLight.instance", sprintf("wl.intensity = %d", val)]);
+                        results = obj.send_commands(["wl = Sources.WhiteLight.instance;", sprintf("wl.intensity = %d;", val), "wl.intensity;"]);
                     end
                 catch err
                 end
@@ -77,11 +86,11 @@ classdef WhiteLight_remote < Modules.Source
                     rethrow(err)
                 end
             end
-            val = results{2};
+            val = double(obj.parse_response(results, 3));
         end
         function val = set_source_on(obj, val, ~)
-            results = obj.send_commands(["wl = Sources.WhiteLight.instance", sprintf("wl.set_source_on(%d)", int8(val))]);
-            val = logical(results(2));
+            results = obj.send_commands(["wl = Sources.WhiteLight.instance;", sprintf("wl.set_source_on(%d);", int8(val))]);
+            val = logical(obj.parse_response(results, 2));
         end
         
         % % Settings and Callbacks
@@ -104,9 +113,9 @@ classdef WhiteLight_remote < Modules.Source
         function val = set_host(obj,val,~) %this loads the hwserver driver
             try
                 obj.hwserver = hwserver(val); %#ok<*MCSUP>
-                results = obj.send_commands(["wl = Sources.WhiteLight.instance", "wl.source_on", "wl.intensity"]);
-                obj.set_value_only('source_on', results{2});
-                obj.set_value_only('intensity', results{3});
+                results = obj.send_commands(["wl = Sources.WhiteLight.instance;", "wl.source_on;", "wl.intensity;"]);
+                obj.set_value_only('source_on', logical(obj.parse_response(results, 2)));
+                obj.set_value_only('intensity', double(obj.parse_response(results, 3)));
             catch
                 obj.hwserver = [];
                 val = Sources.WhiteLight_remote.noserver;
