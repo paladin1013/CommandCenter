@@ -82,6 +82,7 @@ classdef Pref < matlab.mixin.Heterogeneous % value class
     properties % {default, validation function}
         name = {'', @(a)validateattributes(a,{'char'},{'vector'})};
         unit = {'', @(a)validateattributes(a,{'char'},{'vector'})};
+        default_step = {[], @(a)validateattributes(a, {'double'}, {'scalar'})};
     end
 
     properties %(Hidden) %, SetAccess = ?Base.Module)

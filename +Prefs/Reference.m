@@ -9,8 +9,8 @@ classdef Reference < Base.Pref
         default = [];
         ui = Prefs.Inputs.ReferenceField;
         reference = []; % Prefs.Numeric.empty(1,0);
-        steponly = false; % Steponly being `true` means this referenced value can only be changed gradually (e.g.Piezo, Resonant Laser) but not shift dramatically. 
-        % Also, errors may occor when it come back to a previously set value.
+        steponly = false; % Steponly being `true` means this referenced value can only be changed step by step (e.g.Piezo, Resonant Laser Percent). 
+        % Also, results may be different when it is set back to a previously value.
         % This reference will be no longer allowed to participate in global optimization, and the steponly_optimizate requires the endpoint to be the maximal position. 
         lsh = [];
     end
@@ -59,6 +59,10 @@ classdef Reference < Base.Pref
                     obj.steponly = true;
                 end
                 obj.parent.set_meta_pref(obj.property_name, obj);
+                if (isprop(val, "default_step") && ~isempty(val.default_step))
+                    obj.parent.(sprintf("key_step_%s", lower(obj.name))) = val.default_step;
+                    obj.parent.(sprintf("joy_step_%s", lower(obj.name))) = val.default_step;
+                end
                 notify(obj.parent, 'update_settings');
             end
         end
