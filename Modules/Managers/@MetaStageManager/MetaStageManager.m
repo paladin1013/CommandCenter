@@ -498,8 +498,57 @@ classdef MetaStageManager < Base.Manager
                 end
             end
             obj.modules{end+1} = Modules.MetaStage.instance(name, obj); % set metastage.parent = obj to visit manager from references
+            obj.initSpecial(name, obj.modules{end});
+            obj.setActiveModule(length(obj.modules)); % Set the newest module to be the active module.
             obj.joystatus.Enable = 'off';
         end
+        function initSpecial(obj, name, ms) % ms: metastage
+            if strcmp(name, 'galvo')
+                try
+                    X = ms.get_meta_pref('X');
+                    Y = ms.get_meta_pref('Y');
+                    ni = Drivers.NIDAQ.dev.instance('dev1');
+                
+                    if isempty(X.reference) || ~strcmp(X.reference.name, 'X')
+                        X.set_reference(ni.getLines('X', 'out').get_meta_pref);
+                    end
+                    if isempty(Y.reference) || ~strcmp(Y.reference.name, 'Y')
+                        Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
+                    end
+                
+                    
+                    Target = ms.get_meta_pref('Target');
+                    counter = Drivers.Counter.instance('APD1', 'CounterSync');
+                    if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
+                        Target.set_reference(counter.get_meta_pref('count'));
+                    end 
+                catch err
+                    warning(err.message);
+                end
+            elseif strcmp(name, 'piezo')
+                try
+                    anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
+                    axis_names = ['X', 'Y', 'Z'];
+                    for k = 1:length(axis_names)
+                        name = axis_names(k);
+                        mp = ms.get_meta_pref(name);
+                        line = anc.lines(k);
+                        if isempty(mp.reference) || ~strcmp(mp.reference.name, 'steps_moved')
+                            mp.set_reference(line.get_meta_pref('steps_moved'));
+                        end
+                    end
+                    Target = ms.get_meta_pref('Target');
+                    counter = Drivers.Counter.instance('APD1', 'CounterSync');
+                    if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
+                        Target.set_reference(counter.get_meta_pref('count'));
+                    end 
+                catch err
+                    warning(err.message);
+                end
+            end
+            ms.start_target;
+        end
+
         % Callbacks for GUI button press
 %         function set_num(obj,hObject,varargin)
 %             str = get(hObject,'String');

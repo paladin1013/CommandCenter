@@ -4,7 +4,7 @@ classdef WhiteLight_remote < Modules.Source
     
     properties(SetObservable, GetObservable)
         intensity = Prefs.Double(100, 'set', 'set_intensity'); % Intenisty 0-100 (0-5 V)
-        matlab_host =   Prefs.String(Sources.WhiteLight_remote.noserver, 'set', 'set_host', 'help', 'IP/hostname of computer with hwserver for the Cobolt laser');
+        matlab_host =   Prefs.String(Sources.WhiteLight_remote.noserver, 'set', 'set_host', 'help', 'IP/hostname of computer with hwserver for WightLight');
     end
     properties
         prefs = {'intensity', 'matlab_host'};
@@ -15,17 +15,13 @@ classdef WhiteLight_remote < Modules.Source
         hwname = 'Matlab';
     end
     properties(Access=private)
-        listeners
         status                       % Text object reflecting running
         sliderH
     end
     
     methods(Access=protected)
         function obj = WhiteLight_remote()
-            
-        end
-        function response = com(obj, func_name, varargin)
-            response = obj.hwserver.com(obj.hwname, func_name, varargin{:});
+            obj.loadPrefs;
         end
     end
     methods(Static)
@@ -40,6 +36,9 @@ classdef WhiteLight_remote < Modules.Source
         end
     end
     methods
+        function response = com(obj, func_name, varargin)
+            response = obj.hwserver.com(obj.hwname, func_name, varargin{:});
+        end
         function response = send_commands(obj, commands)
             response = obj.com('dispatch_commands', commands);
         end
@@ -60,7 +59,6 @@ classdef WhiteLight_remote < Modules.Source
             end
         end
         function delete(obj)
-            delete(obj.listeners)
         end
         function val = set_intensity(obj,val, ~)
             err = [];

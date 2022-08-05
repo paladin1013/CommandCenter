@@ -55,6 +55,12 @@ classdef Galvos < Modules.Stage
                 obj.galvoDriver = Drivers.NIDAQ.stage.instance('X','Y','','APD1','GalvoScanSync');
             end
             addlistener(obj.galvoDriver,'moving','PostSet',@obj.update_Moving);
+            X = obj.galvoDriver.nidaq.getLines('X', 'out').get_meta_pref;
+            Y = obj.galvoDriver.nidaq.getLines('Y', 'out').get_meta_pref;
+            X.default_step = 0.001;
+            Y.default_step = 0.001;
+            obj.galvoDriver.nidaq.getLines('X', 'out').set_meta_pref(X);
+            obj.galvoDriver.nidaq.getLines('Y', 'out').set_meta_pref(Y);
         end
     end
     methods

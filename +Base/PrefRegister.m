@@ -188,7 +188,12 @@ classdef PrefRegister < Base.Singleton
                 prefs = fields(obj.register{I(ii)}.prefs);
                 for jj = 1:length(prefs)    % First fields will always be .parent
                     pref = obj.register{I(ii)}.prefs.(prefs{jj});
-                    if strcmp(pref_name, pref.property_name) && strcmp(parent_singleton_id, pref.parent.singleton_id)
+                    if ischar(parent_singleton_id) || isstring(parent_singleton_id)
+                        matches = strcmp(parent_singleton_id, pref.parent.singleton_id);
+                    else
+                        matches = isequal(parent_singleton_id, pref.parent.singleton_id);
+                    end
+                    if strcmp(pref_name, pref.property_name) && matches
                         val = pref;
                         fprintf("Find pref %s.%s(%s) by name %s\n", pref.parent.namespace, pref.name, pref.property_name, pref_name);
                         return;

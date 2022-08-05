@@ -142,6 +142,9 @@ classdef out < handle
         function pref = get_meta_pref(obj)
             pref = obj.pref;
         end
+        function set_meta_pref(obj, pref)
+            obj.pref = pref;
+        end
     end
 end
 
