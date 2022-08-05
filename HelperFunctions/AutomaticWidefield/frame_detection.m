@@ -1,4 +1,4 @@
-function processed_image = frame_detection(input_image, plot, args)
+function processed_image = frame_detection(input_image, make_plots, args)
     % Args: struct with fields {}
     if isstring(input_image) || ischar(input_image)
         try
@@ -127,7 +127,7 @@ function processed_image = frame_detection(input_image, plot, args)
         end
     end
 
-    if exist('plot', 'var') && plot
+    if exist('make_plots', 'var') && make_plots
         figure;
         % Displaying Input Image and Output Image
         subplot(2, 3, 1), imshow(input_image), set(get(gca, 'Title'), 'String', 'Input image');
