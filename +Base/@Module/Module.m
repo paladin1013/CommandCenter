@@ -256,6 +256,7 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
             pref.value = val;
             obj.set_meta_pref(name, pref);
             obj.prop_listener_ctrl(name, true);
+            notify(obj, 'update_settings');
         end
         function set_meta_pref(obj, name, pref)
             % Set the "meta pref" for property "name".

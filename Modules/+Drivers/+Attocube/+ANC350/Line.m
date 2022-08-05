@@ -18,7 +18,7 @@ classdef Line < Modules.Driver
                                             'set', 'set_step', 'display_only', true, ...
                                             'help', ['The core of the class. Setting step to X will cause the atto to step '...
                                                     'abs(X) steps in the sign(X) direction. Then, it will revert back to zero.']);
-        frequency = Prefs.Integer(0,    'min', 0, 'max', 1e4, 'set', 'set_frequency',   'unit', 'Hz',...
+        frequency = Prefs.Integer(0,    'min', 0, 'max', 1e3, 'set', 'set_frequency',   'unit', 'Hz',...
                                             'help', 'Frequency at which steps occur for multi-step operations. This is the freqeuncy of the sawtooth.');
         amplitude = Prefs.Double(0,     'min', 0, 'max', 150, 'set', 'set_amplitude',   'unit', 'V',...
                                             'help', 'Voltage amplitude for stepping sawtooth.');
@@ -39,6 +39,8 @@ classdef Line < Modules.Driver
                                             'help', 'Whether the output of this axis is enabled.');
         moving =     Prefs.Boolean(false, 'readonly', true, ...
                                             'help', 'Whether the axis is moving.');
+
+        position_um = Prefs.Double(0, 'min', 0, 'max', 1e4, 'unit', 'um', 'readonly', true, 'help', 'Unstable current axis position. Please do not use this value as the target for step optimization. Use `steps_moved` instead.')
     end
     properties(SetAccess=immutable, Hidden)
         parent; % Handle to Drivers.Attocube.ANC350 parent
@@ -46,11 +48,14 @@ classdef Line < Modules.Driver
     properties(SetAccess=immutable)
         line;   % Index of the physical line of the parent that this D.A.Line controls.
         steponly = true;
+        init_position_um;
+        max_range_um;
+        max_steps_once; % You should move no more steps than this value at once.
     end
     properties(Access=private)
         steps_moved_prev =   0; % To calculate how many steps it should move under the current command.
     end
-    
+
     methods(Static)
         function obj = instance(parent, line)
             parent.getInfo(line-1, 'LutName'); % Error if the parent does not possess this line
@@ -82,11 +87,11 @@ classdef Line < Modules.Driver
         function obj = Line(parent, line)
             obj.parent = parent;
             obj.line = line;
-            
-            % obj.com('setm', 'stp+');   % Default; eventually change this to give the user more freedom.
-            
             obj.getInfo();
-
+            obj.init_position_um = obj.position_um;
+            if line == 3
+                obj.max_range_um = 100;
+            end
             addlistener(obj.parent,'ObjectBeingDestroyed',@(~,~)obj.delete);
         end
     end
@@ -106,10 +111,33 @@ classdef Line < Modules.Driver
     
     methods(Hidden)
         function stepu(obj, steps)
-            obj.com('moveSteps', true, steps); % The second param is for [forward:bool] in python
+            if abs(obj.position_um-obj.init_position_um) > obj.max_range_um
+                error(sprintf("Current position %d exceeds maximum range: initial_position plusminus max_range(%d, %d)\n", obj.position_um, obj.init_position_um-obj.max_range_um, obj.init_position_um+obj.max_range_um));
+            end
+            if steps > 1 && steps < obj.max_steps_once
+                obj.position_um = obj.com('moveSteps', true, steps*obj.parent.multistep_ratio)*1e6; % The second param is for [forward:bool] in python
+            elseif steps == 1
+                obj.position_um = obj.com('moveSteps', true, 1)*1e6; % *1e6 to convert from m to um 
+            end
+            obj.update_parent_position;
         end
         function stepd(obj, steps)
-            obj.com('moveSteps', false, steps);
+            if steps > 1 && steps < obj.max_steps_once
+                obj.position_um = obj.com('moveSteps', false, steps*obj.parent.multistep_ratio)*1e6; % The second param is for [forward:bool] in python
+            elseif steps == 1
+                obj.position_um = obj.com('moveSteps', false, 1)*1e6; 
+            end
+            obj.update_parent_position;
+        end
+        function update_parent_position(obj)
+            switch obj.line
+            case 1
+                obj.parent.x_position_um = obj.position_um;
+            case 2
+                obj.parent.y_position_um = obj.position_um;
+            case 3
+                obj.parent.z_position_um = obj.position_um;
+            end
         end
         function val = set_step(obj, val, ~)
             val = round(val);   % Only integer steps. (change to clean?)
@@ -131,6 +159,9 @@ classdef Line < Modules.Driver
             val = false;    % Turn button back off.
         end
         function val = set_steps_moved(obj, val, ~)
+            if ~obj.output
+                return;
+            end
             val = round(val);
             if abs(val) > Drivers.Attocube.ANC350.maxSteps
                 error("Error moving ANC350: steps (%d) out of range (%d)!\n", val, Drivers.Attocube.ANC350.maxSteps);
@@ -143,11 +174,8 @@ classdef Line < Modules.Driver
             obj.steps_moved_prev = val;
         end
         function reset_steps_moved(obj)
-            fprintf("Resetting `steps_moved` to 0\n");
-            obj.prop_listener_ctrl('steps_moved',false);
-            obj.steps_moved = 0;
+            obj.set_value_only('steps_moved', 0);
             obj.steps_moved_prev = 0;
-            obj.prop_listener_ctrl('steps_moved',true);
         end
     end
     
@@ -183,6 +211,7 @@ classdef Line < Modules.Driver
             obj.frequency = info.Frequency;
             obj.amplitude = info.Amplitude;
             obj.DcVoltage = info.DcVoltage;
+            obj.position_um = info.Position*1e6;
             % [outputConnected, obj.output, obj.moving, targetReached, eotFwd, eotBwd, error] = deal(num2cell(info.AxisStatus'));
             obj.output = info.AxisStatus(2);
             obj.moving = info.AxisStatus(3);
@@ -194,10 +223,9 @@ classdef Line < Modules.Driver
             % eotFwd Output: If end of travel detected in forward direction.
             % eotBwd Output: If end of travel detected in backward direction.
             % error Output: If the axis' sensor is in error state.
+            obj.update_parent_position;
         end
-        
         function val = get_capacitance(obj, ~)
-
             val = obj.parent.getInfo(obj.line-1, 'Capacitance');
         end
     end

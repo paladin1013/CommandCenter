@@ -7,12 +7,12 @@ classdef MetaStage < Base.Module
         Z = Prefs.Reference();
         Target = Prefs.Reference();
         
-        key_step_x = Prefs.Double(0.001);
-        key_step_y = Prefs.Double(0.001);
-        key_step_z = Prefs.Double(1);
-        joy_step_x = Prefs.Double(0.001);
-        joy_step_y = Prefs.Double(0.001);
-        joy_step_z = Prefs.Double(0.1);
+        key_step_x = Prefs.Double(0.001, 'min', 0);
+        key_step_y = Prefs.Double(0.001, 'min', 0);
+        key_step_z = Prefs.Double(1, 'min', 0);
+        joy_step_x = Prefs.Double(0.001, 'min', 0);
+        joy_step_y = Prefs.Double(0.001, 'min', 0);
+        joy_step_z = Prefs.Double(0.1, 'min', 0);
         optimize_option = Prefs.MultipleChoice('maximize', 'choices', {'maximize', 'minimize'}, 'allow_empty', false, 'help', '`minimize` option will take the negative target value to optimize.');
         sweep_num = Prefs.Integer(0, 'min', 0, 'max', 10, 'help', 'Do parameter sweep before hill-climbing optimization to avoid being trapped into local maximum.');
         sample_num = Prefs.Integer(5, 'min', 1, 'max', 100, 'help', 'Number of samples to average in each optimization step.')

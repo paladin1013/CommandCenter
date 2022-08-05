@@ -22,14 +22,23 @@ classdef ANC350 < Modules.Driver
         x_output = Prefs.Boolean(true, 'help', 'Enable output on X axis', 'set', 'set_x_output');
         y_output = Prefs.Boolean(true, 'help', 'Enable output on Y axis', 'set', 'set_y_output');
         z_output = Prefs.Boolean(true, 'help', 'Enable output on Z axis', 'set', 'set_z_output');
+        multistep_ratio = Prefs.Integer(50, 'min', 0, 'max', 100, 'unit', '#', 'help', 'Do move steps `multistep_ratio` more times when `key_step`/`joy_step` is set to larger than 1.')
+        x_position_um = Prefs.Double(0, 'unit', 'um', 'readonly', true, 'help', 'Absolute position (unstable)');
+        y_position_um = Prefs.Double(0, 'unit', 'um', 'readonly', true, 'help', 'Absolute position (unstable)');
+        z_position_um = Prefs.Double(0, 'unit', 'um', 'readonly', true, 'help', 'Absolute position (unstable)');
         x_amplitude = Prefs.Double(60, 'unit', 'V', 'help', 'Single step pulse amplitude', 'set', 'set_x_amplitude');
         y_amplitude = Prefs.Double(60, 'unit', 'V', 'help', 'Single step pulse amplitude', 'set', 'set_y_amplitude');
         z_amplitude = Prefs.Double(30, 'unit', 'V', 'help', 'Single step pulse amplitude', 'set', 'set_z_amplitude');
+        x_frequency = Prefs.Double(200, 'unit', 'Hz', 'help', 'Continuous steps pulse frequency', 'set', 'set_x_frequency');
+        y_frequency = Prefs.Double(200, 'unit', 'Hz', 'help', 'Continuous steps pulse frequency', 'set', 'set_y_frequency');
+        z_frequency = Prefs.Double(100, 'unit', 'Hz', 'help', 'Continuous steps pulse frequency', 'set', 'set_z_frequency');
         new_origin = Prefs.Button('set', 'set_new_origin', 'help', 'Set the curren place as new origin (to avoid maxSteps constraint).');
     end
 
     properties
         lines;
+
+        prefs = {'x_output', 'y_output', 'z_output', 'multistep_ratio', 'x_position_um', 'y_position_um', 'z_position_um', 'x_amplitude', 'y_amplitude', 'z_amplitude', 'x_frequency', 'y_frequency', 'z_frequency'};
     end
 
     methods(Static)
@@ -40,15 +49,15 @@ classdef ANC350 < Modules.Driver
             if isempty(Objects)
                 Objects = Drivers.Attocube.ANC350.empty(1,0);
             end
-            [~,host_d] = resolvehost(host_ip);
+            obj = Drivers.Attocube.ANC350(host_ip);
+            obj.singleton_id = obj.serialNo;
             for i = 1:length(Objects)
-                if isvalid(Objects(i)) && isequal(host_d, Objects(i).singleton_id)
+                if isvalid(Objects(i)) && isequal(obj.singleton_id, Objects(i).singleton_id)
+                    obj.delete;
                     obj = Objects(i);
                     return
                 end
             end
-            obj = Drivers.Attocube.ANC350(host_ip);
-            obj.singleton_id = obj.serialNo;
             Objects(end+1) = obj;
             obj.spawnLines;
         end
@@ -119,11 +128,12 @@ classdef ANC350 < Modules.Driver
             pos = obj.com('getPosition', obj.serialNo)*1e6;
         end
 
-        function pos = moveSteps(obj, axis, direction, repeat, frequency_Hz)
-            
+        function pos = moveSteps(obj, axis, direction, repeat)
             assert(direction=="forward" || direction== "backward", "direction should be forward or backward");
-            for i = 1:repeat
-                obj.com('moveSteps', obj.serialNo, obj.axisNo(axis), direction=="forward", 1, frequency_Hz);
+            if repeat > 1
+            obj.com('moveSteps', obj.serialNo, obj.axisNo(axis), direction=="forward", repeat*obj.multistep_ratio);
+            elseif repeat == 1
+                obj.com('moveSteps', obj.serialNo, obj.axisNo(axis), direction=="forward", 1);
             end
             pos = obj.com('getPosition', obj.serialNo)*1e6;
         end
@@ -144,6 +154,15 @@ classdef ANC350 < Modules.Driver
         end
         function val = set_z_amplitude(obj, val, ~)
             obj.lines(3).amplitude = val;
+        end
+        function val = set_x_frequency(obj, val, ~)
+            obj.lines(1).frequency = val;
+        end
+        function val = set_y_frequency(obj, val, ~)
+            obj.lines(2).frequency = val;
+        end
+        function val = set_z_frequency(obj, val, ~)
+            obj.lines(3).frequency = val;
         end
         function val = set_new_origin(obj, val, ~)
             prev_x_output = obj.x_output;

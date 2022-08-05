@@ -452,6 +452,11 @@ classdef MetaStageManager < Base.Manager
                 present_names{k} = obj.modules{k}.name;
             end
             if nargin < 2
+                if length(obj.modules) == 1 % only 1 metastage remaining
+                    obj.modules{1}.delete;
+                    obj.modules(1) = [];
+                    return;
+                end
                 name = '';
                 while ~isvarname(name)
                     result = inputdlg('Enter a MetaStage name to delete.', 'New MetaStage Name');
@@ -470,6 +475,14 @@ classdef MetaStageManager < Base.Manager
                     end
                     warning("Delete metastage name '%s' does not exists. Please try a new name.", name)
                     name = '';
+                end
+            else
+                for k = 1:numel(obj.modules)
+                    if strcmp(name, present_names{k})
+                        obj.modules{k}.delete;
+                        obj.modules(k) = []; % Delete the k-th element in cell `obj.modules`
+                        return;
+                    end
                 end
             end
         end
@@ -503,7 +516,7 @@ classdef MetaStageManager < Base.Manager
             obj.joystatus.Enable = 'off';
         end
         function initSpecial(obj, name, ms) % ms: metastage
-            if strcmp(name, 'galvo')
+            if strcmp(name, 'M4galvo')
                 try
                     X = ms.get_meta_pref('X');
                     Y = ms.get_meta_pref('Y');
@@ -525,7 +538,7 @@ classdef MetaStageManager < Base.Manager
                 catch err
                     warning(err.message);
                 end
-            elseif strcmp(name, 'piezo')
+            elseif strcmp(name, 'M4piezo')
                 try
                     anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
                     axis_names = ['X', 'Y', 'Z'];
