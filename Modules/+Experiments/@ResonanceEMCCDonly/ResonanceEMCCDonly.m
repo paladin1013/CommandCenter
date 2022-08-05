@@ -140,6 +140,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             % Show wl image
             try close(42); catch; end
             roi_fig = figure(42);
+            roi_fig.Position = [200, 200, 560, 420];
             roi_ax = axes('Parent', roi_fig);
             im2H = imagesc(roi_ax, obj.wl_img(:, :));
             colormap(roi_ax, 'bone')
@@ -163,6 +164,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
 
             try close(41); catch; end
             frame_fig = figure(41);
+            frame_fig.Position = [200, 200, 560, 420];
             frame_ax = axes('Parent', frame_fig);
             wlH = imagesc(frame_ax, obj.trimmed_wl_img);
             colormap(frame_ax, 'bone');

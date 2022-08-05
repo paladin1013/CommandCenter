@@ -8,9 +8,9 @@ classdef Hamamatsu < Modules.Imaging
 %         exposure =      Prefs.Double(NaN, 'units', 'ms', 'min', 0, 'max', inf, 'allow_nan', true, 'set', 'set_exposure');
 %         gain = Prefs.Double(NaN, 'units', 'dB', 'min', 0, 'max', 480, 'allow_nan', true, 'set', 'set_gain');
         EMGain = 4
-        ImRot90 
-        FlipVer 
-        FlipHor 
+        ImRot90 = 0;
+        FlipVer = false;
+        FlipHor = false;
         maxROI           % Set in constructor
         CamCenterCoord = [0,0] % camera's center of coordinates (in same units as camera calibration, i.e. um)
         data_name = 'Widefield';  % For diamondbase (via ImagingManager)
@@ -52,8 +52,6 @@ classdef Hamamatsu < Modules.Imaging
             % Load preferences
             obj.core.setCircularBufferMemoryFootprint(3);  % 3 MB is enough for one full image
             obj.loadPrefs;
-            obj.setFlipVer;
-            obj.setFlipHor;
             res(1) = core.getImageWidth();
             res(2) = core.getImageHeight();
             obj.resolution = res;
@@ -77,9 +75,6 @@ classdef Hamamatsu < Modules.Imaging
             obj.core.loadSystemConfiguration(cfgpath);
             % Load preferences
             obj.core.setCircularBufferMemoryFootprint(3);  % 3 MB is enough for one full image
-            obj.loadPrefs;
-            obj.setFlipVer;
-            obj.setFlipHor;
             res(1) = obj.core.getImageWidth();
             res(2) = obj.core.getImageHeight();
             obj.resolution = res;
@@ -128,13 +123,13 @@ classdef Hamamatsu < Modules.Imaging
         function set.FlipVer(obj,val)
             obj.FlipVer = val;
             if ~isempty(obj.setFlipVer)
-                set(obj.setFlipVer,'string',num2str(obj.FlipVer))
+                set(obj.setFlipVer,'value',logical(obj.FlipVer))
             end
         end
         function set.FlipHor(obj,val)
             obj.FlipHor = val;
             if ~isempty(obj.setFlipHor)
-                set(obj.setFlipHor,'string',num2str(obj.FlipHor))
+                set(obj.setFlipHor,'value',logical(obj.FlipHor))
             end
         end
         function set.EMGain(obj,val)
@@ -403,7 +398,7 @@ classdef Hamamatsu < Modules.Imaging
         end
         
         % Settings and Callbacks
-        function settings(obj,panelH)
+        function settings(obj,panelH, ~, ~)
             spacing = 1.5;
             num_lines = 4;
             line = 1;
@@ -497,18 +492,10 @@ classdef Hamamatsu < Modules.Imaging
             warning('Only works with full ROI.')
         end
         function FlipHorCallback(obj,hObj,~)
-            if (get(hObj,'Value') == get(hObj,'Max'))
-                obj.FlipHor = 1;
-            else
-                obj.FlipHor = 0;
-            end
+            obj.FlipHor = get(hObj, 'Value');
         end
         function FlipVerCallback(obj,hObj,~)
-            if (get(hObj,'Value') == get(hObj,'Max'))
-                obj.FlipVer = 1;
-            else
-                obj.FlipVer = 0;
-            end
+            obj.FlipVer = get(hObj, 'Value');
         end
         
     end

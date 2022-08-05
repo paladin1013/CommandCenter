@@ -49,22 +49,37 @@ function run( obj,status,managers,ax )
     obj.data.images_EMCCD = NaN(imgSize_EMCCD(1), imgSize_EMCCD(2), length(obj.scan_points));
     obj.data.freqMeasured = NaN(1,length(obj.scan_points));
     if obj.wavemeter_override
-        obj.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu',obj.wavemeter_channel,false);
-        obj.wavemeter.SetSwitcherSignalState(1);
+        try
+            obj.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu',obj.wavemeter_channel,true);
+            obj.wavemeter.SetSwitcherSignalState(1);
+        catch err
+            warning(err.message);
+            obj.wavemeter.delete;
+            obj.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu',obj.wavemeter_channel,true);
+        end
     end
     
     for i = 1 : length(obj.scan_points)
-        drawnow('limitrate'); assert(~obj.abort_request,'User aborted.');
+        drawnow('limitrate'); 
+        if obj.abort_request
+            % Save raw data first
+            obj.discard_raw_data = false;
+            freqs = freqs(1:i-1);
+            EMCCD_imgs = EMCCD_imgs(1:i-1);
+            filtered_imgs = filtered_imgs(1:i-1);
+            break;
+        end
         % change laser wavelength
         % obj.resLaser.TunePercent(obj.scan_points(i));
         
 %         obj.resLaser.set_resonator_percent_limitrate(obj.scan_points(i));        
+        t = tic;
         if (i > 1)
-            obj.resLaser.TunePercentFast(obj.scan_points(i)); % No response / laser locking to save time.
             obj.cameraEMCCD.startSnapping; % Start snapping EMCCD image in background (micro-controller)
             % Process data from the previous round
             EMCCD_imgs(:, :, i-1) = obj.data.images_EMCCD(rymin:rymax, rxmin:rxmax, i-1);
             filtered_imgs(:, :, i-1) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, i-1), 3), 1);
+
         else
             obj.resLaser.TunePercent(obj.scan_points(1)); % Spend longer time to make sure the first frequency spot is correct
             obj.cameraEMCCD.startSnapping;
@@ -77,17 +92,32 @@ function run( obj,status,managers,ax )
         else
             obj.data.freqMeasured(i) = obj.resLaser.getFrequency;
         end
-        freqs(i) = obj.data.freqMeasured(i);
-
+        if i < length(obj.scan_points) % Get prepared for the next round
+            obj.resLaser.TunePercentFast(obj.scan_points(i+1)); % No response / laser locking to save time.
+        end
         obj.data.images_EMCCD(:,:,i) = obj.cameraEMCCD.fetchSnapping;
+        freqs(i) = obj.data.freqMeasured(i);
         imagesc(ax,obj.data.images_EMCCD(:,:,i));
+        hold(ax, 'on');
+        rectangle('Position', obj.rect_pos, 'EdgeColor', 'b', 'LineWidth', 1);
+        poly = polyshape(obj.poly_pos(:, 2), obj.poly_pos(:, 1));
+        polyH = plot(ax, poly, 'FaceAlpha', 0, 'EdgeColor', 'r', 'LineWidth', 1);
+        hold(ax, 'off');
         title(obj.data.freqMeasured(i));
     end
-    EMCCD_imgs(:, :, end) = obj.data.images_EMCCD(rymin:rymax, rxmin:rxmax, end);
-    filtered_imgs(:, :, end) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1);
-
+    if ~obj.abort_request
+        EMCCD_imgs(:, :, end) = obj.data.images_EMCCD(rymin:rymax, rxmin:rxmax, end);
+        filtered_imgs(:, :, end) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1);
+    end
 
     processed_data = struct('freqs', freqs, 'EMCCD_imgs', EMCCD_imgs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos);
-    EMCCDDataAnalysis(true, obj.autosave.exp_dir, processed_data);
+    c = fix(clock);
+    save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+    try
+        EMCCDDataAnalysis(true, obj.autosave.exp_dir, processed_data);
+    catch err
+        obj.abort_request = true;
+        error(err.message);
+    end
 end
 

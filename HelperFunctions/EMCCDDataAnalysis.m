@@ -117,6 +117,7 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
     panelH.Name = 'Settings';
     panelH.HandleVisibility = 'Callback';
     panelH.NumberTitle = 'off';
+    panelH.MenuBar = 'none';
     panelH.CloseRequestFcn = @cancelCallback;
     panelH.Position(3) = 300;
     panelH.Position(4) = 100;
