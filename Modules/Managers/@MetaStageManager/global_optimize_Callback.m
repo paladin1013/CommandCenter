@@ -35,7 +35,14 @@ function obj = global_optimize_Callback(obj, src, evt)
 
         else % No optimization process has been started yet.
             optimizing = "Target";
-            ms.start_target;
+            try
+                ms.start_target;
+            catch err
+                src.Value = false;
+                optimizing = "";
+                error(err.message);
+                return;
+            end
             
 
             % Record all avalable references
@@ -117,7 +124,7 @@ function obj = global_optimize_Callback(obj, src, evt)
 
             % Set the optimization range to [start_pos - max_range, start_pos + max_range]
             % The optimization will automatically stop once current value is out of range.
-            max_range = 20*base_step; 
+            max_range = 20*abs(base_step); 
             max_iteration = 50;
             min_step = ms.min_step_ratio*base_step; % Optimization will stop if the current step is too short and there is no improvement.
             iteration_num = 0;

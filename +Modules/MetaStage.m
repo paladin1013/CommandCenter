@@ -7,12 +7,12 @@ classdef MetaStage < Base.Module
         Z = Prefs.Reference();
         Target = Prefs.Reference();
         
-        key_step_x = Prefs.Double(0.001, 'min', 0);
-        key_step_y = Prefs.Double(0.001, 'min', 0);
-        key_step_z = Prefs.Double(1, 'min', 0);
-        joy_step_x = Prefs.Double(0.001, 'min', 0);
-        joy_step_y = Prefs.Double(0.001, 'min', 0);
-        joy_step_z = Prefs.Double(0.1, 'min', 0);
+        key_step_x = Prefs.Double(0.001);
+        key_step_y = Prefs.Double(0.001);
+        key_step_z = Prefs.Double(1);
+        joy_step_x = Prefs.Double(0.001);
+        joy_step_y = Prefs.Double(0.001);
+        joy_step_z = Prefs.Double(0.1);
         optimize_option = Prefs.MultipleChoice('maximize', 'choices', {'maximize', 'minimize'}, 'allow_empty', false, 'help', '`minimize` option will take the negative target value to optimize.');
         sweep_num = Prefs.Integer(0, 'min', 0, 'max', 10, 'help', 'Do parameter sweep before hill-climbing optimization to avoid being trapped into local maximum.');
         sample_num = Prefs.Integer(5, 'min', 1, 'max', 100, 'help', 'Number of samples to average in each optimization step.')
@@ -66,21 +66,33 @@ classdef MetaStage < Base.Module
     end
     methods
         function start_target(obj)
+            % The target should not be in a running/continuous mode. Otherwise the optimization function might fall into the timerfunction, and then the target value will not be updated anymore. 
             if strcmp(obj.get_meta_pref('Target').reference.name, 'count')
                 % For Counter
                 counter = obj.get_meta_pref('Target').reference.parent;
                 running = counter.running;
-                if ~running
-                    counter.start;
+                if running 
+                    error("Please stop the counter and then start the optimization again to avoid intercepting the timer function.");
                 end
+                counter.start;
             end
             if strcmp(obj.get_meta_pref('Target').reference.name, 'power') 
                 % For Powermeter
                 powermeter = obj.get_meta_pref('Target').reference.parent;
                 running = powermeter.running;
-                if ~running
-                    powermeter.set_start;
+                if running 
+                    error("Please stop the powermeter and then start the optimization again to avoid intercepting the timer function.");
                 end
+                powermeter.set_start;
+            end
+            if strcmp(obj.get_meta_pref('Target').reference.name, 'contrast') 
+                % For Hamamatsu emccd
+                emccd = obj.get_meta_pref('Target').reference.parent;
+                running = emccd.continuous;
+                if running 
+                    error("Please stop the Hamamatsu EMCCD continuous mode and then start the optimization again to avoid intercepting the timer function.");
+                end
+                emccd.startVideo;
             end
         end
     end

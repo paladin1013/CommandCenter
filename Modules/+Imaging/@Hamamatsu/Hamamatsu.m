@@ -65,8 +65,30 @@ classdef Hamamatsu < Modules.Imaging
         obj = instance()
     end
     methods
-        function metric = focus(obj,ax,stageHandle) %#ok<INUSD>
-            
+        function metric = focus(obj,ax,managers) %#ok<INUSD>
+            ms = managers.MetaStage.active_module;
+
+            Z = ms.get_meta_pref('Z');
+            anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
+            Zline = anc.lines(3);
+            if isempty(Z.reference) || ~strcmp(replace(Z.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, 3)
+                Z.set_reference(Zline.get_meta_pref('steps_moved'));
+            end
+
+
+            Target = ms.get_meta_pref('Target');
+            emccd = Imaging.Hamamatsu.instance;
+            if isempty(Target.reference) || ~strcmp(Target.reference.name, 'contrast')
+                Target.set_reference(emccd.get_meta_pref('contrast'));
+            end
+
+            try
+                obj.stopVideo;
+            catch err
+                warning(err);
+            end
+            managers.MetaStage.optimize('Z', true);
+            metric = Target.read;
         end
         function load_core_configuration(obj,cfgpath)
             assert(isfile(cfgpath),'File not found')

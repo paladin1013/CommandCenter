@@ -33,6 +33,7 @@ classdef WhiteLight_remote < Modules.Source
             end
             obj = Object;
             obj.matlab_host = "18.25.29.30";
+            obj.armed = obj.source_on;
         end
     end
     methods
@@ -66,6 +67,7 @@ classdef WhiteLight_remote < Modules.Source
                 if obj.source_on %#ok<*MCSUP>
                     obj.on;  % Reset to this value
                     results = obj.send_commands(["wl = Sources.WhiteLight.instance;", sprintf("wl.intensity = %d;", val), "wl.intensity;"]);
+                    val = double(obj.parse_response(results, 3));
                 end
             catch err
             end
@@ -78,17 +80,18 @@ classdef WhiteLight_remote < Modules.Source
                         obj.on;  % Reset to this value
                         results = obj.send_commands(["wl = Sources.WhiteLight.instance;", sprintf("wl.intensity = %d;", val), "wl.intensity;"]);
                     end
+                    val = double(obj.parse_response(results, 3));
                 catch err
                 end
                 if ~isempty(err)
                     rethrow(err)
                 end
             end
-            val = double(obj.parse_response(results, 3));
         end
         function val = set_source_on(obj, val, ~)
             results = obj.send_commands(["wl = Sources.WhiteLight.instance;", sprintf("wl.set_source_on(%d);", int8(val))]);
             val = logical(obj.parse_response(results, 2));
+            obj.armed = val;
         end
         
         % % Settings and Callbacks

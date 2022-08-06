@@ -516,7 +516,7 @@ classdef MetaStageManager < Base.Manager
             obj.joystatus.Enable = 'off';
         end
         function initSpecial(obj, name, ms) % ms: metastage
-            if strcmp(name, 'M4galvo')
+            if strcmp(name, 'M4confocal')
                 try
                     X = ms.get_meta_pref('X');
                     Y = ms.get_meta_pref('Y');
@@ -529,7 +529,14 @@ classdef MetaStageManager < Base.Manager
                         Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
                     end
                 
-                    
+                    Z = ms.get_meta_pref('Z');
+                    anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
+                    line = anc.lines(3);
+                    if isempty(mp.reference) || ~strcmp(replace(Z.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, 3)
+                        mp.set_reference(line.get_meta_pref('steps_moved'));
+                    end
+
+
                     Target = ms.get_meta_pref('Target');
                     counter = Drivers.Counter.instance('APD1', 'CounterSync');
                     if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
@@ -538,7 +545,9 @@ classdef MetaStageManager < Base.Manager
                 catch err
                     warning(err.message);
                 end
-            elseif strcmp(name, 'M4piezo')
+
+                
+            elseif strcmp(name, 'M4widefield')
                 try
                     anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
                     axis_names = ['X', 'Y', 'Z'];
@@ -546,15 +555,23 @@ classdef MetaStageManager < Base.Manager
                         name = axis_names(k);
                         mp = ms.get_meta_pref(name);
                         line = anc.lines(k);
-                        if isempty(mp.reference) || ~strcmp(mp.reference.name, 'steps_moved')
+                        if isempty(mp.reference) || ~strcmp(replace(mp.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, k)
                             mp.set_reference(line.get_meta_pref('steps_moved'));
                         end
                     end
                     Target = ms.get_meta_pref('Target');
-                    counter = Drivers.Counter.instance('APD1', 'CounterSync');
-                    if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
-                        Target.set_reference(counter.get_meta_pref('count'));
-                    end 
+
+                    try 
+                        emccd = Imaging.Hamamatsu.instance;
+                        if isempty(Target.reference) || ~strcmp(Target.reference.name, 'contrast')
+                            Target.set_reference(emccd.get_meta_pref('contrast'));
+                        end
+                    catch
+                        counter = Drivers.Counter.instance('APD1', 'CounterSync');
+                        if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
+                            Target.set_reference(counter.get_meta_pref('count'));
+                        end 
+                    end
                 catch err
                     warning(err.message);
                 end
@@ -613,18 +630,18 @@ classdef MetaStageManager < Base.Manager
                 state = true;
             end
             src = struct('Value', state);  % Use a fake source
-            
+            evt = []; % And a fake event
             assert(any(strcmp({'X', 'Y', 'Z', 'Target'}, axis_name)), "axis_name should be 'X', 'Y', 'Z' or 'Target'");
-            ref = obj.(axis_name);
+            ref = obj.active_module.get_meta_pref(axis_name);
             if ref.readonly && ~strcmp(axis_name, 'Target')
                 error("Reference %s is read only", ref.reference.name);
             end
             if strcmp(axis_name, 'Target')
-                obj.global_optimize_Callback(src);
+                obj.global_optimize_Callback(src, evt);
             elseif ref.steponly
-                obj.steponly_optimize_Callback(src);
+                obj.steponly_optimize_Callback(src, evt, axis_name);
             else
-                obj.optimize_Callback(src);
+                obj.optimize_Callback(src, evt, axis_name);
             end
         end
         function [avg, st] = get_target_avg(obj, sample_num, max_std_ratio)

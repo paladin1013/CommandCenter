@@ -17,7 +17,14 @@ function obj = steponly_optimize_Callback(obj, src, evt, axis_name)
                 src.Value = false;
                 return;
             end
-            ms.start_target;
+            try
+                ms.start_target;
+            catch err
+                src.Value = false;
+                optimizing = "";
+                error(err.message);
+                return;
+            end
 
             optimizing = pref.name;
             start_pos = pref.read;
@@ -34,7 +41,7 @@ function obj = steponly_optimize_Callback(obj, src, evt, axis_name)
 
             % Set the optimization range to [start_pos - max_range, start_pos + max_range]
             % The optimization will automatically stop once current value is out of range.
-            max_range = 20*base_step; 
+            max_range = 20*abs(base_step); 
             max_iteration = 50;
             
             temp_pos = start_pos;
@@ -95,8 +102,20 @@ function obj = steponly_optimize_Callback(obj, src, evt, axis_name)
                     end
                 else % Fails to optimize: try another direction or shorten the step length.
                     % The first time to fail
-                    if increased
+                    if iteration_num > 1 && increased
+                        % Neglect if the target of the first trial is decreasing 
                         maximum_reached = true;
+                    end
+                    if iteration_num >= 3
+                        record1 = obj.record_array{end-2}.val;
+                        record2 = obj.record_array{end-1}.val;
+                        record3 = obj.record_array{end}.val;
+                        if record1 == record2 && record2 == record3
+                            src.Value = false;
+                            optimizing = "";
+                            fprintf("The value is not changing for the last 3 iterations. Abort\n")
+                            break
+                        end
                     end
                     step = -step;
                 end

@@ -50,7 +50,7 @@ classdef Line < Modules.Driver
         steponly = true;
         init_position_um;
         max_range_um;
-        max_steps_once; % You should move no more steps than this value at once.
+        max_steps_once = 5; % You should move no more steps than this value at once.
     end
     properties(Access=private)
         steps_moved_prev =   0; % To calculate how many steps it should move under the current command.
@@ -114,18 +114,22 @@ classdef Line < Modules.Driver
             if abs(obj.position_um-obj.init_position_um) > obj.max_range_um
                 error(sprintf("Current position %d exceeds maximum range: initial_position plusminus max_range(%d, %d)\n", obj.position_um, obj.init_position_um-obj.max_range_um, obj.init_position_um+obj.max_range_um));
             end
-            if steps > 1 && steps < obj.max_steps_once
+            if (steps > 1) && (steps < obj.max_steps_once)
                 obj.position_um = obj.com('moveSteps', true, steps*obj.parent.multistep_ratio)*1e6; % The second param is for [forward:bool] in python
             elseif steps == 1
                 obj.position_um = obj.com('moveSteps', true, 1)*1e6; % *1e6 to convert from m to um 
+            else
+                error(sprintf("steps %d should not exceed obj.max_steps_ones=%d and should not be 0", steps, obj.max_steps_once))
             end
             obj.update_parent_position;
         end
         function stepd(obj, steps)
-            if steps > 1 && steps < obj.max_steps_once
+            if (steps > 1) && (steps <= obj.max_steps_once)
                 obj.position_um = obj.com('moveSteps', false, steps*obj.parent.multistep_ratio)*1e6; % The second param is for [forward:bool] in python
             elseif steps == 1
                 obj.position_um = obj.com('moveSteps', false, 1)*1e6; 
+            else
+                error(sprintf("steps %d should not exceed obj.max_steps_ones=%d and should not be 0", steps, obj.max_steps_once))
             end
             obj.update_parent_position;
         end

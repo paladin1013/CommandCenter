@@ -22,7 +22,7 @@ classdef ANC350 < Modules.Driver
         x_output = Prefs.Boolean(true, 'help', 'Enable output on X axis', 'set', 'set_x_output');
         y_output = Prefs.Boolean(true, 'help', 'Enable output on Y axis', 'set', 'set_y_output');
         z_output = Prefs.Boolean(true, 'help', 'Enable output on Z axis', 'set', 'set_z_output');
-        multistep_ratio = Prefs.Integer(50, 'min', 0, 'max', 100, 'unit', '#', 'help', 'Do move steps `multistep_ratio` more times when `key_step`/`joy_step` is set to larger than 1.')
+        multistep_ratio = Prefs.Integer(10, 'min', 0, 'max', 50, 'unit', '#', 'help', 'Do move steps `multistep_ratio` more times when `key_step`/`joy_step` is set to larger than 1.')
         x_position_um = Prefs.Double(0, 'unit', 'um', 'readonly', true, 'help', 'Absolute position (unstable)');
         y_position_um = Prefs.Double(0, 'unit', 'um', 'readonly', true, 'help', 'Absolute position (unstable)');
         z_position_um = Prefs.Double(0, 'unit', 'um', 'readonly', true, 'help', 'Absolute position (unstable)');
