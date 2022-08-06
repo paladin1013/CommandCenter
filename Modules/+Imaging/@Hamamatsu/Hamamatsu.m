@@ -15,9 +15,10 @@ classdef Hamamatsu < Modules.Imaging
         CamCenterCoord = [0,0] % camera's center of coordinates (in same units as camera calibration, i.e. um)
         data_name = 'Widefield';  % For diamondbase (via ImagingManager)
         data_type = 'General';    % For diamondbase (via ImagingManager)
+        matchTemplate = Prefs.Boolean(true);
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
-        offset = Prefs.Integer(7, 'min', 1, 'max', 20, 'help', 'Move image `offset` pixels then calculate the contrast.')
-        prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset'};
+        offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.')
+        prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset', 'matchTemplate'};
     end
     properties(Hidden)
         core            % The Micro-Manager core utility (java)
@@ -41,6 +42,10 @@ classdef Hamamatsu < Modules.Imaging
         setOffset
         videoTimer       % Handle to video timer object for capturing frames
         hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
+        template = [];
+        snapTemplateUI;
+        setMatchTemplateUI;
+        frameCnt = 0;           % Frame num counter for updating pattern detection (in video mode). 
     end
     
     methods(Access=private)
@@ -59,6 +64,7 @@ classdef Hamamatsu < Modules.Imaging
             obj.resolution = res;
             obj.maxROI = [-obj.resolution(1)/2 obj.resolution(1)/2;...
                 -obj.resolution(2)/2 obj.resolution(2)/2]*obj.binning;
+            frameCnt = 0;
         end
     end
     methods(Static)
@@ -375,6 +381,16 @@ classdef Hamamatsu < Modules.Imaging
                 obj.hImage = hImage;
             end
             im = obj.snapImage;
+            if obj.matchTemplate
+                if isempty(obj.template)
+                    obj.template = frame_detection(im, true);
+                end
+                processed_im = frame_detection(im, false);
+                centerPos = image_matching(processed_im, obj.template);
+                x = centerPos(1);
+                y = centerPos(2);
+                im(x-5:x+5, y-5:y+5) = 0;
+            end
             set(hImage,'cdata',im);
             obj.updateContrast(im);
         end
@@ -418,6 +434,21 @@ classdef Hamamatsu < Modules.Imaging
                 if obj.FlipHor
                     dat = fliplr(dat);
                 end
+                if obj.matchTemplate
+                    if isempty(obj.template)
+                        obj.template = frame_detection(dat, true);
+                    end
+                    processed_im = frame_detection(dat, false);
+                    [centerPos, template_size] = image_matching(processed_im, obj.template);
+                    y = centerPos(1);
+                    x = centerPos(2);
+                    template_y = template_size(1);
+                    template_x = template_size(2);
+                    dat(y-template_y:y, x-1:x+1) = 0;
+                    dat(y-template_y:y, x-template_x-1:x-template_x+1) = 0;
+                    dat(y-1:y+1, x-template_x:x) = 0;
+                    dat(y-template_y-1:y-template_y+1, x-template_x:x) = 0;
+                end
                 set(hImage,'cdata',dat);
                 obj.updateContrast(dat);
             end
@@ -438,7 +469,7 @@ classdef Hamamatsu < Modules.Imaging
         % Settings and Callbacks
         function settings(obj,panelH, ~, ~)
             spacing = 1.5;
-            num_lines = 5;
+            num_lines = 6;
             line = 1;
             xwidth1 = 14;
             xwidth2 = 10;
@@ -512,6 +543,17 @@ classdef Hamamatsu < Modules.Imaging
             obj.setOffset = uicontrol(panelH,'style','edit','string',num2str(obj.offset),...
                 'units','characters','callback',@obj.setOffsetCallback,...
                 'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
+
+            line = 6;
+            obj.snapTemplateUI = uicontrol(panelH,'style','pushbutton', 'string', 'Snap Template',...
+                'units','characters',...
+                'horizontalalignment','left','position',[3 spacing*(num_lines-line) xwidth1+3 1.5], 'Callback', @(~, ~)obj.snapTemplate);
+            
+            uicontrol(panelH,'style','text','string','Match Template','horizontalalignment','right',...
+                'units','characters','position',[xwidth1+xwidth2-3 spacing*(num_lines-line) xwidth3+3 1.25]);
+            obj.setMatchTemplateUI = uicontrol(panelH,'style','checkbox','value',obj.matchTemplate,...
+                'units','characters','callback',@obj.setMatchTemplateCallback,...
+                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
         end
         function exposureCallback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
@@ -541,6 +583,10 @@ classdef Hamamatsu < Modules.Imaging
             val = str2num(get(hObj, 'string'));
             obj.offset = int16(val);
         end
+        function setMatchTemplateCallback(obj, hObj, eventdata)
+            val = get(hObj, 'value');
+            obj.matchTemplate = logical(val);
+        end
         function ImRot90Callback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
             obj.ImRot90 = val;
@@ -568,8 +614,13 @@ classdef Hamamatsu < Modules.Imaging
                 obj.contrastUI.String = sprintf("%.2e", contrast);
             end
         end
-                
-        
+        function snapTemplate(obj)
+            im = obj.snapImage;
+            obj.template = frame_detection(im, true);
+        end
+        function processed_im = updateMatching(obj, im)
+            
+        end
     end
 end
 

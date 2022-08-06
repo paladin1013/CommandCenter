@@ -1,4 +1,4 @@
-function processed_image = frame_detection(input_image, make_plots, args)
+function processed_image = frame_detection(input_image, show_plots, args)
     % Args: struct with fields {}
     if isstring(input_image) || ischar(input_image)
         try
@@ -8,12 +8,15 @@ function processed_image = frame_detection(input_image, make_plots, args)
             input_image = input_mat.image.image;
             input_image = uint8(floor(double(input_image)*256/double(max(input_image, [], 'all'))));
         end
+    else
+        input_image = uint8(floor(double(input_image)*256/double(max(input_image, [], 'all'))));
+
     end
 
     if exist('args', 'var') && isfield(args, 'bin1_thres_ratio')
         bin1_thres_ratio = args.bin1_thres_ratio;
     else
-        bin1_thres_ratio = 0.1;
+        bin1_thres_ratio = 0.12;
     end
     if exist('args', 'var') && isfield(args, 'bin2_thres_ratio')
         bin2_thres_ratio = args.bin2_thres_ratio;
@@ -109,7 +112,6 @@ function processed_image = frame_detection(input_image, make_plots, args)
     for k = max(filtered_image(:)):-5:min(filtered_image(:))
         if sum(filtered_image(:)>=k) > n_pixel*bin2_thres_ratio
             bin2_image = filtered_image>=k;
-            fprintf('Threshold value: %d\n', k);
             break;
         end 
     end
@@ -126,8 +128,7 @@ function processed_image = frame_detection(input_image, make_plots, args)
             closed_image(CC.PixelIdxList{k}) = 0;
         end
     end
-
-    if exist('make_plots', 'var') && make_plots
+    if exist('show_plots', 'var') && show_plots
         figure;
         % Displaying Input Image and Output Image
         subplot(2, 3, 1), imshow(input_image), set(get(gca, 'Title'), 'String', 'Input image');
