@@ -19,6 +19,7 @@ classdef Hamamatsu < Modules.Imaging
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.')
         maxMovement = Prefs.Double(10, 'min', 1, 'max', 20, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.')
+        showFiltered = Prefs.Boolean(false);
         prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset', 'matchTemplate'};
     end
     properties(Hidden)
@@ -51,7 +52,9 @@ classdef Hamamatsu < Modules.Imaging
         templatePos;
         prevCenterPos = [];
         centerPos;
-        maxMovementUI;
+        setMaxMovementUI;
+        setShowFilteredUI;
+        prevContrast;
     end
     
     methods(Access=private)
@@ -433,11 +436,16 @@ classdef Hamamatsu < Modules.Imaging
                 if obj.FlipHor
                     dat = fliplr(dat);
                 end
-                if obj.matchTemplate
-                    dat = obj.updateMatching(dat);
+                obj.updateContrast(dat);
+                if obj.matchTemplate 
+                    if obj.contrast > 0.9*obj.prevContrast
+                        % To prevent position shift caused by stage shifting
+                        dat = obj.updateMatching(dat);
+                    elseif obj.showFiltered
+                        dat = frame_detection(dat);
+                    end
                 end
                 set(hImage,'cdata',dat);
-                obj.updateContrast(dat);
             end
             drawnow;
         end
@@ -537,17 +545,24 @@ classdef Hamamatsu < Modules.Imaging
                 'horizontalalignment','left','position',[3 spacing*(num_lines-line) xwidth1+3 1.5], 'Callback', @(~, ~)obj.snapTemplate);
             
             uicontrol(panelH,'style','text','string','Match Template','horizontalalignment','right',...
-                'units','characters','position',[xwidth1+xwidth2-3 spacing*(num_lines-line) xwidth3+3 1.25]);
+                'units','characters','position',[xwidth1+xwidth2 spacing*(num_lines-line) xwidth3+3 1.25]);
             obj.setMatchTemplateUI = uicontrol(panelH,'style','checkbox','value',obj.matchTemplate,...
                 'units','characters','callback',@obj.setMatchTemplateCallback,...
-                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
+                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+4 spacing*(num_lines-line) xwidth4 1.5]);
 
             line = 7;
             uicontrol(panelH,'style','text','string','Max Movement','horizontalalignment','right', ...
                 'units','characters','position',[0 spacing*(num_lines-line) xwidth1 1.25]);
-            obj.maxMovementUI = uicontrol(panelH,'style','edit','string',num2str(obj.maxMovement),...
+            obj.setMaxMovementUI = uicontrol(panelH,'style','edit','string',num2str(obj.maxMovement),...
                 'units','characters',...
                 'horizontalalignment','left','position',[xwidth1+1 spacing*(num_lines-line) xwidth2 1.5], 'callback', @obj.setMaxMovementCallback);
+
+            uicontrol(panelH,'style','text','string','Show Filterd','horizontalalignment','right',... 
+                'units','characters','position',[xwidth1+xwidth2 spacing*(num_lines-line) xwidth3+3 1.25]);
+            obj.setShowFilteredUI = uicontrol(panelH,'style','checkbox','value',obj.showFiltered,...
+                'units','characters','callback',@obj.setShowFilteredCallback,...
+                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+4 spacing*(num_lines-line) xwidth4 1.5]);
+                
         end
         function exposureCallback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
@@ -585,6 +600,10 @@ classdef Hamamatsu < Modules.Imaging
             val = get(hObj, 'value');
             obj.matchTemplate = logical(val);
         end
+        function setShowFilteredCallback(obj, hObj, eventdata)
+            val = get(hObj, 'value');
+            obj.showFiltered = logical(val);
+        end
         function ImRot90Callback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
             obj.ImRot90 = val;
@@ -607,13 +626,14 @@ classdef Hamamatsu < Modules.Imaging
             imagey = frame(ymin+obj.offset:ymax+obj.offset,xmin:xmax);
             dI = (imagex-image).^2+(imagey-image).^2;
             contrast = mean2(dI);
+            obj.prevContrast = obj.contrast;
             obj.contrast = contrast;
             if ~isempty(obj.contrastUI) && isprop(obj.contrastUI, 'String')
                 obj.contrastUI.String = sprintf("%.2e", contrast);
             end
         end
         function snapTemplate(obj, templateROI)
-            im = obj.snapImage;
+            im = flipud(transpose(obj.snapImage));
             obj.template = frame_detection(im, true);
             % templateROI?
             if ~exist('templateROI', 'var')
@@ -677,20 +697,48 @@ classdef Hamamatsu < Modules.Imaging
                 error(fprintf("size(obj.prevCenterPos, 1) should be at most 2, but got %d.", size(obj.prevCenterPos, 1)));
             end
 
+
+
             y = obj.templatePos(1);
             x = obj.templatePos(2);
             template_y = size(obj.template, 1);
             template_x = size(obj.template, 2);
+
+            if obj.showFiltered
+                im = processed_im;
+                % [r, c] = find(obj.template == 1);
+                % im(obj.templatePos(1), c+obj.templatePos(2)) = 0.5;
+            end
             % Draw a black box directly onto the image
-            im(y-template_y:y, x-1:x+1) = 0;
-            im(y-template_y:y, x-template_x-1:x-template_x+1) = 0;
-            im(y-1:y+1, x-template_x:x) = 0;
-            im(y-template_y-1:y-template_y+1, x-template_x:x) = 0;
+            im(y-template_y:y, x:x) = 65535;
+            im(y-template_y:y, x-template_x:x-template_x) = 65535;
+            im(y:y, x-template_x:x) = 65535;
+            im(y-template_y:y-template_y, x-template_x:x) = 65535;
 
             % Draw a black square at the detected center
             y = round(obj.centerPos(1));
             x = round(obj.centerPos(2));
-            im(y-3:y+3, x-3:x+3) = 0;
+            im(y-3:y+3, x-3:x+3) = 65535;
+        end
+
+        function setCorners(obj)
+            try close(41); catch; end
+            frame_fig = figure(41);
+            frame_fig.Position = [200, 200, 560, 420];
+            frame_ax = axes('Parent', frame_fig);
+            wlH = imagesc(frame_ax, obj.trimmed_wl_img);
+            colormap(frame_ax, 'bone');
+            x_size = size(obj.trimmed_wl_img, 2);
+            y_size = size(obj.trimmed_wl_img, 1);
+            size(obj.trimmed_wl_img, 1);
+            if isempty(obj.poly_pos)
+                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
+            else
+                polyH = drawpolygon(frame_ax, 'Position', obj.poly_pos);
+            end
+            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
+            wlH.ButtonDownFcn = @obj.ROIConfirm;
+            uiwait(frame_fig);
         end
     end
 end
