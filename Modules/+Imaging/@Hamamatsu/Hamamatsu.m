@@ -2,7 +2,7 @@ classdef Hamamatsu < Modules.Imaging
     %AxioCam Control Zeiss AxioCam camera
     %   
     
-    properties
+    properties(SetObservable, GetObservable)
         exposure = 100        % Exposure time in ms
         binning = 1         % Bin pixels
 %         exposure =      Prefs.Double(NaN, 'units', 'ms', 'min', 0, 'max', inf, 'allow_nan', true, 'set', 'set_exposure');
@@ -15,7 +15,9 @@ classdef Hamamatsu < Modules.Imaging
         CamCenterCoord = [0,0] % camera's center of coordinates (in same units as camera calibration, i.e. um)
         data_name = 'Widefield';  % For diamondbase (via ImagingManager)
         data_type = 'General';    % For diamondbase (via ImagingManager)
-        prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord'};
+        contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
+        offset = Prefs.Integer(7, 'min', 1, 'max', 20, 'help', 'Move image `offset` pixels then calculate the contrast.')
+        prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset'};
     end
     properties(Hidden)
         core            % The Micro-Manager core utility (java)
@@ -35,18 +37,18 @@ classdef Hamamatsu < Modules.Imaging
         setFlipVer
         setCamCenterCoordX
         setCamCenterCoordY
+        contrastUI
+        setOffset
         videoTimer       % Handle to video timer object for capturing frames
+        hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
     end
     
     methods(Access=private)
         function obj = Hamamatsu()
             % Initialize Java Core
-            %addpath 'C:\Micro-Manager-1.4.22\';
-            %addpath 'C:\Micro-Manager-1.4\';
             addpath 'C:\Program Files\Micro-Manager-1.4\';
             import mmcorej.*;
             core=CMMCore;
-            %core.loadSystemConfiguration('C:\Micro-Manager-1.4.22\HamamatsuEMCCD.cfg');
             core.loadSystemConfiguration('C:\Program Files\Micro-Manager-1.4\Hamamatsu.cfg');
             obj.core = core;
             % Load preferences
@@ -60,16 +62,12 @@ classdef Hamamatsu < Modules.Imaging
         end
     end
     methods(Static)
-        function obj = instance()
-            mlock;
-            persistent Object
-            if isempty(Object) || ~isvalid(Object)
-                Object = Imaging.Hamamatsu();
-            end
-            obj = Object;
-        end
+        obj = instance()
     end
     methods
+        function metric = focus(obj,ax,stageHandle) %#ok<INUSD>
+            
+        end
         function load_core_configuration(obj,cfgpath)
             assert(isfile(cfgpath),'File not found')
             obj.core.loadSystemConfiguration(cfgpath);
@@ -241,27 +239,27 @@ classdef Hamamatsu < Modules.Imaging
             delete(obj.core)
         end
 
-        function metric = focus(obj,ax,Managers)
-            stageManager = Managers.Stages;
-            stageManager.update_gui = 'off';
-   %         oldBin = obj.binning;
-   %         oldExp = obj.exposure;
-   %         if oldBin < 3
-   %             obj.exposure = oldExp*(oldBin/3)^2;
-   %             obj.binning = 3;
-   %         end
-            try
-                metric = obj.ContrastFocus(Managers);
-            catch err
-                stageManager.update_gui = 'on';
-                rethrow(err)
-            end
-   %         if oldBin < 3
-   %             obj.exposure = oldExp;
-   %             obj.binning = oldBin;
-   %         end
-            stageManager.update_gui = 'on';
-        end
+        % function metric = focus(obj,ax,Managers)
+%             stageManager = Managers.Stages;
+%             stageManager.update_gui = 'off';
+%    %         oldBin = obj.binning;
+%    %         oldExp = obj.exposure;
+%    %         if oldBin < 3
+%    %             obj.exposure = oldExp*(oldBin/3)^2;
+%    %             obj.binning = 3;
+%    %         end
+%             try
+%                 metric = obj.ContrastFocus(Managers);
+%             catch err
+%                 stageManager.update_gui = 'on';
+%                 rethrow(err)
+%             end
+%    %         if oldBin < 3
+%    %             obj.exposure = oldExp;
+%    %             obj.binning = oldBin;
+%    %         end
+%             stageManager.update_gui = 'on';
+        % end
         function dat = snapImage(obj,binning,exposure)
             % This function returns the image (unlike snap)
             % Default is to use bin of 1. Exposure is configured based on
@@ -346,10 +344,27 @@ classdef Hamamatsu < Modules.Imaging
 
         function snap(obj,hImage)
             % This function calls snapImage and applies to hImage.
+            if ~exist('hImage', 'var')
+                if isempty(obj.hImage)
+                    error('Please click `snap` in image panel to initialize obj.hImage');
+                end
+                hImage = obj.hImage;
+            else
+                obj.hImage = hImage;
+            end
             im = obj.snapImage;
-            set(hImage,'cdata',im)
+            set(hImage,'cdata',im);
+            obj.updateContrast(im);
         end
         function startVideo(obj,hImage)
+            if ~exist('hImage', 'var')
+                if isempty(obj.hImage)
+                    error('Please click `snap` in image panel to initialize obj.hImage');
+                end
+                hImage = obj.hImage;
+            else
+                obj.hImage = hImage;
+            end
             obj.continuous = true;
             if obj.core.isSequenceRunning()
                 warndlg('Video already started.')
@@ -382,6 +397,7 @@ classdef Hamamatsu < Modules.Imaging
                     dat = fliplr(dat);
                 end
                 set(hImage,'cdata',dat);
+                obj.updateContrast(dat);
             end
             drawnow;
         end
@@ -400,7 +416,7 @@ classdef Hamamatsu < Modules.Imaging
         % Settings and Callbacks
         function settings(obj,panelH, ~, ~)
             spacing = 1.5;
-            num_lines = 4;
+            num_lines = 5;
             line = 1;
             xwidth1 = 14;
             xwidth2 = 10;
@@ -461,6 +477,19 @@ classdef Hamamatsu < Modules.Imaging
             obj.setCamCenterCoordY = uicontrol(panelH,'style','edit','string',num2str(obj.CamCenterCoord(2)),...
                 'units','characters','callback',@obj.CamCenterCoordYCallback,...
                 'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
+
+            line = 5;
+            uicontrol(panelH,'style','text','string','contrast','horizontalalignment','right', ...
+                'units','characters','position',[0 spacing*(num_lines-line) xwidth1 1.25]);
+            obj.contrastUI = uicontrol(panelH,'style','edit','string',num2str(obj.contrast),...
+                'units','characters','enable', 'off',...
+                'horizontalalignment','left','position',[xwidth1+1 spacing*(num_lines-line) xwidth2 1.5]);
+            
+            uicontrol(panelH,'style','text','string','offset','horizontalalignment','right',...
+                'units','characters','position',[xwidth1+xwidth2+1 spacing*(num_lines-line) xwidth3 1.25]);
+            obj.setOffset = uicontrol(panelH,'style','edit','string',num2str(obj.offset),...
+                'units','characters','callback',@obj.setOffsetCallback,...
+                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
         end
         function exposureCallback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
@@ -486,6 +515,10 @@ classdef Hamamatsu < Modules.Imaging
             obj.CamCenterCoord = cur;
             warning('Need to reset ROI for changes to take effect.')
         end
+        function setOffsetCallback(obj, hObj, eventdata)
+            val = str2num(get(hObj, 'string'));
+            obj.offset = int16(val);
+        end
         function ImRot90Callback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
             obj.ImRot90 = val;
@@ -497,6 +530,23 @@ classdef Hamamatsu < Modules.Imaging
         function FlipVerCallback(obj,hObj,~)
             obj.FlipVer = get(hObj, 'Value');
         end
+        function contrast = updateContrast(obj,frame)
+            frame = double(frame);
+            xmin = obj.offset+1;
+            xmax = size(frame, 2)-obj.offset;
+            ymin = obj.offset+1;
+            ymax = size(frame, 1)-obj.offset;
+            image = frame(ymin:ymax,xmin:xmax);
+            imagex = frame(ymin:ymax,xmin+obj.offset:xmax+obj.offset);
+            imagey = frame(ymin+obj.offset:ymax+obj.offset,xmin:xmax);
+            dI = (imagex-image).^2+(imagey-image).^2;
+            contrast = mean2(dI);
+            obj.contrast = contrast;
+            if ~isempty(obj.contrastUI) && isprop(obj.contrastUI, 'String')
+                obj.contrastUI.String = sprintf("%.2e", contrast);
+            end
+        end
+                
         
     end
 end
