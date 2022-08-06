@@ -9,7 +9,11 @@ function center_pos = image_matching(processed_image, processed_template, show_p
     [x,y] = ind2sub(size(xcorr_result),idx);
     center_pos = [x, y];
     if exist('show_plots', 'var') && show_plots
-        corr_fig = figure;
+        try 
+            close(53);
+        catch
+        end
+        corr_fig = figure(53);
         s1 = subplot(2, 2, 1); imshow(processed_image); set(get(s1, 'Title'), 'String', sprintf("Processed input image"));
         s2 = subplot(2, 2, 2); imshow(processed_template); set(get(s2, 'Title'), 'String', sprintf("Trimmed template image"));
         s3 = subplot(2, 2, 3);

@@ -129,7 +129,11 @@ function processed_image = frame_detection(input_image, show_plots, args)
         end
     end
     if exist('show_plots', 'var') && show_plots
-        figure;
+        try 
+            close(52);
+        catch
+        end
+        fig = figure(52);
         % Displaying Input Image and Output Image
         subplot(2, 3, 1), imshow(input_image), set(get(gca, 'Title'), 'String', 'Input image');
         subplot(2, 3, 2), imshow(bin1_image), set(get(gca, 'Title'), 'String', sprintf("Binarized thres ratio: %.2f", bin1_thres_ratio));

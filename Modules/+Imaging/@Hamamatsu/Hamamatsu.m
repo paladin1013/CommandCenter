@@ -18,7 +18,7 @@ classdef Hamamatsu < Modules.Imaging
         matchTemplate = Prefs.Boolean(true);
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.')
-        maxMovement = Prefs.Double(10, 'min', 1, 'max', 20, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.')
+        maxMovement = Prefs.Double(50, 'min', 10, 'max', 100, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.')
         showFiltered = Prefs.Boolean(false);
         prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset', 'matchTemplate'};
     end
@@ -49,12 +49,13 @@ classdef Hamamatsu < Modules.Imaging
         setMatchTemplateUI;
         frameCnt = 0;           % Frame num counter for updating pattern detection (in video mode). 
         prevTemplatePos = []; % 2*2 matrix to store the coordinates of two rounds.
-        templatePos;
+        templatePos;            % Imaging Coordinates
         prevCenterPos = [];
-        centerPos;
+        centerPos;              % Normal Coordinates
         setMaxMovementUI;
         setShowFilteredUI;
         prevContrast;
+        templateCorners;
     end
     
     methods(Access=private)
@@ -438,7 +439,7 @@ classdef Hamamatsu < Modules.Imaging
                 end
                 obj.updateContrast(dat);
                 if obj.matchTemplate 
-                    if obj.contrast > 0.9*obj.prevContrast
+                    if obj.contrast > 0.7*obj.prevContrast
                         % To prevent position shift caused by stage shifting
                         dat = obj.updateMatching(dat);
                     elseif obj.showFiltered
@@ -558,7 +559,7 @@ classdef Hamamatsu < Modules.Imaging
                 'horizontalalignment','left','position',[xwidth1+1 spacing*(num_lines-line) xwidth2 1.5], 'callback', @obj.setMaxMovementCallback);
 
             uicontrol(panelH,'style','text','string','Show Filterd','horizontalalignment','right',... 
-                'units','characters','position',[xwidth1+xwidth2 spacing*(num_lines-line) xwidth3+3 1.25]);
+                'units','characters','position',[xwidth1+xwidth2+1 spacing*(num_lines-line) xwidth3+2 1.25]);
             obj.setShowFilteredUI = uicontrol(panelH,'style','checkbox','value',obj.showFiltered,...
                 'units','characters','callback',@obj.setShowFilteredCallback,...
                 'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+4 spacing*(num_lines-line) xwidth4 1.5]);
@@ -634,6 +635,8 @@ classdef Hamamatsu < Modules.Imaging
         end
         function snapTemplate(obj, templateROI)
             im = flipud(transpose(obj.snapImage));
+
+            
             obj.template = frame_detection(im, true);
             % templateROI?
             if ~exist('templateROI', 'var')
@@ -646,6 +649,48 @@ classdef Hamamatsu < Modules.Imaging
             ymin = templateROI(2, 1);
             ymax = templateROI(2, 2);
             obj.template = obj.template(ymin:ymax, xmin:xmax);
+
+
+            try close(41); catch; end
+            frame_fig = figure(41);
+            frame_fig.Position = [200, 200, 560, 420];
+            frame_ax = axes('Parent', frame_fig);
+            imH = imagesc(frame_ax, obj.template);
+            colormap(frame_ax, 'bone');
+            x_size = size(obj.template, 2);
+            y_size = size(obj.template, 1);
+            if isempty(obj.templateCorners)
+                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
+            else
+                polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
+            end
+            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
+            imH.ButtonDownFcn = @obj.ROIConfirm;
+            uiwait(frame_fig);
+            obj.templateCorners = round(polyH.Position);
+            delete(polyH);
+            im = obj.drawCorners(obj.template);
+            delete(imH);
+            imH = imagesc(frame_ax, im);
+            set(get(frame_ax, 'XLabel'), 'String', 'x');
+            set(get(frame_ax, 'YLabel'), 'String', 'y');
+            colormap(frame_ax, 'bone');
+        end
+        function im = drawCorners(obj, im, offset, val, radius)
+            if ~exist('offset', 'var')
+                offset = [0, 0];
+            end
+            if ~exist('val', 'var')
+                val = 0;
+            end
+            if ~exist('radius', 'var')
+                radius = 2;
+            end
+            for k = 1:4
+                im(obj.templateCorners(k, 2)+offset(1)-radius:obj.templateCorners(k, 2)+radius+offset(1), obj.templateCorners(k, 1)+offset(2)-radius:obj.templateCorners(k, 1)+offset(2)+radius) = val;
+            end
+            obj.centerPos = round(mean(obj.templateCorners));
+            im(obj.centerPos(2)+offset(1)-radius:obj.centerPos(2)+offset(1)+radius, obj.centerPos(1)+offset(2)-radius:obj.centerPos(1)+offset(2)+radius) = val;
         end
         function im = updateMatching(obj, im)
             if isempty(obj.template)
@@ -675,30 +720,6 @@ classdef Hamamatsu < Modules.Imaging
 
 
 
-
-            [r, c] = find(processed_im == 1);
-            newCenterPos = [mean(r), mean(c)];
-            switch size(obj.prevCenterPos, 1)
-            case 0
-                obj.prevCenterPos(1, :) = matchingPos;
-                obj.centerPos = newCenterPos;
-            case 1
-                if norm(newCenterPos-obj.prevCenterPos) < obj.maxMovement
-                    obj.centerPos = newCenterPos;
-                end
-                obj.prevCenterPos(2, :) = newCenterPos;
-            case 2
-                if norm(newCenterPos - obj.prevCenterPos(1, :)) < obj.maxMovement && norm(newCenterPos - obj.prevCenterPos(2, :)) < obj.maxMovement 
-                    obj.centerPos = newCenterPos;
-                end
-                obj.prevCenterPos(1, :) = obj.prevCenterPos(2, :);
-                obj.prevCenterPos(2, :) = newCenterPos;
-            otherwise
-                error(fprintf("size(obj.prevCenterPos, 1) should be at most 2, but got %d.", size(obj.prevCenterPos, 1)));
-            end
-
-
-
             y = obj.templatePos(1);
             x = obj.templatePos(2);
             template_y = size(obj.template, 1);
@@ -706,19 +727,15 @@ classdef Hamamatsu < Modules.Imaging
 
             if obj.showFiltered
                 im = processed_im;
-                % [r, c] = find(obj.template == 1);
-                % im(obj.templatePos(1), c+obj.templatePos(2)) = 0.5;
             end
-            % Draw a black box directly onto the image
+            % Draw a white box directly onto the image
             im(y-template_y:y, x:x) = 65535;
             im(y-template_y:y, x-template_x:x-template_x) = 65535;
             im(y:y, x-template_x:x) = 65535;
             im(y-template_y:y-template_y, x-template_x:x) = 65535;
 
-            % Draw a black square at the detected center
-            y = round(obj.centerPos(1));
-            x = round(obj.centerPos(2));
-            im(y-3:y+3, x-3:x+3) = 65535;
+            im = obj.drawCorners(im, obj.templatePos-size(obj.template), 65535);
+
         end
 
         function setCorners(obj)
@@ -739,6 +756,13 @@ classdef Hamamatsu < Modules.Imaging
             set(get(frame_ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
             wlH.ButtonDownFcn = @obj.ROIConfirm;
             uiwait(frame_fig);
+        end
+
+        function ROIConfirm(obj, hObj, event)
+            if event.Button == 3
+                uiresume;
+                return;
+            end
         end
     end
 end

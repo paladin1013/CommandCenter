@@ -170,7 +170,6 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             colormap(frame_ax, 'bone');
             x_size = size(obj.trimmed_wl_img, 2);
             y_size = size(obj.trimmed_wl_img, 1);
-            size(obj.trimmed_wl_img, 1);
             if isempty(obj.poly_pos)
                 polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
             else
