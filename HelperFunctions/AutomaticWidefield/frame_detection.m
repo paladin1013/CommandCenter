@@ -16,17 +16,17 @@ function processed_image = frame_detection(input_image, show_plots, args)
     if exist('args', 'var') && isfield(args, 'bin1_thres_ratio')
         bin1_thres_ratio = args.bin1_thres_ratio;
     else
-        bin1_thres_ratio = 0.12;
+        bin1_thres_ratio = 0.13;
     end
     if exist('args', 'var') && isfield(args, 'bin2_thres_ratio')
         bin2_thres_ratio = args.bin2_thres_ratio;
     else
-        bin2_thres_ratio = 0.1;
+        bin2_thres_ratio = 0.12;
     end
     if exist('args', 'var') && isfield(args, 'cutoff_low')
         cutoff_low = args.cutoff_low;
     else
-        cutoff_low = 20;
+        cutoff_low = 25;
     end
     if exist('args', 'var') && isfield(args, 'cutoff_high')
         cutoff_high = args.cutoff_high;
@@ -36,7 +36,7 @@ function processed_image = frame_detection(input_image, show_plots, args)
     if exist('args', 'var') && isfield(args, 'min_pixel')
         min_pixel = args.min_pixel;
     else
-        min_pixel = 200;
+        min_pixel = 300;
     end
     if exist('args', 'var') && isfield(args, 'disk_radius')
         disk_radius = args.disk_radius;

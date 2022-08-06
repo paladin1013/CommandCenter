@@ -18,6 +18,7 @@ classdef Hamamatsu < Modules.Imaging
         matchTemplate = Prefs.Boolean(true);
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.')
+        maxMovement = Prefs.Double(10, 'min', 1, 'max', 20, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.')
         prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset', 'matchTemplate'};
     end
     properties(Hidden)
@@ -46,6 +47,11 @@ classdef Hamamatsu < Modules.Imaging
         snapTemplateUI;
         setMatchTemplateUI;
         frameCnt = 0;           % Frame num counter for updating pattern detection (in video mode). 
+        prevTemplatePos = []; % 2*2 matrix to store the coordinates of two rounds.
+        templatePos;
+        prevCenterPos = [];
+        centerPos;
+        maxMovementUI;
     end
     
     methods(Access=private)
@@ -382,14 +388,7 @@ classdef Hamamatsu < Modules.Imaging
             end
             im = obj.snapImage;
             if obj.matchTemplate
-                if isempty(obj.template)
-                    obj.template = frame_detection(im, true);
-                end
-                processed_im = frame_detection(im, false);
-                centerPos = image_matching(processed_im, obj.template);
-                x = centerPos(1);
-                y = centerPos(2);
-                im(x-5:x+5, y-5:y+5) = 0;
+                im = obj.updateMatching(flipud(im'));
             end
             set(hImage,'cdata',im);
             obj.updateContrast(im);
@@ -435,19 +434,7 @@ classdef Hamamatsu < Modules.Imaging
                     dat = fliplr(dat);
                 end
                 if obj.matchTemplate
-                    if isempty(obj.template)
-                        obj.template = frame_detection(dat, true);
-                    end
-                    processed_im = frame_detection(dat, false);
-                    [centerPos, template_size] = image_matching(processed_im, obj.template);
-                    y = centerPos(1);
-                    x = centerPos(2);
-                    template_y = template_size(1);
-                    template_x = template_size(2);
-                    dat(y-template_y:y, x-1:x+1) = 0;
-                    dat(y-template_y:y, x-template_x-1:x-template_x+1) = 0;
-                    dat(y-1:y+1, x-template_x:x) = 0;
-                    dat(y-template_y-1:y-template_y+1, x-template_x:x) = 0;
+                    dat = obj.updateMatching(dat);
                 end
                 set(hImage,'cdata',dat);
                 obj.updateContrast(dat);
@@ -469,7 +456,7 @@ classdef Hamamatsu < Modules.Imaging
         % Settings and Callbacks
         function settings(obj,panelH, ~, ~)
             spacing = 1.5;
-            num_lines = 6;
+            num_lines = 7;
             line = 1;
             xwidth1 = 14;
             xwidth2 = 10;
@@ -554,6 +541,13 @@ classdef Hamamatsu < Modules.Imaging
             obj.setMatchTemplateUI = uicontrol(panelH,'style','checkbox','value',obj.matchTemplate,...
                 'units','characters','callback',@obj.setMatchTemplateCallback,...
                 'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
+
+            line = 7;
+            uicontrol(panelH,'style','text','string','Max Movement','horizontalalignment','right', ...
+                'units','characters','position',[0 spacing*(num_lines-line) xwidth1 1.25]);
+            obj.maxMovementUI = uicontrol(panelH,'style','edit','string',num2str(obj.maxMovement),...
+                'units','characters',...
+                'horizontalalignment','left','position',[xwidth1+1 spacing*(num_lines-line) xwidth2 1.5], 'callback', @obj.setMaxMovementCallback);
         end
         function exposureCallback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
@@ -582,6 +576,10 @@ classdef Hamamatsu < Modules.Imaging
         function setOffsetCallback(obj, hObj, eventdata)
             val = str2num(get(hObj, 'string'));
             obj.offset = int16(val);
+        end
+        function setMaxMovementCallback(obj, hObj, eventdata)
+            val = str2num(get(hObj, 'string'));
+            obj.maxMovement = val;
         end
         function setMatchTemplateCallback(obj, hObj, eventdata)
             val = get(hObj, 'value');
@@ -614,12 +612,85 @@ classdef Hamamatsu < Modules.Imaging
                 obj.contrastUI.String = sprintf("%.2e", contrast);
             end
         end
-        function snapTemplate(obj)
+        function snapTemplate(obj, templateROI)
             im = obj.snapImage;
             obj.template = frame_detection(im, true);
+            % templateROI?
+            if ~exist('templateROI', 'var')
+                col_has_val = any(obj.template, 1);
+                row_has_val = any(obj.template, 2);
+                templateROI = [find(col_has_val, 1), find(col_has_val, 1, 'last'); find(row_has_val, 1), find(row_has_val, 1, 'last')];
+            end
+            xmin = templateROI(1, 1);
+            xmax = templateROI(1, 2);
+            ymin = templateROI(2, 1);
+            ymax = templateROI(2, 2);
+            obj.template = obj.template(ymin:ymax, xmin:xmax);
         end
-        function processed_im = updateMatching(obj, im)
-            
+        function im = updateMatching(obj, im)
+            if isempty(obj.template)
+                obj.template = frame_detection(im, true);
+            end
+            processed_im = frame_detection(im, false);
+            matchingPos = image_matching(processed_im, obj.template);
+            % MatchingPos is the top right coner of the template image inserted into the target image.
+            switch size(obj.prevTemplatePos, 1)
+            case 0
+                obj.prevTemplatePos(1, :) = matchingPos;
+                obj.templatePos = matchingPos;
+            case 1
+                if norm(matchingPos-obj.prevTemplatePos) < obj.maxMovement
+                    obj.templatePos = matchingPos;
+                end
+                obj.prevTemplatePos(2, :) = matchingPos;
+            case 2
+                if norm(matchingPos - obj.prevTemplatePos(1, :)) < obj.maxMovement && norm(matchingPos - obj.prevTemplatePos(2, :)) < obj.maxMovement 
+                    obj.templatePos = matchingPos;
+                end
+                obj.prevTemplatePos(1, :) = obj.prevTemplatePos(2, :);
+                obj.prevTemplatePos(2, :) = matchingPos;
+            otherwise
+                error(fprintf("size(obj.prevTemplatePos, 1) should be at most 2, but got %d.", size(obj.prevTemplatePos)));
+            end
+
+
+
+
+            [r, c] = find(processed_im == 1);
+            newCenterPos = [mean(r), mean(c)];
+            switch size(obj.prevCenterPos, 1)
+            case 0
+                obj.prevCenterPos(1, :) = matchingPos;
+                obj.centerPos = newCenterPos;
+            case 1
+                if norm(newCenterPos-obj.prevCenterPos) < obj.maxMovement
+                    obj.centerPos = newCenterPos;
+                end
+                obj.prevCenterPos(2, :) = newCenterPos;
+            case 2
+                if norm(newCenterPos - obj.prevCenterPos(1, :)) < obj.maxMovement && norm(newCenterPos - obj.prevCenterPos(2, :)) < obj.maxMovement 
+                    obj.centerPos = newCenterPos;
+                end
+                obj.prevCenterPos(1, :) = obj.prevCenterPos(2, :);
+                obj.prevCenterPos(2, :) = newCenterPos;
+            otherwise
+                error(fprintf("size(obj.prevCenterPos, 1) should be at most 2, but got %d.", size(obj.prevCenterPos, 1)));
+            end
+
+            y = obj.templatePos(1);
+            x = obj.templatePos(2);
+            template_y = size(obj.template, 1);
+            template_x = size(obj.template, 2);
+            % Draw a black box directly onto the image
+            im(y-template_y:y, x-1:x+1) = 0;
+            im(y-template_y:y, x-template_x-1:x-template_x+1) = 0;
+            im(y-1:y+1, x-template_x:x) = 0;
+            im(y-template_y-1:y-template_y+1, x-template_x:x) = 0;
+
+            % Draw a black square at the detected center
+            y = round(obj.centerPos(1));
+            x = round(obj.centerPos(2));
+            im(y-3:y+3, x-3:x+3) = 0;
         end
     end
 end
