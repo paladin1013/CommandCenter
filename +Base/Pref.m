@@ -83,6 +83,9 @@ classdef Pref < matlab.mixin.Heterogeneous % value class
         name = {'', @(a)validateattributes(a,{'char'},{'vector'})};
         unit = {'', @(a)validateattributes(a,{'char'},{'vector'})};
         default_step = {[], @(a)validateattributes(a, {'double'}, {'scalar'})};
+        steponly = {[], @(a)validateattributes(a, {'logical'}, {'scalar'})};% Steponly being `true` means this referenced value can only be changed step by step (e.g.Piezo, Resonant Laser Percent). 
+        % Also, results may be different when it is set back to a previously value.
+        % This reference will be no longer allowed to participate in global optimization, and the steponly_optimizate requires the endpoint to be the maximal position. 
     end
 
     properties %(Hidden) %, SetAccess = ?Base.Module)

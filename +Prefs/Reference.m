@@ -9,9 +9,6 @@ classdef Reference < Base.Pref
         default = [];
         ui = Prefs.Inputs.ReferenceField;
         reference = []; % Prefs.Numeric.empty(1,0);
-        steponly = false; % Steponly being `true` means this referenced value can only be changed step by step (e.g.Piezo, Resonant Laser Percent). 
-        % Also, results may be different when it is set back to a previously value.
-        % This reference will be no longer allowed to participate in global optimization, and the steponly_optimizate requires the endpoint to be the maximal position. 
         lsh = [];
     end
 

@@ -24,7 +24,7 @@ classdef Line < Modules.Driver
                                             'help', 'Voltage amplitude for stepping sawtooth.');
         
         % UI stuff to allow the user to step up and down. Future: replace with pref-based metastage.
-        steps_moved =     Prefs.Integer(0, 'max', Drivers.Attocube.ANC350.maxSteps, 'min', -Drivers.Attocube.ANC350.maxSteps, 'unit', '#',...
+        steps_moved =     Prefs.Integer(0, 'steponly', true, 'max', Drivers.Attocube.ANC350.maxSteps, 'min', -Drivers.Attocube.ANC350.maxSteps, 'unit', '#',...
                                             'set', 'set_steps_moved', 'default_step', 1, ...
                                             'help', 'Number of steps moved from the initial position.'); % Use this pref instead.
         step_up =   Prefs.Boolean(false, 'set', 'set_step_up',...
@@ -47,7 +47,6 @@ classdef Line < Modules.Driver
     end
     properties(SetAccess=immutable)
         line;   % Index of the physical line of the parent that this D.A.Line controls.
-        steponly = true;
         init_position_um;
         max_range_um;
         max_steps_once = 5; % You should move no more steps than this value at once.

@@ -180,7 +180,10 @@ classdef ANC350 < Modules.Driver
             obj.y_output = prev_y_output;
             obj.z_output = prev_z_output;
         end
-        
+        function coordinate_um =  get_coordinate_um(obj)
+            % Export current coordinate to other modules
+            coordinate_um = [obj.x_position_um, obj.y_position_um, obj.z_position_um];
+        end
     end
   
 end

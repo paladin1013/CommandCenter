@@ -633,12 +633,12 @@ classdef MetaStageManager < Base.Manager
             evt = []; % And a fake event
             assert(any(strcmp({'X', 'Y', 'Z', 'Target'}, axis_name)), "axis_name should be 'X', 'Y', 'Z' or 'Target'");
             ref = obj.active_module.get_meta_pref(axis_name);
-            if ref.readonly && ~strcmp(axis_name, 'Target')
+            if ref.reference.readonly && ~strcmp(axis_name, 'Target')
                 error("Reference %s is read only", ref.reference.name);
             end
             if strcmp(axis_name, 'Target')
                 obj.global_optimize_Callback(src, evt);
-            elseif ref.steponly
+            elseif ref.reference.steponly
                 obj.steponly_optimize_Callback(src, evt, axis_name);
             else
                 obj.optimize_Callback(src, evt, axis_name);
