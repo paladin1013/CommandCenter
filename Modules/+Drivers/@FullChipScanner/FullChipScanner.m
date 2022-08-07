@@ -7,8 +7,10 @@ classdef FullChipScanner < Modules.Driver
         x_movement_um = Prefs.DoubleArray([0, 0, 0], 'unit', 'um', 'allow_nan', false, 'min', -50, 'max', 50, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along x axis');
         y_movement_um = Prefs.DoubleArray([0, 0, 0], 'unit', 'um', 'allow_nan', false, 'min', -50, 'max', 50, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along y axis');
         current_position_um = Prefs.DoubleArray([NaN, NaN, NaN], 'unit', 'um', 'readonly', true, 'help', 'Current piezo stage position');
-        calibrate_x_movement = Prefs.Button('set', 'set_calibrate_x_position', 'help', 'First move along x axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
-        calibrate_y_movement = Prefs.Button('set', 'set_calibrate_y_position', 'help', 'First move along y axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
+        % calibrate_x_movement = Prefs.ToggleButton(false, 'string', 'Start', 'set', 'set_calibrate_x_movement', 'help', 'First move along x axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
+        % calibrate_y_movement = Prefs.ToggleButton(false, 'string', 'Start', 'set', 'set_calibrate_y_movement', 'help', 'First move along y axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
+        calibrate_x_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_x_movement', 'help', 'First move along x axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
+        calibrate_y_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_y_movement', 'help', 'First move along y axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
         laser_center = Prefs.DoubleArray([NaN, NaN], 'unit', 'pixel', 'help', 'Laser center relative position in the camera image.'); % Regular 
         set_laser_center = Prefs.Button('set', 'set_laser_center_graphical', 'help', 'Set the relative position of laser center on the current snapped image');
     end
@@ -26,7 +28,6 @@ classdef FullChipScanner < Modules.Driver
             catch err
                 warning(fprintf("Error fetching stage position: %s", err.message));
             end
-            % obj.stage_listener = addlistener(hSource, EventName, callback)
 
         end
     end
@@ -52,16 +53,17 @@ classdef FullChipScanner < Modules.Driver
                 val = val + (prev_val-val)*int8(obj.move('y', val-prev_val == 1));
             end
         end
-        function val = set_calibrate_x_position(obj, val, ~)
-            persistent calibration_started;
+        function val = set_calibrate_x_movement(obj, val, ~)
+            calibration_started = obj.calibrate_x_movement;
+            if val == calibration_started
+                return;
+            end
             persistent prev_position;
-            if ~exist('calibration_started', 'var')
-                calibration_started = false;
+            if ~exist('prev_position', 'var') || isempty(prev_position)
                 prev_position = obj.stage.get_coordinate_um;
             end
-            calibration_started = ~calibration_started; % Change state first
             new_position = obj.stage.get_coordinate_um;
-            if calibration_started
+            if val
                 fprintf("x movement calibration started. Please move the stage until the center of the next chiplet is aligned with the laser center, then press this button again.\n");
                 fprintf("Initial stage position: (%d, %d, %d)\n", new_position(1), new_position(2), new_position(3));
                 
@@ -72,14 +74,12 @@ classdef FullChipScanner < Modules.Driver
             end
             prev_position = new_position;    
         end
-        function val = set_calibrate_y_position(obj, val, ~)
-            persistent calibration_started;
+        function val = set_calibrate_y_movement(obj, val, ~)
+            calibration_started = obj.calibrate_y_movement;
             persistent prev_position;
-            if ~exist('calibration_started', 'var')
-                calibration_started = false;
+            if ~exist('prev_position', 'var') || isempty(prev_position)
                 prev_position = obj.stage.get_coordinate_um;
             end
-            calibration_started = ~calibration_started; % Change state first
             new_position = obj.stage.get_coordinate_um;
             if calibration_started
                 fprintf("y movement calibration started. Please move the stage until the center of the next chiplet is aligned with the laser center, then press this button again.\n");
@@ -92,7 +92,7 @@ classdef FullChipScanner < Modules.Driver
             prev_position = new_position;    
         end
         function val = set_laser_center_graphical(obj, val, ~)
-            img = camera.snapImage;
+            img = obj.camera.snapImage;
             fig = figure(53);
             ax = axes('Parent', fig);
             imH = imagesc(ax, img);
