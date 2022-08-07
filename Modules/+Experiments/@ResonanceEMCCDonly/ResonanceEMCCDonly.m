@@ -151,7 +151,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
                 rectH = images.roi.Rectangle(roi_ax, 'Position', obj.rect_pos);
             end
             set(get(roi_ax, 'Title'), 'String', sprintf('Please adjust ROI to trim the image and accelarate image processing\nRight click unconvered image to confirm ROI'));
-            im2H.ButtonDownFcn = @obj.ROIConfirm;
+            im2H.ButtonDownFcn = @ROIConfirm;
             uiwait(roi_fig);
             pos = rectH.Position;
             obj.rect_pos = pos;
@@ -175,18 +175,13 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             else
                 polyH = drawpolygon(frame_ax, 'Position', obj.poly_pos);
             end
-            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
-            wlH.ButtonDownFcn = @obj.ROIConfirm;
+            set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
+            wlH.ButtonDownFcn = @ROIConfirm;
+            frame_fig.KeyPressFcn = @ROIConfirm;
             uiwait(frame_fig);
             poly_pos = polyH.Position;
             obj.poly_pos = poly_pos;
             delete(frame_fig);
-        end
-        function ROIConfirm(obj, hObj, event)
-            if event.Button == 3
-                uiresume;
-                return;
-            end
         end
         
     end

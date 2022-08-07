@@ -221,8 +221,10 @@ classdef MetaStageManager < Base.Manager
             obj.keycheck.Value = val;
             if val
                 obj.handles.figure1.KeyPressFcn = @obj.KeyPressFcn;
+                obj.keycheck.KeyPressFcn = @obj.KeyPressFcn;
             else
                 obj.handles.figure1.KeyPressFcn = '';
+                obj.keycheck.KeyPressFcn = '';
             end
 %             obj.handles.figure1.KeyReleaseFcn
             

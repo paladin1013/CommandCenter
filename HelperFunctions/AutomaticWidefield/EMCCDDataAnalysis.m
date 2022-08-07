@@ -47,8 +47,9 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
         y_size = size(wl_img, 1);
         size(wl_img, 1);
         polyH = drawpolygon(ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
-        set(get(ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
+        set(get(ax, 'Title'), 'String', sprintf('Press enter or right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
         wlH.ButtonDownFcn = @ROIConfirm;
+        result_fig.KeyPressFcn = @ROIConfirm;
         uiwait(result_fig);
         poly_pos = polyH.Position;
         delete(ax);
@@ -474,11 +475,4 @@ function distance = getPointLineDistance(x3,y3,x1,y1,x2,y2)
         uiwait(errordlg(errorMessage));
     end
     return; % from getPointLineDistance()
-end
-
-function ROIConfirm(hObj, event)
-    if event.Button == 3
-        uiresume;
-        return;
-    end
 end

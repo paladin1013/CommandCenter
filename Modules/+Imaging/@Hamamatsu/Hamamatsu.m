@@ -17,8 +17,10 @@ classdef Hamamatsu < Modules.Imaging
         data_type = 'General';    % For diamondbase (via ImagingManager)
         matchTemplate = Prefs.Boolean(true);
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
-        offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.')
-        maxMovement = Prefs.Double(50, 'min', 10, 'max', 100, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.')
+        brightness = Prefs.Double(NaN, 'readonly', true, 'help', 'Average value off the intensity of the current image.');
+        brightnessThreshold = Prefs.Double(5000, 'allow_nan', false, 'help', 'Brightness lower than this value will disable the template matching.');
+        offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.');
+        maxMovement = Prefs.Double(50, 'min', 10, 'max', 100, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.');
         showFiltered = Prefs.Boolean(false);
         prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset', 'matchTemplate'};
     end
@@ -632,6 +634,7 @@ classdef Hamamatsu < Modules.Imaging
             if ~isempty(obj.contrastUI) && isprop(obj.contrastUI, 'String')
                 obj.contrastUI.String = sprintf("%.2e", contrast);
             end
+            obj.brightness = mean2(frame);
         end
         function snapTemplate(obj, im, templateROI)
             if ~exist('im', 'var') || isempty(im)
@@ -664,8 +667,9 @@ classdef Hamamatsu < Modules.Imaging
             else
                 polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
             end
-            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the outside image to confirm template corners.'));
-            imH.ButtonDownFcn = @obj.ROIConfirm;
+            set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
+            imH.ButtonDownFcn = @ROIConfirm;
+            frame_fig.KeyPressFcn = @ROIConfirm;
             uiwait(frame_fig);
             obj.templateCorners = round(polyH.Position);
             delete(polyH);
@@ -692,9 +696,24 @@ classdef Hamamatsu < Modules.Imaging
             obj.centerPos = round(mean(obj.templateCorners));
             im(obj.centerPos(2)+offset(1)-radius:obj.centerPos(2)+offset(1)+radius, obj.centerPos(1)+offset(2)-radius:obj.centerPos(1)+offset(2)+radius) = val;
         end
-        function im = updateMatching(obj, im, force_update)
-            if ~exist('force_update', 'var')
-                force_update = false;
+        function im = updateMatching(obj, im, forceUpdate)
+            persistent wasBright
+            if ~exist('wasBright', 'var')
+                wasBright = true;
+            end
+            if obj.brightness < obj.brightnessThreshold
+                if wasBright
+                    fprintf("Current brightness %d is lower than its threshold %d. Matching template is temporarily disabled.\n", obj.brightness, obj.brightnessThreshold);
+                end
+                wasBright = false;
+                return;
+            else
+                wasBright = true;
+            end
+
+
+            if ~exist('forceUpdate', 'var')
+                forceUpdate = false;
             end
             if isempty(obj.template) || isempty(obj.templateCorners)
                 obj.snapTemplate(im);
@@ -708,12 +727,12 @@ classdef Hamamatsu < Modules.Imaging
                 obj.prevTemplatePos(1, :) = matchingPos;
                 obj.templatePos = matchingPos;
             case 1
-                if force_update || norm(matchingPos-obj.prevTemplatePos) < obj.maxMovement
+                if forceUpdate || norm(matchingPos-obj.prevTemplatePos) < obj.maxMovement
                     obj.templatePos = matchingPos;
                 end
                 obj.prevTemplatePos(2, :) = matchingPos;
             case 2
-                if force_update || norm(matchingPos - obj.prevTemplatePos(1, :)) < obj.maxMovement && norm(matchingPos - obj.prevTemplatePos(2, :)) < obj.maxMovement 
+                if forceUpdate || norm(matchingPos - obj.prevTemplatePos(1, :)) < obj.maxMovement && norm(matchingPos - obj.prevTemplatePos(2, :)) < obj.maxMovement 
                     obj.templatePos = matchingPos;
                 end
                 obj.prevTemplatePos(1, :) = obj.prevTemplatePos(2, :);
@@ -740,13 +759,6 @@ classdef Hamamatsu < Modules.Imaging
 
             im = obj.drawCorners(im, obj.templatePos-size(obj.template), 65535);
 
-        end
-
-        function ROIConfirm(obj, hObj, event)
-            if event.Button == 3
-                uiresume;
-                return;
-            end
         end
     end
 end
