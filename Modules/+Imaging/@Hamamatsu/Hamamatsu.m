@@ -392,7 +392,7 @@ classdef Hamamatsu < Modules.Imaging
             end
             im = obj.snapImage;
             if obj.matchTemplate
-                im = obj.updateMatching(flipud(im'));
+                im = obj.updateMatching(flipud(im'), true); % Enable forced update
             end
             set(hImage,'cdata',im);
             obj.updateContrast(im);
@@ -633,13 +633,13 @@ classdef Hamamatsu < Modules.Imaging
                 obj.contrastUI.String = sprintf("%.2e", contrast);
             end
         end
-        function snapTemplate(obj, templateROI)
-            im = flipud(transpose(obj.snapImage));
-
-            
+        function snapTemplate(obj, im, templateROI)
+            if ~exist('im', 'var') || isempty(im)
+                im = flipud(transpose(obj.snapImage));
+            end
             obj.template = frame_detection(im, true);
             % templateROI?
-            if ~exist('templateROI', 'var')
+            if ~exist('templateROI', 'var') || isempty(templateROI)
                 col_has_val = any(obj.template, 1);
                 row_has_val = any(obj.template, 2);
                 templateROI = [find(col_has_val, 1), find(col_has_val, 1, 'last'); find(row_has_val, 1), find(row_has_val, 1, 'last')];
@@ -664,7 +664,7 @@ classdef Hamamatsu < Modules.Imaging
             else
                 polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
             end
-            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
+            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the outside image to confirm template corners.'));
             imH.ButtonDownFcn = @obj.ROIConfirm;
             uiwait(frame_fig);
             obj.templateCorners = round(polyH.Position);
@@ -692,10 +692,14 @@ classdef Hamamatsu < Modules.Imaging
             obj.centerPos = round(mean(obj.templateCorners));
             im(obj.centerPos(2)+offset(1)-radius:obj.centerPos(2)+offset(1)+radius, obj.centerPos(1)+offset(2)-radius:obj.centerPos(1)+offset(2)+radius) = val;
         end
-        function im = updateMatching(obj, im)
-            if isempty(obj.template)
-                obj.template = frame_detection(im, true);
+        function im = updateMatching(obj, im, force_update)
+            if ~exist('force_update', 'var')
+                force_update = false;
             end
+            if isempty(obj.template) || isempty(obj.templateCorners)
+                obj.snapTemplate(im);
+            end
+            
             processed_im = frame_detection(im, false);
             matchingPos = image_matching(processed_im, obj.template);
             % MatchingPos is the top right coner of the template image inserted into the target image.
@@ -704,12 +708,12 @@ classdef Hamamatsu < Modules.Imaging
                 obj.prevTemplatePos(1, :) = matchingPos;
                 obj.templatePos = matchingPos;
             case 1
-                if norm(matchingPos-obj.prevTemplatePos) < obj.maxMovement
+                if force_update || norm(matchingPos-obj.prevTemplatePos) < obj.maxMovement
                     obj.templatePos = matchingPos;
                 end
                 obj.prevTemplatePos(2, :) = matchingPos;
             case 2
-                if norm(matchingPos - obj.prevTemplatePos(1, :)) < obj.maxMovement && norm(matchingPos - obj.prevTemplatePos(2, :)) < obj.maxMovement 
+                if force_update || norm(matchingPos - obj.prevTemplatePos(1, :)) < obj.maxMovement && norm(matchingPos - obj.prevTemplatePos(2, :)) < obj.maxMovement 
                     obj.templatePos = matchingPos;
                 end
                 obj.prevTemplatePos(1, :) = obj.prevTemplatePos(2, :);
@@ -736,26 +740,6 @@ classdef Hamamatsu < Modules.Imaging
 
             im = obj.drawCorners(im, obj.templatePos-size(obj.template), 65535);
 
-        end
-
-        function setCorners(obj)
-            try close(41); catch; end
-            frame_fig = figure(41);
-            frame_fig.Position = [200, 200, 560, 420];
-            frame_ax = axes('Parent', frame_fig);
-            wlH = imagesc(frame_ax, obj.trimmed_wl_img);
-            colormap(frame_ax, 'bone');
-            x_size = size(obj.trimmed_wl_img, 2);
-            y_size = size(obj.trimmed_wl_img, 1);
-            size(obj.trimmed_wl_img, 1);
-            if isempty(obj.poly_pos)
-                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
-            else
-                polyH = drawpolygon(frame_ax, 'Position', obj.poly_pos);
-            end
-            set(get(frame_ax, 'Title'), 'String', sprintf('Right click the image to confirm polygon ROI\nOnly emitters inside this region will be shown.'));
-            wlH.ButtonDownFcn = @obj.ROIConfirm;
-            uiwait(frame_fig);
         end
 
         function ROIConfirm(obj, hObj, event)

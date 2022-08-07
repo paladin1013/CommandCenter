@@ -314,7 +314,10 @@ classdef ImagingManager < Base.Manager
             obj.log('%s stopped video.',class(obj.active_module))
             
             % Restart activity
-            start(obj.handles.inactivity_timer);
+            try
+                start(obj.handles.inactivity_timer);
+            catch
+            end
         end
         function clicked(obj,hObject,varargin)
             m_type = get(hObject,'selectionType');

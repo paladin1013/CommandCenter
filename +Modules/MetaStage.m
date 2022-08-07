@@ -72,28 +72,49 @@ classdef MetaStage < Base.Module
                 counter = obj.get_meta_pref('Target').reference.parent;
                 running = counter.running;
                 if running 
-                    error("Please stop the counter and then start the optimization again to avoid intercepting the timer function.");
+                    if check_call_stack_func('cps')
+                        error("The optimization callback is interupting the timer function. Please stop the counter and then start the optimization again.");
+                    end
+                else
+                    counter.start;
                 end
-                counter.start;
             end
             if strcmp(obj.get_meta_pref('Target').reference.name, 'power') 
                 % For Powermeter
                 powermeter = obj.get_meta_pref('Target').reference.parent;
                 running = powermeter.running;
                 if running 
-                    error("Please stop the powermeter and then start the optimization again to avoid intercepting the timer function.");
+                    if check_call_stack_func('update_power')
+                        error("The optimization callback is interupting the timer function. Please stop the powermeter and then start the optimization again.");
+                    end
+                else
+                    powermeter.set_start;
                 end
-                powermeter.set_start;
             end
             if strcmp(obj.get_meta_pref('Target').reference.name, 'contrast') 
                 % For Hamamatsu emccd
                 emccd = obj.get_meta_pref('Target').reference.parent;
                 running = emccd.continuous;
                 if running 
-                    error("Please stop the Hamamatsu EMCCD continuous mode and then start the optimization again to avoid intercepting the timer function.");
+                    if check_call_stack_func('grabFrame')
+                        error("The optimization callback is interupting the timer function. Please stop the Hamamatsu EMCCD continuous mode and then start the optimization again.");
+                    end
+                else
+                    emccd.startVideo;
                 end
-                emccd.startVideo;
             end
         end
     end
+end
+function result = check_call_stack_func(func_name)
+    % Check whether `func_name` is in the current call stack
+    call_stack = dbstack;
+    for k = 1:length(call_stack)
+        if contains(call_stack(k).name, func_name)
+            result = true;
+            return
+        end
+    end
+    result = false;
+    return
 end
