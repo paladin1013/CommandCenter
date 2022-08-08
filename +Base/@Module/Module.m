@@ -426,6 +426,7 @@ classdef Module < Base.Singleton & matlab.mixin.Heterogeneous
             
             % Grab the list of settings from get_settings()
             try
+                
                 setting_names = obj.get_settings();
             catch err
                 error('Error fetching settings names:\n%s', getReport(err,'basic','hyperlinks','off'));

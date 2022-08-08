@@ -52,21 +52,24 @@ classdef ANC350 < Modules.Driver
             if isempty(Objects)
                 Objects = Drivers.Attocube.ANC350.empty(1,0);
             end
-            obj = Drivers.Attocube.ANC350(host_ip);
-            obj.singleton_id = obj.serialNo;
+            singleton_id = Drivers.Attocube.ANC350.get_serialNo(host_ip);
             for i = 1:length(Objects)
-                if isvalid(Objects(i)) && isequal(obj.singleton_id, Objects(i).singleton_id)
-                    obj.delete;
+                if isvalid(Objects(i)) && isequal(singleton_id, Objects(i).singleton_id)
                     obj = Objects(i);
                     return
                 end
             end
+            obj = Drivers.Attocube.ANC350(host_ip);
             Objects(end+1) = obj;
             obj.spawnLines;
         end
         function [arg_names, default_vals] = get_default_args()
             arg_names = {'host_ip'};
             default_vals = {'"18.25.29.30"'};
+        end
+        function serialNo = get_serialNo(host_ip)
+            connection = hwserver(host_ip);
+            serialNo = connection.com('Attocube', 'getSerialNo');
         end
     end
     methods(Access=private)
@@ -205,6 +208,13 @@ classdef ANC350 < Modules.Driver
             obj.x_position_um = coordinate_um(1);
             obj.y_position_um = coordinate_um(2);
             obj.z_position_um = coordinate_um(3);
+        end
+        function steps = get_steps_moved(obj)
+            steps = zeros(1, 3);
+            for k = 1:3
+                line = obj.lines(k);
+                steps(k) = line.steps_moved;
+            end
         end
     end
   

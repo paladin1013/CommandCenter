@@ -46,6 +46,7 @@ classdef Hamamatsu < Modules.Imaging
         setOffset
         videoTimer       % Handle to video timer object for capturing frames
         hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
+        hManagers       % Handle to CommandCenter managers. Will be set when `focus` is called from the ImagingManager.
         template = [];
         snapTemplateUI;
         setMatchTemplateUI;
@@ -84,6 +85,16 @@ classdef Hamamatsu < Modules.Imaging
     end
     methods
         function metric = focus(obj,ax,managers) %#ok<INUSD>
+            if ~exist('managers', 'var')
+                if isempty(obj.hManagers)
+                    error("Please click Auto Focus on the Imaging panel to assign the managers handle");
+                else
+                    managers = obj.hManagers;
+                end
+            else
+                obj.hManagers = managers;
+            end
+
             ms = managers.MetaStage.active_module;
 
             Z = ms.get_meta_pref('Z');
@@ -417,8 +428,8 @@ classdef Hamamatsu < Modules.Imaging
             obj.videoTimer = timer('tag','Video Timer',...
                                    'ExecutionMode','FixedSpacing',...
                                    'BusyMode','drop',...
-                                   'Period',0.01,...
-                                   'TimerFcn',{@obj.grabFrame,hImage});
+                                   'Period', obj.exposure/1e3,...
+                                   'TimerFcn',{@obj.grabFrame,hImage}); % Use exposure time as timer period to detect the frame update
             start(obj.videoTimer)
         end
         function grabFrame(obj,~,~,hImage)
