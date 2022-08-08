@@ -18,6 +18,9 @@ classdef ANC350 < Modules.Driver
         port
         
     end
+    events
+        update_position
+    end
     properties(SetObservable, GetObservable)
         x_output = Prefs.Boolean(true, 'help', 'Enable output on X axis', 'set', 'set_x_output');
         y_output = Prefs.Boolean(true, 'help', 'Enable output on Y axis', 'set', 'set_y_output');
@@ -180,9 +183,28 @@ classdef ANC350 < Modules.Driver
             obj.y_output = prev_y_output;
             obj.z_output = prev_z_output;
         end
-        function coordinate_um =  get_coordinate_um(obj)
+        function coordinate_um =  get_coordinate_um(obj, sample_num, sample_interval_s)
             % Export current coordinate to other modules
-            coordinate_um = [obj.x_position_um, obj.y_position_um, obj.z_position_um];
+            if ~exist('sample_num', 'var')
+                sample_num = 0;
+            end
+
+            if sample_num == 0
+                coordinate_um = [obj.x_position_um, obj.y_position_um, obj.z_position_um];
+                return
+            end
+            if ~exist('sample_interval_s', 'var')
+                sample_interval_s = 0.05;
+            end
+            positions = NaN(sample_num, 3);
+            for k = 1:sample_num
+                positions(k, :) = obj.getPosition_um;
+                pause(sample_interval_s);
+            end
+            coordinate_um = mean([positions]);
+            obj.x_position_um = coordinate_um(1);
+            obj.y_position_um = coordinate_um(2);
+            obj.z_position_um = coordinate_um(3);
         end
     end
   

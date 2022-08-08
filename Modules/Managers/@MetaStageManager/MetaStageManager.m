@@ -25,7 +25,7 @@ classdef MetaStageManager < Base.Manager
     properties(SetAccess=private)
         keycheck = [];
         joycheck = [];
-        
+        directionH = []; % Handles of direction key ui (mx, my, mz, px, py, pz)
         scrollpanel = [];
         joyserver = [];
         joystatus = [];
@@ -101,14 +101,15 @@ classdef MetaStageManager < Base.Manager
             py =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x25B2), 'Callback', @(~,~)obj.step(+1,2,1), 'Tooltip', 'Up (+y)',   'Position', [x+B   y+B b b]);
             px =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x25BA), 'Callback', @(~,~)obj.step(+1,1,1), 'Tooltip', 'Right (+x)','Position', [x+2*B y   b b]);
             
-            mz =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x2297), 'Callback', @(~,~)obj.step(-1,3,1), 'Tooltip', 'In (-z)',   'Position', [x+3*B y   b b], 'FontSize', 15);
-            pz =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x2299), 'Callback', @(~,~)obj.step(+1,3,1), 'Tooltip', 'Out (+z)',  'Position', [x+3*B y+B b b], 'FontSize', 15);
+            % mz =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x2297), 'Callback', @(~,~)obj.step(-1,3,1), 'Tooltip', 'In (-z)',   'Position', [x+3*B y   b b], 'FontSize', 15);
+            % pz =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x2299), 'Callback', @(~,~)obj.step(+1,3,1), 'Tooltip', 'Out (+z)',  'Position', [x+3*B y+B b b], 'FontSize', 15);
             
             mz =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x2A02), 'Callback', @(~,~)obj.step(-1,3,1), 'Tooltip', 'In (-z)',   'Position', [x+3*B y   b b]);
             pz =    uicontrol(panel, 'Style', 'pushbutton', 'String', char(0x2A00), 'Callback', @(~,~)obj.step(+1,3,1), 'Tooltip', 'Out (+z)',  'Position', [x+3*B y+B b b]);
             
             mult =  uicontrol(panel, 'Style', 'text',       'String', '',           'ForegroundColor', 'red',           'Tooltip', sprintf('Speed Multiplier (Shift == *%d, alt == *1/%d)', obj.keyMult, obj.keyMult), 'Position', [x+2*B y+B b b]);
             
+            obj.directionH = [mx, my, px, py, mz, pz];
             x = m;
             y = y;
             
@@ -222,9 +223,15 @@ classdef MetaStageManager < Base.Manager
             if val
                 obj.handles.figure1.KeyPressFcn = @obj.KeyPressFcn;
                 obj.keycheck.KeyPressFcn = @obj.KeyPressFcn;
+                for k = 1:6
+                    obj.directionH(k).KeyPressFcn = @obj.KeyPressFcn;
+                end
             else
                 obj.handles.figure1.KeyPressFcn = '';
                 obj.keycheck.KeyPressFcn = '';
+                for k = 1:6
+                    obj.directionH(k).KeyPressFcn = @obj.KeyPressFcn;
+                end
             end
 %             obj.handles.figure1.KeyReleaseFcn
             

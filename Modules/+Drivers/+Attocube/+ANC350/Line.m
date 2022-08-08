@@ -141,6 +141,7 @@ classdef Line < Modules.Driver
             case 3
                 obj.parent.z_position_um = obj.position_um;
             end
+            notify(obj.parent, 'update_position');
         end
         function val = set_step(obj, val, ~)
             val = round(val);   % Only integer steps. (change to clean?)
@@ -177,6 +178,7 @@ classdef Line < Modules.Driver
             obj.steps_moved_prev = val;
         end
         function reset_steps_moved(obj)
+            % Deprecated (not able to update values in metastage)
             obj.set_value_only('steps_moved', 0);
             obj.steps_moved_prev = 0;
         end

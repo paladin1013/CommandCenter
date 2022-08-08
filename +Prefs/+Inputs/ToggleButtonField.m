@@ -17,6 +17,7 @@ classdef ToggleButtonField < Prefs.Inputs.LabelControlBasic
         end
         function set_value(obj, val)
             obj.ui.Value = logical(val);
+            obj.ui.Style = obj.uistyle;
         end
         function val = get_value(obj)
             val = obj.ui.Value;

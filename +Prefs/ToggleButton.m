@@ -22,8 +22,15 @@ classdef ToggleButton < Prefs.Numeric
             obj = obj@Prefs.Numeric(varargin{:});
         end
         function validate(obj,val)
-            val = obj.value;
+            % val = obj.value;
 %             validateattributes(val,{'char','string'},{'scalartext'})
+            assert(~isnan(val), 'ToggleButton should take boolean values. NaN is not allowed.');
+            validateattributes(val,{'numeric','logical'},{'binary','scalar'});
+        end
+        function val = clean(obj,val)
+            if ~isnan(val)
+                val = logical(val);
+            end
         end
     end
     
