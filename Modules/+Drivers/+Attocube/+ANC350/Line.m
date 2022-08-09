@@ -51,7 +51,7 @@ classdef Line < Modules.Driver
         max_range_um;
         max_steps_once = 5; % You should move no more steps than this value at once.
     end
-    properties(Access=private)
+    properties
         steps_moved_prev =   0; % To calculate how many steps it should move under the current command.
     end
 
@@ -71,6 +71,7 @@ classdef Line < Modules.Driver
             for ii = 1:length(Objects)
                 if isvalid(Objects(ii)) && isvalid(Objects(ii).parent) && isequal(id, Objects(ii).singleton_id)
                     obj = Objects(ii);
+                    obj.parent = parent;
                     return
                 end
             end

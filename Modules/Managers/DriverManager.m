@@ -65,6 +65,21 @@ classdef DriverManager < Base.Manager
         %     uimenu(parent_menu, 'separator', 'on', 'label', 'Delete MetaStage',...
         %         'callback', @obj.delete_callback);
         % end
+        function pos = check_module_str(obj,class_str)
+            pos = 0;
+            for i = 1:numel(obj.modules)
+                if ~isvalid(obj.modules{i})
+                    % Already deleted
+                    obj.modules(i) = [];
+                    i = i - 1;
+                    continue
+                end
+                if strcmp(class(obj.modules{i}),class_str)
+                    pos = i;
+                    break
+                end
+            end
+        end
     end
     % methods(Static)
     %     function getAvailModules(package, parent_menu, fun_callback, fun_in_use)

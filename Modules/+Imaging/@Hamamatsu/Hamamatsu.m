@@ -428,7 +428,7 @@ classdef Hamamatsu < Modules.Imaging
             obj.videoTimer = timer('tag','Video Timer',...
                                    'ExecutionMode','FixedSpacing',...
                                    'BusyMode','drop',...
-                                   'Period', obj.exposure/1e3,...
+                                   'Period', obj.exposure/1e3/5,...
                                    'TimerFcn',{@obj.grabFrame,hImage}); % Use exposure time as timer period to detect the frame update
             start(obj.videoTimer)
         end
@@ -701,11 +701,18 @@ classdef Hamamatsu < Modules.Imaging
             if ~exist('radius', 'var')
                 radius = 2;
             end
+            im_y = size(im, 1);
+            im_x = size(im, 2);
             for k = 1:4
-                im(obj.templateCorners(k, 2)+offset(1)-radius:obj.templateCorners(k, 2)+radius+offset(1), obj.templateCorners(k, 1)+offset(2)-radius:obj.templateCorners(k, 1)+offset(2)+radius) = val;
+                corner_y = obj.templateCorners(k, 2)+offset(1);
+                corner_x = obj.templateCorners(k, 1)+offset(2);
+                im(confine(corner_y-radius, 1, im_y):confine(corner_y+radius, 1, im_y), confine(corner_x-radius, 1, im_x):confine(corner_x+radius, 1, im_x)) = val;
+            end
+            function val = confine(val, lower_bound, upper_bound)
+                val = max(min(val, upper_bound), lower_bound);
             end
             obj.centerPos = round(mean(obj.templateCorners));
-            im(obj.centerPos(2)+offset(1)-radius:obj.centerPos(2)+offset(1)+radius, obj.centerPos(1)+offset(2)-radius:obj.centerPos(1)+offset(2)+radius) = val;
+            im(confine(obj.centerPos(2)+offset(1)-radius, 1, im_y):confine(obj.centerPos(2)+offset(1)+radius, 1, im_y), confine(obj.centerPos(1)+offset(2)-radius, 1, im_x):confine(obj.centerPos(1)+offset(2)+radius, 1, im_x)) = val;
         end
         function im = updateMatching(obj, im, forceUpdate)
             persistent wasBright
@@ -762,11 +769,21 @@ classdef Hamamatsu < Modules.Imaging
             if obj.showFiltered
                 im = processed_im;
             end
+            im_y = size(im, 1);
+            im_x = size(im, 2);
             % Draw a white box directly onto the image
-            im(y-template_y:y, x:x) = 65535;
-            im(y-template_y:y, x-template_x:x-template_x) = 65535;
-            im(y:y, x-template_x:x) = 65535;
-            im(y-template_y:y-template_y, x-template_x:x) = 65535;
+            if x <= im_x
+                im(max(y-template_y, 1):min(y, im_y), x) = 65535;
+            end
+            if x-template_x >= 1
+            im(max(y-template_y, 1):min(y, im_y), x-template_x) = 65535;
+            end
+            if y <= im_y
+                im(y, max(x-template_x, 1):min(x, im_x)) = 65535;
+            end
+            if y-template_y >= 1
+                im(y-template_y, max(x-template_x, 1):min(x, im_x)) = 65535;
+            end
 
             im = obj.drawCorners(im, obj.templatePos-size(obj.template), 65535);
 

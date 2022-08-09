@@ -52,7 +52,8 @@ classdef ANC350 < Modules.Driver
             if isempty(Objects)
                 Objects = Drivers.Attocube.ANC350.empty(1,0);
             end
-            singleton_id = Drivers.Attocube.ANC350.get_serialNo(host_ip);
+            serials = Drivers.Attocube.ANC350.get_serialNo(host_ip);
+            singleton_id = serials{1};
             for i = 1:length(Objects)
                 if isvalid(Objects(i)) && isequal(singleton_id, Objects(i).singleton_id)
                     obj = Objects(i);
@@ -60,6 +61,7 @@ classdef ANC350 < Modules.Driver
                 end
             end
             obj = Drivers.Attocube.ANC350(host_ip);
+            obj.singleton_id = singleton_id;
             Objects(end+1) = obj;
             obj.spawnLines;
         end
@@ -110,6 +112,7 @@ classdef ANC350 < Modules.Driver
     methods
         function delete(obj)
             obj.killLines;
+            % obj.lines = Drivers.Attocube.ANC350.Line.empty(1, 0); % No need to kill lines?
             delete(obj.connection);
         end
         function response = com(obj, varargin)              % Communication helper function.
@@ -180,6 +183,7 @@ classdef ANC350 < Modules.Driver
             for k = 1:3
                 line = obj.lines(k);
                 mp = line.get_meta_pref('steps_moved');
+                line.steps_moved_prev = 0;
                 mp.writ(0);
             end
             obj.x_output = prev_x_output;
