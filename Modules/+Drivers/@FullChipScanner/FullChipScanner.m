@@ -12,8 +12,9 @@ classdef FullChipScanner < Modules.Driver
         laser_center = Prefs.DoubleArray([NaN, NaN], 'unit', 'pixel', 'help', 'Laser center relative position in the camera image.'); % Regular 
         set_laser_center = Prefs.Button('set', 'set_laser_center_graphical', 'help', 'Set the relative position of laser center on the current snapped image');
         reverse_step_direction = Prefs.Boolean(true, 'help', 'Check this option if stepping stage forward will result in decreasing of the absolute position.');
-        camera = Imaging.Hamamatsu.instance;
-        stage = Drivers.Attocube.ANC350.instance("18.25.29.30");
+
+        % camera = Prefs.ModuleInstance(Imaging.Hamamatsu.instance, 'inherits', {'Modules.Imaging'});
+        % stage = Prefs.ModuleInstance(Drivers.Attocube.ANC350.instance("18.25.29.30"), 'inherits', {'Modules.Driver'});
     end
     properties(Access=private)
         stage_listener;
@@ -21,17 +22,22 @@ classdef FullChipScanner < Modules.Driver
         prev_y_pos = 0;
         prev_calibrate_x_movement = false;
         prev_calibrate_y_movement = false;
-        position_update_listener;
-
+        initialized = false;
     end
     properties
         prefs = {'x_pos', 'y_pos', 'x_movement_um', 'y_movement_um', 'laser_center', 'reverse_step_direction'};
+    end
+    properties(SetObservable)
+        camera;
+        stage;
     end
     methods(Static)
         obj = instance()
     end
     methods(Access = private)
         function obj = FullChipScanner()
+            obj.camera = Imaging.Hamamatsu.instance;
+            obj.stage = Drivers.Attocube.ANC350.instance("18.25.29.30");
             obj.loadPrefs;
             try
                 obj.current_position_um = round(obj.stage.get_coordinate_um);
@@ -39,7 +45,7 @@ classdef FullChipScanner < Modules.Driver
                 warning(sprintf("Error fetching stage position: %s", err.message));
             end
             try 
-                obj.position_update_listener = addlistener(obj.stage, 'update_position', @obj.update_position);
+                obj.stage_listener = addlistener(obj.stage, 'update_position', @obj.update_position);
             catch err
                 warning(sprintf("Position listener for stage is not set properly. Please add `get_coordinate_um` method to the current stage."));
             end
@@ -48,20 +54,26 @@ classdef FullChipScanner < Modules.Driver
     end
     methods
         function delete(obj)
+            obj.camera = Imaging.Hamamatsu.empty(1, 0); % Only set the handles to empty and avoid deleting the drivers. 
+            obj.stage = Drivers.Attocube.ANC350.empty(1, 0);
             try
-                delete(stage_listener);
-            catch
+                delete(obj.stage_listener);
+            catch err
                 warning(sprintf("Error deleting stage_listener, %s", err.message))
             end
         end
         function success = step_approximate(obj, axis_name, forward, max_steps, max_wrong_cnt, step_delay_s)
+            if ~obj.initialized
+                % Disable movement if CommandCenter is not fully initialized
+                return
+            end
             % Use absolute position to approximately move the stage (x_movement_um)
             % success: logical scalar, if true when this movement is successful; false if error occurs
             assert(any(strcmp(axis_name, {'x', 'y', 'X', 'Y'})), "axis_name should be one of {'x', 'X', 'y', 'Y'}");
             assert(islogical(forward), "Second argument (forward) should be ether true or false");
             success = false;
-            obj.current_position_um = obj.stage.get_coordinate_um(5);
-            initial_position_um = obj.current_position_um;
+            initial_position_um = obj.stage.get_coordinate_um(5);
+            obj.current_position_um = round(initial_position_um);
             fprintf("Start moving along %s axis\n", axis_name);
             fprintf("  initial position: (%.2f, %.2f, %.2f)\n", initial_position_um(1), initial_position_um(2), initial_position_um(3));
             target_position_um = initial_position_um + obj.x_movement_um;
@@ -85,7 +97,7 @@ classdef FullChipScanner < Modules.Driver
                         target_movement = obj.y_movement_um(axis_num)*checkpoint;
                     end
                     if ~forward
-                        target_movement = ~target_movement
+                        target_movement = ~target_movement;
                     end
                     wrong_cnt = 0;
                     reverse_direction = obj.reverse_step_direction;
@@ -93,9 +105,10 @@ classdef FullChipScanner < Modules.Driver
                     current_movement = obj.current_position_um(axis_num) - initial_position_um(axis_num);
                     for k = 1:ceil(max_steps*checkpoint)
                         obj.stage.lines(axis_num).steps_moved = obj.stage.lines(axis_num).steps_moved + xor(sign(target_movement), reverse_direction);
-                        obj.current_position_um = obj.stage.get_coordinate_um(5);
-                        step_movement = obj.current_position_um(axis_num) - initial_position_um(axis_num)-current_movement; % Position increament of this single step
-                        current_movement = obj.current_position_um(axis_num) - initial_position_um(axis_num);
+                        current_position_um = obj.stage.get_coordinate_um(5);
+                        obj.current_position_um = round(current_position_um);
+                        step_movement = current_position_um(axis_num) - initial_position_um(axis_num)-current_movement; % Position increament of this single step
+                        current_movement = current_position_um(axis_num) - initial_position_um(axis_num);
                         if step_movement*target_movement < 0 || abs(step_movement) < 0.5 % moving toward a wrong direction or the stage is not moving (less than 0.5um)
                             wrong_cnt = wrong_cnt + 1;
                             if wrong_cnt >= max_wrong_cnt
@@ -120,16 +133,24 @@ classdef FullChipScanner < Modules.Driver
             success = true;
         end
         function val = set_x_pos(obj, val, ~)
+            if ~obj.initialized
+                % Disable movement if CommandCenter is not fully initialized
+                return
+            end
             assert(abs(val-obj.prev_x_pos) <= 1, "The full chip scanner can only move one step each time.");
             if abs(val-obj.prev_x_pos) == 1
-                val = val + (obj.prev_x_pos-val)*int8(obj.step_approximate('x', val-obj.prev_x_pos == 1));
+                val = obj.prev_x_pos + (val - obj.prev_x_pos)*int8(obj.step_approximate('x', val-obj.prev_x_pos == 1));
             end
             obj.prev_x_pos = val;
         end
         function val = set_y_pos(obj, val, ~)
+            if ~obj.initialized
+                % Disable movement if CommandCenter is not fully initialized
+                return
+            end
             assert(abs(val-obj.prev_y_pos) <= 1, "The full chip scanner can only move one step each time.");
             if abs(val-obj.prev_y_pos) == 1
-                val = val + (obj.prev_y_pos-val)*int8(obj.step_approximate('y', val-obj.prev_y_pos == 1));
+                val = obj.prev_y_pos + (val - obj.prev_y_pos)*int8(obj.step_approximate('y', val-obj.prev_y_pos == 1));
             end
             obj.prev_y_pos = val;
         end
@@ -231,6 +252,9 @@ classdef FullChipScanner < Modules.Driver
         end
         function update_position(obj, varargin)
             obj.current_position_um = round(obj.stage.get_coordinate_um);
+        end
+        function reload_stage(obj, varargin)
+            obj.stage = Drivers.Attocube.ANC350.instance("18.25.29.30");
         end
     end
         

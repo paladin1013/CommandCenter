@@ -5,4 +5,5 @@ function obj = instance()
         Object = Drivers.FullChipScanner();
     end
     obj = Object;
+    obj.initialized = true;
 end
