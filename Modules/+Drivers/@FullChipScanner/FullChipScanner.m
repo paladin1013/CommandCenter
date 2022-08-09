@@ -12,6 +12,7 @@ classdef FullChipScanner < Modules.Driver
         laser_center = Prefs.DoubleArray([NaN, NaN], 'unit', 'pixel', 'help', 'Laser center relative position in the camera image.'); % Regular 
         set_laser_center = Prefs.Button('set', 'set_laser_center_graphical', 'help', 'Set the relative position of laser center on the current snapped image');
         reverse_step_direction = Prefs.Boolean(true, 'help', 'Check this option if stepping stage forward will result in decreasing of the absolute position.');
+        abort
 
         % camera = Prefs.ModuleInstance(Imaging.Hamamatsu.instance, 'inherits', {'Modules.Imaging'});
         % stage = Prefs.ModuleInstance(Drivers.Attocube.ANC350.instance("18.25.29.30"), 'inherits', {'Modules.Driver'});
@@ -76,40 +77,63 @@ classdef FullChipScanner < Modules.Driver
             obj.current_position_um = round(initial_position_um);
             fprintf("Start moving along %s axis\n", axis_name);
             fprintf("  initial position: (%.2f, %.2f, %.2f)\n", initial_position_um(1), initial_position_um(2), initial_position_um(3));
-            target_position_um = initial_position_um + obj.x_movement_um;
+            if forward
+                target_position_um = initial_position_um + obj.x_movement_um;
+            else
+                target_position_um = initial_position_um - obj.x_movement_um;
+            end
+
             fprintf("  target position: (%.2f, %.2f, %.2f)\n", target_position_um(1), target_position_um(2) , target_position_um(3));
             if ~exist('max_steps', 'var')
                 max_steps = 50;
             end
             if ~exist('max_wrong_cnt', 'var')
                 % reverse the stepping direction after 3 wrong moves.
-                max_wrong_cnt = 3;
+                max_wrong_cnt = 5;
             end
             if ~exist('step_delay_s', 'var')
                 % Time interval between each moving steps
                 step_delay_s = 0.2;
             end
             for checkpoint = [0.5, 1]  % Finish the whole process in how many subroutines (using checkpoint)
-                for axis_num = 1:3
+                obj.stage.set_new_origin(true);
+                for axis_num = 1:2
                     if strcmp(axis_name, 'x') || strcmp(axis_name, 'X')
                         target_movement = obj.x_movement_um(axis_num)*checkpoint;
                     else
                         target_movement = obj.y_movement_um(axis_num)*checkpoint;
                     end
                     if ~forward
-                        target_movement = ~target_movement;
+                        target_movement = -target_movement;
                     end
                     wrong_cnt = 0;
                     reverse_direction = obj.reverse_step_direction;
 
                     current_movement = obj.current_position_um(axis_num) - initial_position_um(axis_num);
                     for k = 1:ceil(max_steps*checkpoint)
-                        obj.stage.lines(axis_num).steps_moved = obj.stage.lines(axis_num).steps_moved + xor(sign(target_movement), reverse_direction);
+                        if reverse_direction
+                            next_steps_moved = obj.stage.lines(axis_num).steps_moved - sign(target_movement);
+                        else
+                            next_steps_moved = obj.stage.lines(axis_num).steps_moved + sign(target_movement);
+                        end
+                        fprintf("Setting line(%d).steps_moved to %d\n", axis_num, next_steps_moved);
+                        obj.stage.lines(axis_num).steps_moved = next_steps_moved;
+                        cnt = 0;
+                        while (obj.stage.lines(axis_num).steps_moved ~= next_steps_moved)
+                            cnt = cnt + 1;
+                            pause(0.01);
+                            if cnt > 100
+                                success = false;
+                                warning("stage.lines is not responding in 1s. Stepping failed.\n");
+                                return;
+                            end
+                        end
                         current_position_um = obj.stage.get_coordinate_um(5);
                         obj.current_position_um = round(current_position_um);
                         step_movement = current_position_um(axis_num) - initial_position_um(axis_num)-current_movement; % Position increament of this single step
                         current_movement = current_position_um(axis_num) - initial_position_um(axis_num);
-                        if step_movement*target_movement < 0 || abs(step_movement) < 0.5 % moving toward a wrong direction or the stage is not moving (less than 0.5um)
+                        fprintf("    target_movement:%f, step_movement:%f, current_movement:%f\n", target_movement, step_movement, current_movement);
+                        if step_movement*target_movement < 0 || abs(step_movement) < 0.3 % moving toward a wrong direction or the stage is not moving (less than 0.5um)
                             wrong_cnt = wrong_cnt + 1;
                             if wrong_cnt >= max_wrong_cnt
                                 reverse_direction = ~reverse_direction;
