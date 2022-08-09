@@ -77,7 +77,7 @@ classdef Hamamatsu < Modules.Imaging
             obj.resolution = res;
             obj.maxROI = [-obj.resolution(1)/2 obj.resolution(1)/2;...
                 -obj.resolution(2)/2 obj.resolution(2)/2]*obj.binning;
-            frameCnt = 0;
+            obj.frameCnt = 0;
         end
     end
     methods(Static)
@@ -165,19 +165,19 @@ classdef Hamamatsu < Modules.Imaging
 
         function set.ImRot90(obj,val)
             obj.ImRot90 = val;
-            if ~isempty(obj.setImRot90)
+            if ~isempty(obj.setImRot90) && isvalid(obj.setImRot90)
                 set(obj.setImRot90,'string',num2str(obj.ImRot90))
             end
         end
         function set.FlipVer(obj,val)
             obj.FlipVer = val;
-            if ~isempty(obj.setFlipVer)
+            if ~isempty(obj.setFlipVer) && isvalid(obj.setFlipVer)
                 set(obj.setFlipVer,'value',logical(obj.FlipVer))
             end
         end
         function set.FlipHor(obj,val)
             obj.FlipHor = val;
-            if ~isempty(obj.setFlipHor)
+            if ~isempty(obj.setFlipHor) && isvalid(obj.setFlipHor)
                 set(obj.setFlipHor,'value',logical(obj.FlipHor))
             end
         end
@@ -196,7 +196,7 @@ classdef Hamamatsu < Modules.Imaging
             obj.core.setProperty('HamamatsuHam_DCAM', 'EMGain',num2str(val))
             % Incase an invalid exposure was set, grab what core set it to
             obj.EMGain = str2double(obj.core.getProperty('HamamatsuHam_DCAM', 'EMGain'));
-            if ~isempty(obj.setEMGain)
+            if ~isempty(obj.setEMGain) && isvalid(obj.setEMGain)
                 set(obj.setEMGain,'string',num2str(obj.EMGain))
             end
             if wasRunning
@@ -218,7 +218,7 @@ classdef Hamamatsu < Modules.Imaging
             obj.core.setExposure(val)
             % Incase an invalid exposure was set, grab what core set it to
             obj.exposure = obj.core.getExposure();
-            if ~isempty(obj.setExposure)
+            if ~isempty(obj.setExposure) && isvalid(obj.setExposure)
                 set(obj.setExposure,'string',num2str(obj.exposure))
             end
             if wasRunning
@@ -245,7 +245,7 @@ classdef Hamamatsu < Modules.Imaging
             res(1) = obj.core.getImageWidth();
             res(2) = obj.core.getImageHeight();
             obj.resolution = res;
-            if ~isempty(obj.setBinning)
+            if ~isempty(obj.setBinning) && isvalid(obj.setBinning)
                 set(obj.setBinning,'string',num2str(obj.binning))
             end
             if wasRunning
@@ -373,8 +373,14 @@ classdef Hamamatsu < Modules.Imaging
             obj.core.startContinuousSequenceAcquisition(100);
         end
         function dat = fetchSnapping(obj)
+            cnt = 0;
             while(obj.core.getRemainingImageCount == 0)
                 pause(0.01);
+                cnt = cnt + 1;
+                if cnt > obj.exposure*1e3/0.01*10 % 10 times of the exposure time
+                    error("fatchSnapping failed: Time limit exceed.");
+                    return;
+                end
             end
             dat = obj.core.popNextImage;
             width = obj.core.getImageWidth();
@@ -392,7 +398,11 @@ classdef Hamamatsu < Modules.Imaging
                 dat = fliplr(dat);
             end
         end
-
+        function stopSnapping(obj)
+            if obj.core.isSequenceRunning
+                obj.core.stopSequenceAcquisition
+            end
+        end
         function snap(obj,hImage)
             % This function calls snapImage and applies to hImage.
             if ~exist('hImage', 'var')
@@ -470,8 +480,10 @@ classdef Hamamatsu < Modules.Imaging
                 return
             end
             obj.core.stopSequenceAcquisition();
-            stop(obj.videoTimer)
-            delete(obj.videoTimer)
+            try
+                stop(obj.videoTimer)
+                delete(obj.videoTimer)
+            end
             obj.continuous = false;
         end
         
@@ -642,7 +654,7 @@ classdef Hamamatsu < Modules.Imaging
             contrast = mean2(dI);
             obj.prevContrast = obj.contrast;
             obj.contrast = contrast;
-            if ~isempty(obj.contrastUI) && isprop(obj.contrastUI, 'String')
+            if ~isempty(obj.contrastUI) && isvalid(obj.contrastUI) && isprop(obj.contrastUI, 'String')
                 obj.contrastUI.String = sprintf("%.2e", contrast);
             end
             obj.brightness = mean2(frame);
@@ -773,6 +785,7 @@ classdef Hamamatsu < Modules.Imaging
             im_x = size(im, 2);
             % Draw a white box directly onto the image
             if x <= im_x
+                
                 im(max(y-template_y, 1):min(y, im_y), x) = 65535;
             end
             if x-template_x >= 1
