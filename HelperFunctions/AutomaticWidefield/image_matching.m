@@ -1,11 +1,12 @@
-function center_pos = image_matching(processed_image, processed_template, show_plots)
+function [center_pos, max_corr] = image_matching(processed_image, processed_template, show_plots)
     % plot: bool
     % ROI: [xmin, xmax; ymin, ymax];
     % processed_image = frame_detection(original_image, true);
     % processed_template = frame_detection(original_template, true);
+    % center_pos: imaging coordinate i.e. (y, x);
 
     xcorr_result = xcorr2(double(processed_image),double(processed_template));
-    [max_val,idx] = max(xcorr_result(:));
+    [max_corr,idx] = max(xcorr_result(:));
     [x,y] = ind2sub(size(xcorr_result),idx);
     center_pos = [x, y];
     if exist('show_plots', 'var') && show_plots

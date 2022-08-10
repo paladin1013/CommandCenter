@@ -571,9 +571,9 @@ classdef MetaStageManager < Base.Manager
                     Target = ms.get_meta_pref('Target');
 
                     try 
-                        emccd = Imaging.Hamamatsu.instance;
+                        ct = Imaging.ChipletTracker.instance
                         if isempty(Target.reference) || ~strcmp(Target.reference.name, 'contrast')
-                            Target.set_reference(emccd.get_meta_pref('contrast'));
+                            Target.set_reference(ct.get_meta_pref('contrast'));
                         end
                     catch
                         counter = Drivers.Counter.instance('APD1', 'CounterSync');
