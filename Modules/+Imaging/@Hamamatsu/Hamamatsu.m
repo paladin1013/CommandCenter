@@ -15,14 +15,7 @@ classdef Hamamatsu < Modules.Imaging
         CamCenterCoord = [0,0] % camera's center of coordinates (in same units as camera calibration, i.e. um)
         data_name = 'Widefield';  % For diamondbase (via ImagingManager)
         data_type = 'General';    % For diamondbase (via ImagingManager)
-        matchTemplate = Prefs.Boolean(true);
-        contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
-        brightness = Prefs.Double(NaN, 'readonly', true, 'help', 'Average value off the intensity of the current image.');
-        brightnessThreshold = Prefs.Double(5000, 'allow_nan', false, 'help', 'Brightness lower than this value will disable the template matching.');
-        offset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.');
-        maxMovement = Prefs.Double(50, 'min', 10, 'max', 100, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.');
-        showFiltered = Prefs.Boolean(false);
-        prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord', 'contrast', 'offset', 'matchTemplate'};
+        prefs = {'binning','exposure','EMGain','ImRot90','FlipVer','FlipHor','CamCenterCoord'};
     end
     properties(Hidden)
         core            % The Micro-Manager core utility (java)
@@ -47,18 +40,7 @@ classdef Hamamatsu < Modules.Imaging
         videoTimer       % Handle to video timer object for capturing frames
         hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
         hManagers       % Handle to CommandCenter managers. Will be set when `focus` is called from the ImagingManager.
-        template = [];
-        snapTemplateUI;
-        setMatchTemplateUI;
         frameCnt = 0;           % Frame num counter for updating pattern detection (in video mode). 
-        prevTemplatePos = []; % 2*2 matrix to store the coordinates of two rounds.
-        templatePos;            % Imaging Coordinates
-        prevCenterPos = [];
-        centerPos;              % Normal Coordinates
-        setMaxMovementUI;
-        setShowFilteredUI;
-        prevContrast;
-        templateCorners;
     end
     
     methods(Access=private)
@@ -84,41 +66,6 @@ classdef Hamamatsu < Modules.Imaging
         obj = instance()
     end
     methods
-        function metric = focus(obj,ax,managers) %#ok<INUSD>
-            if ~exist('managers', 'var')
-                if isempty(obj.hManagers)
-                    error("Please click Auto Focus on the Imaging panel to assign the managers handle");
-                else
-                    managers = obj.hManagers;
-                end
-            else
-                obj.hManagers = managers;
-            end
-
-            ms = managers.MetaStage.active_module;
-
-            Z = ms.get_meta_pref('Z');
-            anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
-            Zline = anc.lines(3);
-            if isempty(Z.reference) || ~strcmp(replace(Z.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, 3)
-                Z.set_reference(Zline.get_meta_pref('steps_moved'));
-            end
-
-
-            Target = ms.get_meta_pref('Target');
-            emccd = Imaging.Hamamatsu.instance;
-            if isempty(Target.reference) || ~strcmp(Target.reference.name, 'contrast')
-                Target.set_reference(emccd.get_meta_pref('contrast'));
-            end
-
-            try
-                obj.stopVideo;
-            catch err
-                warning(err);
-            end
-            managers.MetaStage.optimize('Z', true);
-            metric = Target.read;
-        end
         function load_core_configuration(obj,cfgpath)
             assert(isfile(cfgpath),'File not found')
             obj.core.loadSystemConfiguration(cfgpath);
@@ -290,27 +237,28 @@ classdef Hamamatsu < Modules.Imaging
             delete(obj.core)
         end
 
-        % function metric = focus(obj,ax,Managers)
-%             stageManager = Managers.Stages;
-%             stageManager.update_gui = 'off';
-%    %         oldBin = obj.binning;
-%    %         oldExp = obj.exposure;
-%    %         if oldBin < 3
-%    %             obj.exposure = oldExp*(oldBin/3)^2;
-%    %             obj.binning = 3;
-%    %         end
-%             try
-%                 metric = obj.ContrastFocus(Managers);
-%             catch err
-%                 stageManager.update_gui = 'on';
-%                 rethrow(err)
-%             end
-%    %         if oldBin < 3
-%    %             obj.exposure = oldExp;
-%    %             obj.binning = oldBin;
-%    %         end
-%             stageManager.update_gui = 'on';
-        % end
+        function metric = focus(obj,ax,Managers)
+            warning("This `focus` is deprecated. Please use the Auto Focus in Imaging.ChipletTracker.")
+            stageManager = Managers.Stages;
+            stageManager.update_gui = 'off';
+   %         oldBin = obj.binning;
+   %         oldExp = obj.exposure;
+   %         if oldBin < 3
+   %             obj.exposure = oldExp*(oldBin/3)^2;
+   %             obj.binning = 3;
+   %         end
+            try
+                metric = obj.ContrastFocus(Managers);
+            catch err
+                stageManager.update_gui = 'on';
+                rethrow(err)
+            end
+   %         if oldBin < 3
+   %             obj.exposure = oldExp;
+   %             obj.binning = oldBin;
+   %         end
+            stageManager.update_gui = 'on';
+        end
         function dat = snapImage(obj,binning,exposure)
             % This function returns the image (unlike snap)
             % Default is to use bin of 1. Exposure is configured based on
@@ -414,11 +362,7 @@ classdef Hamamatsu < Modules.Imaging
                 obj.hImage = hImage;
             end
             im = obj.snapImage;
-            if obj.matchTemplate
-                im = obj.updateMatching(flipud(im'), true); % Enable forced update
-            end
             set(hImage,'cdata',im);
-            obj.updateContrast(im);
         end
         function startVideo(obj,hImage)
             if ~exist('hImage', 'var')
@@ -460,15 +404,6 @@ classdef Hamamatsu < Modules.Imaging
                 if obj.FlipHor
                     dat = fliplr(dat);
                 end
-                obj.updateContrast(dat);
-                if obj.matchTemplate 
-                    if obj.contrast > 0.7*obj.prevContrast
-                        % To prevent position shift caused by stage shifting
-                        dat = obj.updateMatching(dat);
-                    elseif obj.showFiltered
-                        dat = frame_detection(dat);
-                    end
-                end
                 set(hImage,'cdata',dat);
             end
             drawnow;
@@ -490,7 +425,7 @@ classdef Hamamatsu < Modules.Imaging
         % Settings and Callbacks
         function settings(obj,panelH, ~, ~)
             spacing = 1.5;
-            num_lines = 7;
+            num_lines = 4;
             line = 1;
             xwidth1 = 14;
             xwidth2 = 10;
@@ -550,45 +485,7 @@ classdef Hamamatsu < Modules.Imaging
                 'units','characters','position',[xwidth1+xwidth2+1 spacing*(num_lines-line) xwidth3 1.25]);
             obj.setCamCenterCoordY = uicontrol(panelH,'style','edit','string',num2str(obj.CamCenterCoord(2)),...
                 'units','characters','callback',@obj.CamCenterCoordYCallback,...
-                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
-
-            line = 5;
-            uicontrol(panelH,'style','text','string','contrast','horizontalalignment','right', ...
-                'units','characters','position',[0 spacing*(num_lines-line) xwidth1 1.25]);
-            obj.contrastUI = uicontrol(panelH,'style','edit','string',num2str(obj.contrast),...
-                'units','characters','enable', 'off',...
-                'horizontalalignment','left','position',[xwidth1+1 spacing*(num_lines-line) xwidth2 1.5]);
-            
-            uicontrol(panelH,'style','text','string','offset','horizontalalignment','right',...
-                'units','characters','position',[xwidth1+xwidth2+1 spacing*(num_lines-line) xwidth3 1.25]);
-            obj.setOffset = uicontrol(panelH,'style','edit','string',num2str(obj.offset),...
-                'units','characters','callback',@obj.setOffsetCallback,...
-                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);
-
-            line = 6;
-            obj.snapTemplateUI = uicontrol(panelH,'style','pushbutton', 'string', 'Snap Template',...
-                'units','characters',...
-                'horizontalalignment','left','position',[3 spacing*(num_lines-line) xwidth1+3 1.5], 'Callback', @(~, ~)obj.snapTemplate);
-            
-            uicontrol(panelH,'style','text','string','Match Template','horizontalalignment','right',...
-                'units','characters','position',[xwidth1+xwidth2 spacing*(num_lines-line) xwidth3+3 1.25]);
-            obj.setMatchTemplateUI = uicontrol(panelH,'style','checkbox','value',obj.matchTemplate,...
-                'units','characters','callback',@obj.setMatchTemplateCallback,...
-                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+4 spacing*(num_lines-line) xwidth4 1.5]);
-
-            line = 7;
-            uicontrol(panelH,'style','text','string','Max Movement','horizontalalignment','right', ...
-                'units','characters','position',[0 spacing*(num_lines-line) xwidth1 1.25]);
-            obj.setMaxMovementUI = uicontrol(panelH,'style','edit','string',num2str(obj.maxMovement),...
-                'units','characters',...
-                'horizontalalignment','left','position',[xwidth1+1 spacing*(num_lines-line) xwidth2 1.5], 'callback', @obj.setMaxMovementCallback);
-
-            uicontrol(panelH,'style','text','string','Show Filterd','horizontalalignment','right',... 
-                'units','characters','position',[xwidth1+xwidth2+1 spacing*(num_lines-line) xwidth3+2 1.25]);
-            obj.setShowFilteredUI = uicontrol(panelH,'style','checkbox','value',obj.showFiltered,...
-                'units','characters','callback',@obj.setShowFilteredCallback,...
-                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+4 spacing*(num_lines-line) xwidth4 1.5]);
-                
+                'horizontalalignment','left','position',[xwidth1+xwidth2+xwidth3+1 spacing*(num_lines-line) xwidth4 1.5]);                
         end
         function exposureCallback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
@@ -614,22 +511,6 @@ classdef Hamamatsu < Modules.Imaging
             obj.CamCenterCoord = cur;
             warning('Need to reset ROI for changes to take effect.')
         end
-        function setOffsetCallback(obj, hObj, eventdata)
-            val = str2num(get(hObj, 'string'));
-            obj.offset = int16(val);
-        end
-        function setMaxMovementCallback(obj, hObj, eventdata)
-            val = str2num(get(hObj, 'string'));
-            obj.maxMovement = val;
-        end
-        function setMatchTemplateCallback(obj, hObj, eventdata)
-            val = get(hObj, 'value');
-            obj.matchTemplate = logical(val);
-        end
-        function setShowFilteredCallback(obj, hObj, eventdata)
-            val = get(hObj, 'value');
-            obj.showFiltered = logical(val);
-        end
         function ImRot90Callback(obj,hObj,eventdata)
             val = str2double((get(hObj,'string')));
             obj.ImRot90 = val;
@@ -640,166 +521,6 @@ classdef Hamamatsu < Modules.Imaging
         end
         function FlipVerCallback(obj,hObj,~)
             obj.FlipVer = get(hObj, 'Value');
-        end
-        function contrast = updateContrast(obj,frame)
-            frame = double(frame);
-            xmin = obj.offset+1;
-            xmax = size(frame, 2)-obj.offset;
-            ymin = obj.offset+1;
-            ymax = size(frame, 1)-obj.offset;
-            image = frame(ymin:ymax,xmin:xmax);
-            imagex = frame(ymin:ymax,xmin+obj.offset:xmax+obj.offset);
-            imagey = frame(ymin+obj.offset:ymax+obj.offset,xmin:xmax);
-            dI = (imagex-image).^2+(imagey-image).^2;
-            contrast = mean2(dI);
-            obj.prevContrast = obj.contrast;
-            obj.contrast = contrast;
-            if ~isempty(obj.contrastUI) && isvalid(obj.contrastUI) && isprop(obj.contrastUI, 'String')
-                obj.contrastUI.String = sprintf("%.2e", contrast);
-            end
-            obj.brightness = mean2(frame);
-        end
-        function snapTemplate(obj, im, templateROI)
-            if ~exist('im', 'var') || isempty(im)
-                im = flipud(transpose(obj.snapImage));
-            end
-            obj.template = frame_detection(im, true);
-            % templateROI?
-            if ~exist('templateROI', 'var') || isempty(templateROI)
-                col_has_val = any(obj.template, 1);
-                row_has_val = any(obj.template, 2);
-                templateROI = [find(col_has_val, 1), find(col_has_val, 1, 'last'); find(row_has_val, 1), find(row_has_val, 1, 'last')];
-            end
-            xmin = templateROI(1, 1);
-            xmax = templateROI(1, 2);
-            ymin = templateROI(2, 1);
-            ymax = templateROI(2, 2);
-            obj.template = obj.template(ymin:ymax, xmin:xmax);
-
-
-            try close(41); catch; end
-            frame_fig = figure(41);
-            frame_fig.Position = [200, 200, 560, 420];
-            frame_ax = axes('Parent', frame_fig);
-            imH = imagesc(frame_ax, obj.template);
-            colormap(frame_ax, 'bone');
-            x_size = size(obj.template, 2);
-            y_size = size(obj.template, 1);
-            if isempty(obj.templateCorners)
-                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
-            else
-                polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
-            end
-            set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
-            imH.ButtonDownFcn = @ROIConfirm;
-            frame_fig.KeyPressFcn = @ROIConfirm;
-            uiwait(frame_fig);
-            obj.templateCorners = round(polyH.Position);
-            delete(polyH);
-            im = obj.drawCorners(obj.template);
-            delete(imH);
-            imH = imagesc(frame_ax, im);
-            set(get(frame_ax, 'XLabel'), 'String', 'x');
-            set(get(frame_ax, 'YLabel'), 'String', 'y');
-            colormap(frame_ax, 'bone');
-        end
-        function im = drawCorners(obj, im, offset, val, radius)
-            if ~exist('offset', 'var')
-                offset = [0, 0];
-            end
-            if ~exist('val', 'var')
-                val = 0;
-            end
-            if ~exist('radius', 'var')
-                radius = 2;
-            end
-            im_y = size(im, 1);
-            im_x = size(im, 2);
-            for k = 1:4
-                corner_y = obj.templateCorners(k, 2)+offset(1);
-                corner_x = obj.templateCorners(k, 1)+offset(2);
-                im(confine(corner_y-radius, 1, im_y):confine(corner_y+radius, 1, im_y), confine(corner_x-radius, 1, im_x):confine(corner_x+radius, 1, im_x)) = val;
-            end
-            function val = confine(val, lower_bound, upper_bound)
-                val = max(min(val, upper_bound), lower_bound);
-            end
-            obj.centerPos = round(mean(obj.templateCorners));
-            im(confine(obj.centerPos(2)+offset(1)-radius, 1, im_y):confine(obj.centerPos(2)+offset(1)+radius, 1, im_y), confine(obj.centerPos(1)+offset(2)-radius, 1, im_x):confine(obj.centerPos(1)+offset(2)+radius, 1, im_x)) = val;
-        end
-        function im = updateMatching(obj, im, forceUpdate)
-            persistent wasBright
-            if ~exist('wasBright', 'var')
-                wasBright = true;
-            end
-            if obj.brightness < obj.brightnessThreshold
-                if wasBright
-                    fprintf("Current brightness %d is lower than its threshold %d. Matching template is temporarily disabled.\n", obj.brightness, obj.brightnessThreshold);
-                end
-                wasBright = false;
-                return;
-            else
-                wasBright = true;
-            end
-
-
-            if ~exist('forceUpdate', 'var')
-                forceUpdate = false;
-            end
-            if isempty(obj.template) || isempty(obj.templateCorners)
-                obj.snapTemplate(im);
-            end
-            
-            processed_im = frame_detection(im, false);
-            matchingPos = image_matching(processed_im, obj.template);
-            % MatchingPos is the top right coner of the template image inserted into the target image.
-            switch size(obj.prevTemplatePos, 1)
-            case 0
-                obj.prevTemplatePos(1, :) = matchingPos;
-                obj.templatePos = matchingPos;
-            case 1
-                if forceUpdate || norm(matchingPos-obj.prevTemplatePos) < obj.maxMovement
-                    obj.templatePos = matchingPos;
-                end
-                obj.prevTemplatePos(2, :) = matchingPos;
-            case 2
-                if forceUpdate || norm(matchingPos - obj.prevTemplatePos(1, :)) < obj.maxMovement && norm(matchingPos - obj.prevTemplatePos(2, :)) < obj.maxMovement 
-                    obj.templatePos = matchingPos;
-                end
-                obj.prevTemplatePos(1, :) = obj.prevTemplatePos(2, :);
-                obj.prevTemplatePos(2, :) = matchingPos;
-            otherwise
-                error(fprintf("size(obj.prevTemplatePos, 1) should be at most 2, but got %d.", size(obj.prevTemplatePos)));
-            end
-
-
-
-            y = obj.templatePos(1);
-            x = obj.templatePos(2);
-            template_y = size(obj.template, 1);
-            template_x = size(obj.template, 2);
-
-            if obj.showFiltered
-                im = processed_im;
-            end
-            im_y = size(im, 1);
-            im_x = size(im, 2);
-            % Draw a white box directly onto the image
-            if x <= im_x
-                
-                im(max(y-template_y, 1):min(y, im_y), x) = 65535;
-            end
-            if x-template_x >= 1
-            im(max(y-template_y, 1):min(y, im_y), x-template_x) = 65535;
-            end
-            if y <= im_y
-                im(y, max(x-template_x, 1):min(x, im_x)) = 65535;
-            end
-            if y-template_y >= 1
-                im(y-template_y, max(x-template_x, 1):min(x, im_x)) = 65535;
-            end
-
-            im = obj.drawCorners(im, obj.templatePos-size(obj.template), 65535);
-
         end
     end
 end

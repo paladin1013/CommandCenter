@@ -93,14 +93,14 @@ classdef MetaStage < Base.Module
             end
             if strcmp(obj.get_meta_pref('Target').reference.name, 'contrast') 
                 % For Hamamatsu emccd
-                emccd = obj.get_meta_pref('Target').reference.parent;
-                running = emccd.continuous;
+                chiplet_tracker = obj.get_meta_pref('Target').reference.parent;
+                running = chiplet_tracker.continuous;
                 if running 
                     if check_call_stack_func('grabFrame')
-                        error("The optimization callback is interupting the timer function. Please stop the Hamamatsu EMCCD continuous mode and then start the optimization again.");
+                        error("The optimization callback is interupting the timer function. Please stop the ChipletTracker continuous mode and then start the optimization again.");
                     end
                 else
-                    emccd.startVideo;
+                    chiplet_tracker.startVideo;
                 end
             end
         end
