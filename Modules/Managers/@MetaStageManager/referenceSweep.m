@@ -47,7 +47,6 @@ function result = referenceSweep(obj, sweepAxes, sweepPoints, observeAxes, plotR
 
     if Nsweep == 1
         if plotResult
-            try close(20); catch; end
             fig = figure(20);
             fig.NumberTitle = 'off';
             fig.Name = 'Reference sweep result';

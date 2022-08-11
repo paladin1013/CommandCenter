@@ -210,7 +210,6 @@ classdef ChipletTracker < Modules.Imaging
             end
             [template, segments] = obj.processor.processImage(im, struct('pixelThresRatio', 1, 'display', 'Raw')); % When snapping the template, only keep the maximal segment.
             obj.template = segments{1}.image;
-            try close(41); catch; end
             frame_fig = figure(41);
             frame_fig.Position = [200, 200, 560, 420];
             frame_ax = axes('Parent', frame_fig);

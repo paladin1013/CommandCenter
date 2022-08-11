@@ -12,9 +12,12 @@ classdef ImageProcessor < Modules.Driver
         plotAllIntermediate = Prefs.Boolean(false, 'help', 'Whether to display the intermediate filtered results.')
         waveguideWidth_pixel = Prefs.Integer(5, 'unit', 'pixel', 'min', 1, 'max', 20, 'help', 'Width of the waveguide in each chiplet. Used for angle detection.')
         angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position.')
+        cornerLengthRatio = Prefs.Integer(6, 'allow_nan', false, 'min', 1, 'max', 10, 'help', 'When doing corner detection, the ratio between edge length and width.')
+        showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
     end
     properties
         prefs = {'bin1ThresRatio','cutoffLow','cutoffHigh','bin2ThresRatio','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'angle_deg'};
+        angleCalibrated = false;
     end
     properties(Constant)
         displayTypes = {'Raw', 'Binarized 1', 'Bandpass filtered', 'Binarized 2', 'Removed small components', 'Connected', 'Chiplets selected'};
@@ -25,6 +28,7 @@ classdef ImageProcessor < Modules.Driver
     methods(Access = private)
         function obj = ImageProcessor()
             obj.loadPrefs;
+            obj.angleCalibrated = false;
         end
     end
     methods
@@ -107,10 +111,6 @@ classdef ImageProcessor < Modules.Driver
             [selectedImage, segments] = obj.selectSegments(closedImage);
 
             if obj.plotAllIntermediate
-                try 
-                    close(5);
-                catch
-                end
                 fig = figure(5);
                 % Displaying Input Image and Output Image
                 subplot(2, 3, 1), imshow(inputImage), set(get(gca, 'Title'), 'String', 'Input image');
@@ -121,6 +121,14 @@ classdef ImageProcessor < Modules.Driver
                 subplot(2, 3, 6), imshow(selectedImage), set(get(gca, 'Title'), 'String', sprintf("Imclose disk radius: %d\nKeep biggest component", diskRadius));
             end
         
+            
+            if isempty(obj.angle_deg) || isnan(obj.angle_deg) || ~obj.angleCalibrated
+                obj.getAngle(segments, true);
+            end
+            segments = obj.detectCorners(segments);
+
+
+
             switch display
             case Drivers.ImageProcessor.displayTypes{1}
                 displayImage = inputImage;
@@ -137,15 +145,12 @@ classdef ImageProcessor < Modules.Driver
             case Drivers.ImageProcessor.displayTypes{7}
                 displayImage = selectedImage;
             end
-
             % Normalize displayImage to uint16
             displayImage = double(displayImage);
             minVal = min(displayImage(:));
             maxVal = max(displayImage(:));
             displayImage = uint16((displayImage-minVal)*65535/(maxVal-minVal));
-            if isempty(obj.angle_deg) || isnan(obj.angle_deg)
-                obj.getAngle(segments, true);
-            end
+            
         end
 
         function im = binarize(obj, im, thresRatio)
@@ -220,28 +225,26 @@ classdef ImageProcessor < Modules.Driver
             processedImage = zeros(size_y, size_x);
             segments = cell(1, n_valid_sections);
             for k = 1:n_valid_sections
-                segIm = zeros(size_y, size_x);
-                segIm(CC.PixelIdxList{idx(k)}) = 1;
-                col_has_val = any(segIm, 1);
-                row_has_val = any(segIm, 2);
-                segROI = [find(col_has_val, 1), find(col_has_val, 1, 'last'); find(row_has_val, 1), find(row_has_val, 1, 'last')];
-                xmin = segROI(1, 1);
-                xmax = segROI(1, 2);
-                ymin = segROI(2, 1);
-                ymax = segROI(2, 2);
-                segIm = segIm(ymin:ymax, xmin:xmax);
+                [ys, xs] = ind2sub([size_y, size_x], CC.PixelIdxList{idx(k)});
+                xmin = min(xs);
+                xmax = max(xs);
+                ymin = min(ys);
+                ymax = max(ys);
+                segIm = zeros(ymax-ymin+1, xmax-xmin+1);
+                inds = sub2ind([ymax-ymin+1, xmax-xmin+1], ys-ymin+1, xs-xmin+1);
+                segIm(inds) = 1;
                 segment = struct('ymin', ymin, 'xmin', xmin, 'image', segIm);
                 segments{k} = segment;
                 processedImage(CC.PixelIdxList{idx(k)}) = 1;
             end
         end
 
-        function angle = getAngle(obj, segments, plotCurve, resolution_deg)
+        function angle = getAngle(obj, segments, showPlots, resolution_deg)
             if ~exist('resolution_deg', 'var')
                 resolution_deg = 0.1;
             end
-            if ~exist('plotCurve', 'var')
-                plotCurve = false;
+            if ~exist('showPlots', 'var')
+                showPlots = false;
             end
             nSegments = length(segments);
             angles = [-90:resolution_deg:90];
@@ -262,27 +265,100 @@ classdef ImageProcessor < Modules.Driver
             [maxVar, idx] = max(meanVars);
             angle = angles(idx);
             obj.angle_deg = angle;
-            if plotCurve
-                try
-                    close(7);
-                catch
-                end
+            if showPlots
                 fig = figure(7);
+                fig.Position = [100, 100, 900, 250*(nSegments)];
                 for k = 1:nSegments
-                    s1 = subplot(nSegments, 2, 1+2*(k-1));
+                    s1 = subplot(nSegments, 3, 1+3*(k-1));
                     imshow(segments{k}.image);
-                    s2 = subplot(nSegments, 2, 2*k);
+                    s2 = subplot(nSegments, 3, 2+3*(k-1));
                     imshow(imrotate(segments{k}.image, -angle, 'crop'));
                 end
-                try
-                    close(8);
-                catch
-                end
-                fig = figure(8);
-                ax = axes('Parent', fig);
-                plot(ax, angles, meanVars);
-                xlim(ax, [-90, 90]);
+                s = subplot(nSegments, 3, 3);
+                s.Position = [0.7, 0.1, 0.25, 0.8];
+                plot(s, angles, meanVars);
+                xlim(s, [-90, 90]);
+                set(get(gca, 'XLabel'), 'String', 'Offset angle (deg)');
+                set(get(gca, 'YLabel'), 'String', 'Variance');
             end 
+            obj.angleCalibrated = true;
+        end
+        function segments = detectCorners(obj, segments, showPlots) % `Corners` are in image coordinates (y, x)
+            if isempty(obj.angle_deg) || isnan(obj.angle_deg)
+                obj.getAngle(segments, true);
+            end
+            nSegments = length(segments);
+            corners = cell(1, 4);
+                % 1: top left (closest to (1, 1));
+                % 2: bottom left (y_size, 1); 
+                % 3: bottom right (y_size, x_size);
+                % 4: top right (1, x_size);
+
+                %     ^    1 ----------------------------------- 4
+                %     1      | (1, 1)              (1, x_size) |
+                %     |      |                                 |
+                %     |      |                                 |
+                %     |      |                                 |
+                %     |      |                                 |
+                %     y      |                                 |
+                %     |      |                                 |
+                %     |      |                                 |
+                %     |      |                                 |
+                %     |      |                                 |
+                %  y_size    |                                 |
+                %     v      | (y_size, 1)    (y_size, x_size) |
+                %          2 ----------------------------------- 3
+                
+                %           < 1 ---------  x  ------- x_size  >
+
+            angles = [0, 90, 180, 270]; % Positive: counter clockwise
+            w = obj.waveguideWidth_pixel;
+            lr = obj.cornerLengthRatio; % (length ratio) How many times corner edges are longer than its width 
+            cornerIm = zeros((2*lr+1)*w);
+            % cornerIm(lr*w+1:(lr+1)*w, lr*w+1:(lr+1)*w) = 1; % Center
+            cornerIm((lr+1)*w+1:(2*lr+1)*w, lr*w+1:(lr+1)*w) = 1; % lower edge
+            cornerIm(lr*w+1:(lr+1)*w, (lr+1)*w+1:(2*lr+1)*w) = 1; % right edge
+
+            cornerIm(1:lr*w, lr*w+1:(lr+1)*w) = -1; % upper edge
+            cornerIm(lr*w+1:(lr+1)*w, 1:lr*w) = -1; % left edge
+
+            if exist('showPlots', 'var') && showPlots
+                fig = figure(9);
+                fig.Position = [100, 100, 1200, 600];
+                subplot(nSegments+1, 5, 1);
+                imshow(cornerIm, []);
+                % colormap('jet');
+                for l = 1:4
+                    s = subplot(nSegments+1, 5, l+1);
+                    imshow(imrotate(cornerIm, obj.angle_deg+angles(l), 'crop'), []);
+                    % colormap('jet');
+                end
+            end
+
+            for k = 1:nSegments
+                segIm = segments{k}.image;
+                if exist('showPlots', 'var') && showPlots
+
+                    identityMask = zeros((2*lr+1)*w);
+                    identityMask(lr*w+round(w/2), lr*w+round(w/2)) = 1;
+                    
+                    subplot(nSegments+1, 5, 5*k+1);
+                    imshow(xcorr2(segIm, identityMask), []);
+                end
+                for l = 1:4
+                    corrResult = xcorr2(segIm, imrotate(cornerIm, obj.angle_deg+angles(l), 'crop'));
+                    avg = mean2(corrResult);
+                    [maxVal, maxIdx] = max(corrResult(:));
+                    [maxy, maxx] = ind2sub(size(corrResult), maxIdx);
+                    corners{l} = struct('x', maxx, 'y', maxy, 'val', maxVal);
+                    segments{k}.corners = corners;
+                    if exist('showPlots', 'var') && showPlots
+                        subplot(nSegments+1, 5, 5*k+l+1);
+                        imshow(corrResult, []);
+                        set(get(gca, 'XLabel'), 'String', sprintf("avg: %f\nmax: %f\n", avg, maxVal));
+                    end
+                end
+            end
         end
     end
 end
