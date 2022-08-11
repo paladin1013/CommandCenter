@@ -141,7 +141,6 @@ classdef ChipletTracker < Modules.Imaging
             end
             im = obj.snapImage;
             obj.updateContrast(im);
-            im = flipud(im');
             if obj.matchTemplate
                 im = obj.updateMatching(im, true); % Enable forced update
             end
@@ -160,25 +159,28 @@ classdef ChipletTracker < Modules.Imaging
             obj.videoTimer = timer('tag','Video Timer',...
                                 'ExecutionMode','FixedSpacing',...
                                 'BusyMode','drop',...
-                                'Period', obj.camera.exposure/1e3,...
+                                'Period', obj.exposure_ms/1e3/2,...
                                 'TimerFcn',{@obj.grabFrame,hImage}); % Use exposure time as timer period to detect the frame update
             start(obj.videoTimer)
             obj.continuous = true;
         end
         function grabFrame(obj,~,~,hImage)
             % Timer Callback for frame acquisition
-            dat = obj.camera.fetchSnapping;
-            obj.camera.startSnapping; % To save time
-            dat = flipud(dat');
+            dat = obj.camera.fetchSnapping(0, true);
+            if isempty(dat)
+                return
+            end
+            % obj.camera.startSnapping; % To save time
             obj.updateContrast(dat);
+
             if obj.matchTemplate 
                 if obj.contrast > 0.7*obj.prevContrast
                     % To prevent position shift caused by stage shifting
-                    dat = obj.updateMatching(dat);
+                    dat = obj.updateMatching(dat); % 0.1s
                 end
             end
             set(hImage,'cdata',dat);
-            drawnow;
+            drawnow; % 0.1s
         end
         function stopVideo(obj)
             obj.camera.stopSnapping;
@@ -204,29 +206,29 @@ classdef ChipletTracker < Modules.Imaging
         end
         function snapTemplate(obj, im)
             if ~exist('im', 'var') || isempty(im)
-                im = flipud(transpose(obj.snapImage));
-                [template, segments] = obj.processor.processImage(im, struct('pixelThresRatio', 1, 'display', 'Raw')); % When snapping the template, only keep the maximal segment.
-                obj.template = segments{1}.im;
-                try close(41); catch; end
-                frame_fig = figure(41);
-                frame_fig.Position = [200, 200, 560, 420];
-                frame_ax = axes('Parent', frame_fig);
-                imH = imagesc(frame_ax, obj.template);
-                colormap(frame_ax, 'bone');
-                x_size = size(obj.template, 2);
-                y_size = size(obj.template, 1);
-                if isempty(obj.templateCorners)
-                    polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
-                else
-                    polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
-                end
-                set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
-                imH.ButtonDownFcn = @ROIConfirm;
-                frame_fig.KeyPressFcn = @ROIConfirm;
-                uiwait(frame_fig);
-                obj.templateCorners = round(polyH.Position);
-                delete(polyH);
+                im = obj.snapImage;
             end
+            [template, segments] = obj.processor.processImage(im, struct('pixelThresRatio', 1, 'display', 'Raw')); % When snapping the template, only keep the maximal segment.
+            obj.template = segments{1}.image;
+            try close(41); catch; end
+            frame_fig = figure(41);
+            frame_fig.Position = [200, 200, 560, 420];
+            frame_ax = axes('Parent', frame_fig);
+            imH = imagesc(frame_ax, obj.template);
+            colormap(frame_ax, 'bone');
+            x_size = size(obj.template, 2);
+            y_size = size(obj.template, 1);
+            if isempty(obj.templateCorners)
+                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
+            else
+                polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
+            end
+            set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
+            imH.ButtonDownFcn = @ROIConfirm;
+            frame_fig.KeyPressFcn = @ROIConfirm;
+            uiwait(frame_fig);
+            obj.templateCorners = round(polyH.Position);
+            delete(polyH);
         end
         function display_im = updateMatching(obj, im, forceUpdate)
             persistent wasBright
@@ -252,7 +254,6 @@ classdef ChipletTracker < Modules.Imaging
             if isempty(obj.template) || isempty(obj.templateCorners)
                 obj.snapTemplate(im);
             end
-
             [display_im, segments] = obj.processor.processImage(im);
             % [processed_im, segment_images] = frame_detection(im, false, struct('pixel_thres_ratio', obj.pixelThresRatio));
             

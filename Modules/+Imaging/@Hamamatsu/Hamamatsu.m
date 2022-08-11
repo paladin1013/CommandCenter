@@ -294,7 +294,7 @@ classdef Hamamatsu < Modules.Imaging
             height = obj.core.getImageHeight();
             dat = typecast(dat, 'uint16');
             dat = reshape(dat, [width, height]);
-            im = flipud(transpose(dat));  % Fix Y inversion
+            dat = flipud(transpose(dat));  % Fix Y inversion
             if obj.ImRot90 > 0
                 dat = rot90(dat,obj.ImRot90);
             end
@@ -320,22 +320,38 @@ classdef Hamamatsu < Modules.Imaging
             end
             obj.core.startContinuousSequenceAcquisition(100);
         end
-        function dat = fetchSnapping(obj)
-            cnt = 0;
+        function dat = fetchSnapping(obj, timeout_s, no_stop)
+            time = 0;
             while(obj.core.getRemainingImageCount == 0)
-                pause(0.01);
-                cnt = cnt + 1;
-                if cnt > obj.exposure*1e3/0.01*10 % 10 times of the exposure time
-                    error("fatchSnapping failed: Time limit exceed.");
-                    return;
+                time = time + 0.01;
+                if exist('timeout_s', 'var')
+                    if time > timeout_s
+                        dat = [];
+                        return
+                    end
                 end
             end
-            dat = obj.core.popNextImage;
+            try
+                dat = obj.core.popNextImage;
+            catch err
+                warning(fprintf("Error fetching EMCCD image: %s\n"), err.message);
+                obj.startSnapping;
+                while(obj.core.getRemainingImageCount == 0)
+                    pause(0.01);
+                end
+                dat = obj.core.popNextImage;
+            end
+
             width = obj.core.getImageWidth();
             height = obj.core.getImageHeight();
-            obj.core.stopSequenceAcquisition;
+
+            if ~exist('no_stop', 'var') || no_stop == false 
+                obj.core.stopSequenceAcquisition;
+            end
             dat = typecast(dat, 'uint16');
             dat = reshape(dat, [width, height]);
+            dat = flipud(transpose(dat));
+
             if obj.ImRot90 > 0
                 dat = rot90(dat,obj.ImRot90);
             end

@@ -10,9 +10,11 @@ classdef ImageProcessor < Modules.Driver
         pixelThresRatio = Prefs.Double(0.5, 'min', 0, 'max', 1, 'help', 'When filtering the image, only components with pixel number larger than this ratio (against the largest component) will be kept. 1 if the largest is kept.');
         display = Prefs.MultipleChoice('Raw', 'allow_empty', false, 'choices', Drivers.ImageProcessor.displayTypes);
         plotAllIntermediate = Prefs.Boolean(false, 'help', 'Whether to display the intermediate filtered results.')
+        waveguideWidth_pixel = Prefs.Integer(5, 'unit', 'pixel', 'min', 1, 'max', 20, 'help', 'Width of the waveguide in each chiplet. Used for angle detection.')
+        angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position.')
     end
     properties
-        prefs = {'bin1ThresRatio','cutoffLow','cutoffHigh','bin2ThresRatio','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate'};
+        prefs = {'bin1ThresRatio','cutoffLow','cutoffHigh','bin2ThresRatio','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'angle_deg'};
     end
     properties(Constant)
         displayTypes = {'Raw', 'Binarized 1', 'Bandpass filtered', 'Binarized 2', 'Removed small components', 'Connected', 'Chiplets selected'};
@@ -27,7 +29,6 @@ classdef ImageProcessor < Modules.Driver
     end
     methods
         function [displayImage, segments] = processImage(obj, inputImage, args)
-
             % Parse args
             if exist('args', 'var') && isfield(args, 'bin1ThresRatio')
                 bin1ThresRatio = args.bin1ThresRatio;
@@ -142,6 +143,9 @@ classdef ImageProcessor < Modules.Driver
             minVal = min(displayImage(:));
             maxVal = max(displayImage(:));
             displayImage = uint16((displayImage-minVal)*65535/(maxVal-minVal));
+            if isempty(obj.angle_deg) || isnan(obj.angle_deg)
+                obj.getAngle(segments, true);
+            end
         end
 
         function im = binarize(obj, im, thresRatio)
@@ -230,6 +234,55 @@ classdef ImageProcessor < Modules.Driver
                 segments{k} = segment;
                 processedImage(CC.PixelIdxList{idx(k)}) = 1;
             end
+        end
+
+        function angle = getAngle(obj, segments, plotCurve, resolution_deg)
+            if ~exist('resolution_deg', 'var')
+                resolution_deg = 0.1;
+            end
+            if ~exist('plotCurve', 'var')
+                plotCurve = false;
+            end
+            nSegments = length(segments);
+            angles = [-90:resolution_deg:90];
+            nAngles = length(angles);
+            vars = zeros(nSegments, nAngles);
+            for k = 1:nSegments
+                segIm = segments{k}.image;
+                segY = size(segIm, 1);
+                segX = size(segIm, 2);
+                line_im = ones(obj.waveguideWidth_pixel, segX);
+                for l = 1:nAngles
+                    deg = angles(l);
+                    segImRotated = imrotate(segIm, -deg, 'crop');
+                    vars(k, l) = var(conv2(segImRotated, line_im, 'valid'), 0, 'all');
+                end
+            end
+            meanVars = mean(vars, 1);
+            [maxVar, idx] = max(meanVars);
+            angle = angles(idx);
+            obj.angle_deg = angle;
+            if plotCurve
+                try
+                    close(7);
+                catch
+                end
+                fig = figure(7);
+                for k = 1:nSegments
+                    s1 = subplot(nSegments, 2, 1+2*(k-1));
+                    imshow(segments{k}.image);
+                    s2 = subplot(nSegments, 2, 2*k);
+                    imshow(imrotate(segments{k}.image, -angle, 'crop'));
+                end
+                try
+                    close(8);
+                catch
+                end
+                fig = figure(8);
+                ax = axes('Parent', fig);
+                plot(ax, angles, meanVars);
+                xlim(ax, [-90, 90]);
+            end 
         end
     end
 end
