@@ -1,10 +1,9 @@
 classdef ImageProcessor < Modules.Driver
     % ImageProcessor for chiplet recognition: take the raw image & template as input, and give processed image with matched positions as output. 
     properties(SetObservable, GetObservable)
-        bin1ThresRatio = Prefs.Double(0.14, 'min', 0, 'max', 1, 'help', 'First binarize filter: pixels with value lower than this ratio threshold will be discarded.');
-        cutoffLow = Prefs.Double(20, 'min', 0, 'max', 100, 'help', 'Filter lowerbound in the Fourier plane.');
+        binarizeThresRatio = Prefs.Double(0.1, 'min', 0, 'max', 1, 'help', 'Binarize filters: pixels with value lower than this ratio threshold will be discarded.');
+        cutoffLow = Prefs.Double(10, 'min', 0, 'max', 100, 'help', 'Filter lowerbound in the Fourier plane.');
         cutoffHigh = Prefs.Double(80, 'min', 50, 'max', 150, 'help', 'Filter upperbound in the Fourier plane.');
-        bin2ThresRatio = Prefs.Double(0.14, 'min', 0, 'max', 1, 'help', 'First binarize filter: pixels with value lower than this ratio threshold will be discarded.');
         minPixel = Prefs.Integer(300, 'min', 0, 'max', 1000, 'help', 'Islands with connected pixel number less than this value will be discarded (when applying imopen).');
         diskRadius = Prefs.Integer(3, 'min', 0, 'max', 5, 'help', 'Disk radius when applying imclose. Gaps thinner than this value will be filled.');
         pixelThresRatio = Prefs.Double(0.5, 'min', 0, 'max', 1, 'help', 'When filtering the image, only components with pixel number larger than this ratio (against the largest component) will be kept. 1 if the largest is kept.');
@@ -16,7 +15,7 @@ classdef ImageProcessor < Modules.Driver
         showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
     end
     properties
-        prefs = {'bin1ThresRatio','cutoffLow','cutoffHigh','bin2ThresRatio','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'angle_deg'};
+        prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'angle_deg'};
         angleCalibrated = false;
     end
     properties(Constant)
@@ -34,15 +33,10 @@ classdef ImageProcessor < Modules.Driver
     methods
         function [displayImage, segments] = processImage(obj, inputImage, args)
             % Parse args
-            if exist('args', 'var') && isfield(args, 'bin1ThresRatio')
-                bin1ThresRatio = args.bin1ThresRatio;
+            if exist('args', 'var') && isfield(args, 'binarizeThresRatio')
+                binarizeThresRatio = args.binarizeThresRatio;
             else
-                bin1ThresRatio = obj.bin1ThresRatio;
-            end
-            if exist('args', 'var') && isfield(args, 'bin2ThresRatio')
-                bin2ThresRatio = args.bin2ThresRatio;
-            else
-                bin2ThresRatio = obj.bin2ThresRatio;
+                binarizeThresRatio = obj.binarizeThresRatio;
             end
             if exist('args', 'var') && isfield(args, 'cutoffLow')
                 cutoffLow = args.cutoffLow;
@@ -93,13 +87,13 @@ classdef ImageProcessor < Modules.Driver
             end
 
             % First binarization
-            bin1Image = obj.binarize(inputImage, obj.bin1ThresRatio)*65535;
+            bin1Image = obj.binarize(inputImage)*65535;
 
             % 2D bandpass filter
             filteredImage = obj.bandpassFilter(bin1Image);
 
             % Second binarization (slightly different from the first: image contains negative part)
-            bin2Image = obj.binarize(filteredImage, obj.bin2ThresRatio);
+            bin2Image = obj.binarize(filteredImage);
 
             % Imopen
             openedImage = bwareaopen(bin2Image, minPixel);
@@ -114,9 +108,9 @@ classdef ImageProcessor < Modules.Driver
                 fig = figure(5);
                 % Displaying Input Image and Output Image
                 subplot(2, 3, 1), imshow(inputImage), set(get(gca, 'Title'), 'String', 'Input image');
-                subplot(2, 3, 2), imshow(bin1Image), set(get(gca, 'Title'), 'String', sprintf("Binarized thres ratio: %.2f", bin1ThresRatio));
+                subplot(2, 3, 2), imshow(bin1Image), set(get(gca, 'Title'), 'String', sprintf("Binarized thres ratio: %.2f", binarizeThresRatio));
                 subplot(2, 3, 3), imshow(filteredImage, []), set(get(gca, 'Title'), 'String', sprintf("2D bandpass filter\ncutoff: [%d, %d]", cutoffHigh, cutoffLow));
-                subplot(2, 3, 4), imshow(bin2Image), set(get(gca, 'Title'), 'String', sprintf("Binarized thres ratio: %.2f", bin2ThresRatio));
+                subplot(2, 3, 4), imshow(bin2Image), set(get(gca, 'Title'), 'String', sprintf("Binarized thres ratio: %.2f", binarizeThresRatio));
                 subplot(2, 3, 5), imshow(openedImage), set(get(gca, 'Title'), 'String', sprintf("Imopen min pixel: %d", minPixel));
                 subplot(2, 3, 6), imshow(selectedImage), set(get(gca, 'Title'), 'String', sprintf("Imclose disk radius: %d\nKeep biggest component", diskRadius));
             end
@@ -164,6 +158,9 @@ classdef ImageProcessor < Modules.Driver
         end
 
         function im = binarize(obj, im, thresRatio)
+            if ~exist('thresRatio', 'var')
+                thresRatio = obj.binarizeThresRatio;
+            end 
             n_pixel = numel(im);
             maxVal = double(max(im(:)));
             minVal = double(min(im(:)));
@@ -275,7 +272,7 @@ classdef ImageProcessor < Modules.Driver
             [maxVar, idx] = max(meanVars);
             angle = angles(idx);
             obj.angle_deg = angle;
-            if showPlots
+            if showPlots && nSegments >= 1
                 fig = figure(7);
                 fig.Position = [100, 100, 900, 250*(nSegments)];
                 for k = 1:nSegments
@@ -294,10 +291,14 @@ classdef ImageProcessor < Modules.Driver
             obj.angleCalibrated = true;
         end
         function segments = detectCorners(obj, segments, showPlots) % `Corners` are in image coordinates (y, x)
+            nSegments = length(segments);
+            if nSegments == 0
+                return
+            end
+            
             if isempty(obj.angle_deg) || isnan(obj.angle_deg)
                 obj.getAngle(segments, true);
             end
-            nSegments = length(segments);
             corners = cell(1, 4);
                 % 1: top left (closest to (1, 1));
                 % 2: bottom left (y_size, 1); 
@@ -362,10 +363,6 @@ classdef ImageProcessor < Modules.Driver
                     subplot(nSegments+1, 5, 5*k+1);
                     imshow(xcorr2(segIm, identityMask), []);
                 end
-                % The corner area of `cornerMask` is 1 and the rest is 0.
-                segSizeX = size(segIm, 2);
-                segSizeY = size(segIm, 1);
-                cornerMask = zeros(segSizeY, segSizeX);
                 for l = 1:4
                     corrResult = xcorr2(segIm, imrotate(cornerIm, obj.angle_deg+angles(l), 'crop'));
                     avg = mean2(corrResult);
@@ -379,27 +376,48 @@ classdef ImageProcessor < Modules.Driver
                     cornerX = maxX-cornerImCenterOffset+1;
                     cornerY = maxY-cornerImCenterOffset+1;
 
+                    corners{l} = struct('x', cornerX, 'y', cornerY, 'val', maxVal, 'valid', true);
+                    segments{k}.corners = corners;
+                end
+            end
+            
+
+            % Add cornerMask to each segment for display
+            for k = 1:nSegments
+                segIm = segments{k}.image;
+
+                segSizeX = size(segIm, 2);
+                segSizeY = size(segIm, 1);
+                % The corner area of `cornerMask` is 1 and the rest is 0.
+                cornerMask = zeros(segSizeY, segSizeX);
+                for l = 1:4
+                    corner = segments{k}.corners{l};
+                    if ~corner.valid % Not a valid corner. Skip adding masks
+                        continue;
+                    end
+                    cornerX = corner.x;
+                    cornerY = corner.y;
                     % Relative overlap coordinate of segment image
-                    segOverlapXmin = max(1, maxX-cornerImSize+1);
-                    segOverlapXmax = min(segSizeX, maxX);
-                    segOverlapYmin = max(1, maxY-cornerImSize+1);
-                    segOverlapYmax = min(segSizeY, maxY);
+                    segOverlapXmin = max(1, cornerX+cornerImCenterOffset-1-cornerImSize+1);
+                    segOverlapXmax = min(segSizeX, cornerX+cornerImCenterOffset-1);
+                    segOverlapYmin = max(1, cornerY+cornerImCenterOffset-1-cornerImSize+1);
+                    segOverlapYmax = min(segSizeY, cornerY+cornerImCenterOffset-1);
 
                     % Relative overlap coordinate of corner image
                     tempCornerIm = imrotate(cornerImPositive, obj.angle_deg+angles(l), 'crop');
-                    cornerOverlapXmin = max(1, cornerImSize-maxX+1);
-                    cornerOverlapXmax = min(cornerImSize, cornerImSize-(maxX-segSizeX));
-                    cornerOverlapYmin = max(1, cornerImSize-maxY+1);
-                    cornerOverlapYmax = min(cornerImSize, cornerImSize-(maxY-segSizeY));
+                    cornerOverlapXmin = max(1, cornerImSize-(cornerX+cornerImCenterOffset-1)+1);
+                    cornerOverlapXmax = min(cornerImSize, cornerImSize-(cornerX+cornerImCenterOffset-1-segSizeX));
+                    cornerOverlapYmin = max(1, cornerImSize-(cornerY+cornerImCenterOffset-1)+1);
+                    cornerOverlapYmax = min(cornerImSize, cornerImSize-(cornerY+cornerImCenterOffset-1-segSizeY));
                     cornerMask(segOverlapYmin:segOverlapYmax, segOverlapXmin:segOverlapXmax) = ...
                         or(cornerMask(segOverlapYmin:segOverlapYmax, segOverlapXmin:segOverlapXmax), ...
-                        tempCornerIm(cornerOverlapYmin:cornerOverlapYmax, cornerOverlapXmin:cornerOverlapXmax)) ;
-                    cornerMask(confine(cornerY-1, 1, segSizeY):confine(cornerY+1, 1, segSizeY), confine(cornerX-1, 1, segSizeX):confine(cornerX+1, 1, segSizeX)) = 0;
-                    corners{l} = struct('x', cornerX, 'y', cornerY, 'val', maxVal);
-                    segments{k}.corners = corners;
+                        tempCornerIm(cornerOverlapYmin:cornerOverlapYmax, cornerOverlapXmin:cornerOverlapXmax)) ; % Add corners
+                    cornerMask(confine(cornerY-1, 1, segSizeY):confine(cornerY+1, 1, segSizeY), confine(cornerX-1, 1, segSizeX):confine(cornerX+1, 1, segSizeX)) = 0; % Add dots
                 end
                 segments{k}.cornerMask = cornerMask;
+
             end
+
         end
     end
 end

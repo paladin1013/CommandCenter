@@ -43,6 +43,8 @@ classdef ChipletTracker < Modules.Imaging
             obj.loadPrefs;
             obj.frameCnt = 0;
             obj.continuous = false;
+            obj.camera = Imaging.Hamamatsu.instance;
+            obj.processor = Drivers.ImageProcessor.instance;
             obj.ROI = obj.camera.ROI;
             obj.maxROI = obj.camera.maxROI;
             obj.resolution = obj.camera.resolution;
@@ -209,6 +211,9 @@ classdef ChipletTracker < Modules.Imaging
                 im = obj.snapImage;
             end
             [template, segments] = obj.processor.processImage(im, struct('pixelThresRatio', 1, 'display', 'Raw')); % When snapping the template, only keep the maximal segment.
+            if isempty(segments)
+                return;
+            end
             obj.template = segments{1}.image;
             frame_fig = figure(41);
             frame_fig.Position = [200, 200, 560, 420];
