@@ -334,7 +334,7 @@ classdef Hamamatsu < Modules.Imaging
             try
                 dat = obj.core.popNextImage;
             catch err
-                warning(fprintf("Error fetching EMCCD image: %s\n"), err.message);
+                warning(sprintf("Error fetching EMCCD image: %s\n"), err.message);
                 obj.startSnapping;
                 while(obj.core.getRemainingImageCount == 0)
                     pause(0.01);
@@ -371,14 +371,17 @@ classdef Hamamatsu < Modules.Imaging
             % This function calls snapImage and applies to hImage.
             if ~exist('hImage', 'var')
                 if isempty(obj.hImage)
-                    error('Please click `snap` in image panel to initialize obj.hImage');
+                    warning('Please click `snap` in image panel to initialize obj.hImage');
+                else
+                    hImage = obj.hImage;
                 end
-                hImage = obj.hImage;
             else
                 obj.hImage = hImage;
             end
             im = obj.snapImage;
-            set(hImage,'cdata',im);
+            if exist('hImage', 'var') && ~isempty(hImage)
+                set(hImage,'cdata',im);
+            end
         end
         function startVideo(obj,hImage)
             if ~exist('hImage', 'var')

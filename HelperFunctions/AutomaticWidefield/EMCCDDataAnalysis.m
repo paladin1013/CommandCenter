@@ -18,8 +18,8 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
     
     if load_processed_data == false
         wl = load(fullfile(working_dir, WL_data_file));
-        try close(42); catch; end
-        roi_fig = figure(42);
+        try close(9); catch; end
+        roi_fig = figure(9);
         ax2 = axes('Parent', roi_fig);
         im2H = imagesc(ax2, wl.image.image(:, :));
         colormap(ax2, 'bone')
@@ -38,8 +38,9 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
         wl_img = wl.image.image(rymin:rymax, rxmin:rxmax);
 
 
-        try close(41); catch; end
-        result_fig = figure(41);
+        try close(11); catch; end
+        result_fig = figure(11);
+        result_fig.Position = [100, 100, 1200, 800];
         ax = axes('Parent', result_fig);
         wlH = imagesc(ax, wl_img);
         colormap(ax, 'bone');
@@ -87,8 +88,8 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
         else % Load data from .mat file
             load(fullfile(working_dir, processed_data_file), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
         end
-        try close(41); catch; end
-        result_fig = figure(41);
+        try close(11); catch; end
+        result_fig = figure(11);
     end
 
 
@@ -113,22 +114,21 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
     wgym = [];
 
     % Use input dialog to update mincount
-    try close(43); catch; end
-    panelH = figure(43);
+    try close(10); catch; end
+    panelH = figure(10);
     panelH.Name = 'Settings';
     panelH.HandleVisibility = 'Callback';
     panelH.NumberTitle = 'off';
     panelH.MenuBar = 'none';
     panelH.CloseRequestFcn = @cancelCallback;
-    panelH.Position(3) = 300;
-    panelH.Position(4) = 100;
-    drawImage(10000);
+    panelH.Position = [100, 1000, 300, 100]
+    mincount = 10000;
+    drawImage(mincount);
     textH = uicontrol(panelH, 'style', 'text', 'string', 'mincount:', 'horizontalalignment', 'right', 'units', 'characters', 'position', [17, 4, 10, 1.5]);
     editH = uicontrol(panelH, 'style', 'edit', 'string', '10000', 'units', 'characters', 'horizontalalignment', 'left', 'position', [28, 4.2, 10, 1.5], 'callback', @testCallback);
     confirmH = uicontrol(panelH, 'style', 'pushbutton', 'units', 'characters', 'string', 'Confirm', 'horizontalalignment', 'left', 'position', [15, 1, 10, 1.5], 'callback', @confirmCallback);
     cancelH = uicontrol(panelH, 'style', 'pushbutton', 'units', 'characters', 'string', 'Cancel', 'horizontalalignment', 'left', 'position', [30, 1, 10, 1.5], 'callback', @cancelCallback);
     uiwait(panelH);
-    mincount = str2double(editH.String);
     drawImage(mincount);
     delete(panelH);
     
@@ -136,9 +136,11 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
     T = [1, 2, 3; 3, 4, 1];
     TR = triangulation(T, poly_pos);
     
-    hold(s1, 'on');
-    axes(s1);
-    triplot(TR);
+    if ~isempty(s1) && isvalid(s1)
+        hold(s1, 'on');
+        axes(s1);
+        triplot(TR);
+    end
     tri1 = TR.Points(TR.ConnectivityList(1, :), :);
     tri2 = TR.Points(TR.ConnectivityList(2, :), :);
     sites = cell(1, length(wgpx));
@@ -233,7 +235,7 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
         yy = allpts0(reali, :);
     
         valid = spacialFilter(poly_pos, realy, realx);
-        for i = 1:length(fres)
+       for i = 1:length(fres)
             hold on
             if valid(i) == 1
                 wgt = yy(i, :);

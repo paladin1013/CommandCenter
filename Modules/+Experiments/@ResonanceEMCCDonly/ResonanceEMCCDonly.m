@@ -7,6 +7,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         resLaser = Prefs.ModuleInstance(Sources.Msquared.instance, 'inherits', {'Modules.Source'}); % Allow selection of source
         repumpLaser = Prefs.ModuleInstance(Sources.Cobolt_PB.instance, 'inherits', {'Modules.Source'});
         cameraEMCCD = Prefs.ModuleInstance(Imaging.Hamamatsu.instance, 'inherits', {'Modules.Imaging'});
+        whiteLight = Prefs.ModuleInstance(Sources.WhiteLight_remote.instance, 'inherits', {'Modules.Source'});
         EMCCD_binning = Prefs.Integer(1);
         EMCCD_exposure = Prefs.Integer(100, 'unit', 'ms');
         EMCCD_gain = Prefs.Integer(1200);
@@ -28,7 +29,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
     end
     
     properties
-        prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD','EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'wightlight_file', 'discard_raw_data'};  % String representation of desired prefs
+        prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD', 'whiteLight','EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'wightlight_file', 'discard_raw_data'};  % String representation of desired prefs
         %show_prefs = {};   % Use for ordering and/or selecting which prefs to show in GUI
         %readonly_prefs = {}; % CC will leave these as disabled in GUI (if in prefs/show_prefs)
     end
@@ -119,20 +120,29 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         end
 
         function validate_wl_file(obj, val, ~)
-            flag = exist(val,'file');
-            if flag == 0
-                error('Could not find "%s"!',val)
-            end
-            if flag ~= 2
-                error('File "%s" must be a mat file!',val)
-            end
-            wl = load(val);
-            assert(isfield(wl, 'image'), sprintf('File %s should have field "image"', val));
-            assert(isfield(wl.image, 'image'), sprintf('File %s should have field "image.image"', val));
-            if ~all(size(obj.wl_img) == size(wl.image.image), 'all') || ~all(obj.wl_img == wl.image.image, 'all')
-                obj.wl_img = wl.image.image;
-                obj.set_ROI;
-            end
+            % try
+                flag = exist(val,'file');
+                if flag == 0
+                    error('Could not find "%s"!',val)
+                end
+                if flag ~= 2
+                    error('File "%s" must be a mat file!',val)
+                end
+                wl = load(val);
+                assert(isfield(wl, 'image'), sprintf('File %s should have field "image"', val));
+                assert(isfield(wl.image, 'image'), sprintf('File %s should have field "image.image"', val));
+                if ~all(size(obj.wl_img) == size(wl.image.image), 'all') || ~all(obj.wl_img == wl.image.image, 'all')
+                    obj.wl_img = wl.image.image;
+                    obj.set_ROI;
+                end
+            % catch err
+                % fprintf("Did not take wl image successfully. Taking a new image.\n");
+                % obj.whiteLight.source_on = true;
+                % obj.wl_img = obj.cameraEMCCD.snapImage;
+                % obj.whiteLight.source_on = false;
+                % obj.set_ROI;
+                % rethrow(err);
+            % end
         end
         function set_ROI(obj)
             

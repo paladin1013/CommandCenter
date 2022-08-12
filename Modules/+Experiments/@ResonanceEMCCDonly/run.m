@@ -65,8 +65,8 @@ function run( obj,status,managers,ax )
             % Save raw data first
             obj.discard_raw_data = false;
             freqs = freqs(1:i-1);
-            EMCCD_imgs = EMCCD_imgs(1:i-1);
-            filtered_imgs = filtered_imgs(1:i-1);
+            EMCCD_imgs = EMCCD_imgs(:, :, 1:i-1);
+            filtered_imgs = filtered_imgs(:, :, 1:i-1);
             break;
         end
         % change laser wavelength
@@ -99,8 +99,8 @@ function run( obj,status,managers,ax )
         freqs(i) = obj.data.freqMeasured(i);
         imagesc(ax,obj.data.images_EMCCD(:,:,i));
         hold(ax, 'on');
-        rectangle('Position', obj.rect_pos, 'EdgeColor', 'b', 'LineWidth', 1);
-        poly = polyshape(obj.poly_pos(:, 2), obj.poly_pos(:, 1));
+        rectangle(ax, 'Position', obj.rect_pos, 'EdgeColor', 'b', 'LineWidth', 1);
+        poly = polyshape(obj.poly_pos(:, 1)+obj.rect_pos(1, 1), obj.poly_pos(:, 2)+obj.rect_pos(1, 2));
         polyH = plot(ax, poly, 'FaceAlpha', 0, 'EdgeColor', 'r', 'LineWidth', 1);
         hold(ax, 'off');
         title(obj.data.freqMeasured(i));
@@ -117,7 +117,7 @@ function run( obj,status,managers,ax )
         EMCCDDataAnalysis(true, obj.autosave.exp_dir, processed_data);
     catch err
         obj.abort_request = true;
-        error(err.message);
+        rethrow(err);
     end
 end
 
