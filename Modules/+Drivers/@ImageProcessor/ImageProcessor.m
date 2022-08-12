@@ -151,6 +151,16 @@ classdef ImageProcessor < Modules.Driver
             maxVal = max(displayImage(:));
             displayImage = uint16((displayImage-minVal)*65535/(maxVal-minVal));
             
+
+            if obj.showCorners
+                for k = 1:length(segments)
+                    xmin = segments{k}.xmin;
+                    ymin = segments{k}.ymin;
+                    xmax = xmin + size(segments{k}.image, 2)-1;
+                    ymax = ymin + size(segments{k}.image, 1)-1;
+                    displayImage(ymin:ymax, xmin:xmax) = displayImage(ymin:ymax, xmin:xmax).*uint16((~segments{k}.cornerMask));
+                end
+            end
         end
 
         function im = binarize(obj, im, thresRatio)
@@ -314,11 +324,18 @@ classdef ImageProcessor < Modules.Driver
             angles = [0, 90, 180, 270]; % Positive: counter clockwise
             w = obj.waveguideWidth_pixel;
             lr = obj.cornerLengthRatio; % (length ratio) How many times corner edges are longer than its width 
+
             cornerIm = zeros((2*lr+1)*w);
+            cornerImCenterOffset = lr*w + round(w/2);
+            cornerImSize = (2*lr+1)*w;
+
             % cornerIm(lr*w+1:(lr+1)*w, lr*w+1:(lr+1)*w) = 1; % Center
             cornerIm((lr+1)*w+1:(2*lr+1)*w, lr*w+1:(lr+1)*w) = 1; % lower edge
             cornerIm(lr*w+1:(lr+1)*w, (lr+1)*w+1:(2*lr+1)*w) = 1; % right edge
-
+            
+            cornerImPositive = cornerIm; % Only include the positive parts for plotting
+            cornerImPositive(lr*w+1:(lr+1)*w, lr*w+1:(lr+1)*w) = 1; % Center
+            
             cornerIm(1:lr*w, lr*w+1:(lr+1)*w) = -1; % upper edge
             cornerIm(lr*w+1:(lr+1)*w, 1:lr*w) = -1; % left edge
 
@@ -345,20 +362,48 @@ classdef ImageProcessor < Modules.Driver
                     subplot(nSegments+1, 5, 5*k+1);
                     imshow(xcorr2(segIm, identityMask), []);
                 end
+                % The corner area of `cornerMask` is 1 and the rest is 0.
+                segSizeX = size(segIm, 2);
+                segSizeY = size(segIm, 1);
+                cornerMask = zeros(segSizeY, segSizeX);
                 for l = 1:4
                     corrResult = xcorr2(segIm, imrotate(cornerIm, obj.angle_deg+angles(l), 'crop'));
                     avg = mean2(corrResult);
                     [maxVal, maxIdx] = max(corrResult(:));
-                    [maxy, maxx] = ind2sub(size(corrResult), maxIdx);
-                    corners{l} = struct('x', maxx, 'y', maxy, 'val', maxVal);
-                    segments{k}.corners = corners;
+                    [maxY, maxX] = ind2sub(size(corrResult), maxIdx);
                     if exist('showPlots', 'var') && showPlots
                         subplot(nSegments+1, 5, 5*k+l+1);
                         imshow(corrResult, []);
                         set(get(gca, 'XLabel'), 'String', sprintf("avg: %f\nmax: %f\n", avg, maxVal));
                     end
+                    cornerX = maxX-cornerImCenterOffset+1;
+                    cornerY = maxY-cornerImCenterOffset+1;
+
+                    % Relative overlap coordinate of segment image
+                    segOverlapXmin = max(1, maxX-cornerImSize+1);
+                    segOverlapXmax = min(segSizeX, maxX);
+                    segOverlapYmin = max(1, maxY-cornerImSize+1);
+                    segOverlapYmax = min(segSizeY, maxY);
+
+                    % Relative overlap coordinate of corner image
+                    tempCornerIm = imrotate(cornerImPositive, obj.angle_deg+angles(l), 'crop');
+                    cornerOverlapXmin = max(1, cornerImSize-maxX+1);
+                    cornerOverlapXmax = min(cornerImSize, cornerImSize-(maxX-segSizeX));
+                    cornerOverlapYmin = max(1, cornerImSize-maxY+1);
+                    cornerOverlapYmax = min(cornerImSize, cornerImSize-(maxY-segSizeY));
+                    cornerMask(segOverlapYmin:segOverlapYmax, segOverlapXmin:segOverlapXmax) = ...
+                        or(cornerMask(segOverlapYmin:segOverlapYmax, segOverlapXmin:segOverlapXmax), ...
+                        tempCornerIm(cornerOverlapYmin:cornerOverlapYmax, cornerOverlapXmin:cornerOverlapXmax)) ;
+                    cornerMask(confine(cornerY-1, 1, segSizeY):confine(cornerY+1, 1, segSizeY), confine(cornerX-1, 1, segSizeX):confine(cornerX+1, 1, segSizeX)) = 0;
+                    corners{l} = struct('x', cornerX, 'y', cornerY, 'val', maxVal);
+                    segments{k}.corners = corners;
                 end
+                segments{k}.cornerMask = cornerMask;
             end
         end
     end
+end
+
+function val = confine(val, lower_bound, upper_bound)
+    val = max(min(val, upper_bound), lower_bound);
 end
