@@ -15,20 +15,22 @@ classdef ChipletTracker < Modules.Imaging
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
         movementX_pixel = Prefs.Integer(0, 'unit', 'pixel', 'readonly', true, 'help', 'Overall x movement of the camera image since detectChiplets started.')
         movementY_pixel = Prefs.Integer(0, 'unit', 'pixel', 'readonly', true, 'help', 'Overall y movement of the camera image since detectChiplets started.')
-        chipletDistanceX_pixel = Prefs.Double(400, 'unit', 'pixel', 'help', 'Distance between two X-adjacent chiplets in pixel. Set by pressing calibrateDistanceX.');
-        chipletDistanceY_pixel = Prefs.Double(300, 'unit', 'pixel', 'help', 'Distance between two Y-adjacent chiplets in pixel. Set by pressing calibrateDistanceY.');
+        chipletHorDistanceX_pixel = Prefs.Double(400, 'unit', 'pixel', 'help', 'Distance between two X-adjacent chiplets in pixel. Set by pressing calibrateDistanceX.');
+        chipletHorDistanceY_pixel = Prefs.Double(-10, 'unit', 'pixel', 'help', 'Distance between two X-adjacent chiplets in pixel. Set by pressing calibrateDistanceX.');
+        chipletVerDistanceX_pixel = Prefs.Double(20, 'unit', 'pixel', 'help', 'Distance between two Y-adjacent chiplets in pixel. Set by pressing calibrateDistanceY.');
+        chipletVerDistanceY_pixel = Prefs.Double(300, 'unit', 'pixel', 'help', 'Distance between two Y-adjacent chiplets in pixel. Set by pressing calibrateDistanceY.');
         calibrateDistanceX = Prefs.ToggleButton(false, 'unit', 'start', 'set', 'set_calibrateDistanceX', 'help', 'First move along x axis (horizontal) to aling the center of the next chiplet with the laser center, then press this button again to confirm.')
         calibrateDistanceY = Prefs.ToggleButton(false, 'unit', 'start', 'set', 'set_calibrateDistanceY', 'help', 'First move along y axis (vertical) to aling the center of the next chiplet with the laser center, then press this button again to confirm.')
         chipletCoordinateX = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise X coordinate of the chiplet that is closest to the imaging center.');
         chipletCoordinateY = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise Y coordinate of the chiplet that is closest to the imaging center.');
         tolerance = Prefs.Double(0.2, 'help', 'How much difference is tolerable relative to the calibrated distance.')
         correlationThres = Prefs.Double(100000, 'min', 0, 'max', 32767^2, 'help', 'A valid movement should let the cross correlation be larger than this threshold.')
-        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'chipletDistanceX_pixel', 'chipletDistanceY_pixel'};
+        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'chipletHorDistanceX_pixel', 'chipletHorDistanceY_pixel', 'chipletVerDistanceX_pixel', 'chipletVerDistanceY_pixel'};
     end
     properties
         maxROI
         im = []; % Previous raw image 
-        chipletPos = []; % containers.Map, key: global chiplet coordinate "chipletX_chipletY"; value: image relative coordinate(imagePosX, imagePosY);
+        chiplets = []; % containers.Map, key: global chiplet coordinate "chipletX_chipletY"; value: struct (x, y, ...) image relative coordinate(imagePosX, imagePosY);
     end
     properties(SetObservable)
         continuous = false;
@@ -311,28 +313,24 @@ classdef ChipletTracker < Modules.Imaging
                 fprintf("No segments found. Skip updateTracking.\n");
             end
 
-            if isempty(obj.chipletPos)
+            if isempty(obj.chiplets)
                 for k = 1:nSegments
                     if ~isnan(segments{k}.centerX) && ~isnan(segments{k}.centerY)
                         
-                        if isempty(obj.chipletPos) % Usually the first valid segment is the closest to the image center
-                            obj.chipletPos = containers.Map;
-                            obj.chipletPos("0_0") = [segments{k}.centerX, segments{k}.centerY];
+                        if isempty(obj.chiplets) % Usually the first valid segment is the closest to the image center
+                            obj.chiplets = containers.Map;
+                            obj.chiplets("0_0") = struct('x', segments{k}.centerX, 'y', segments{k}.centerY);
                         else
                             % First determine what is the direction relative to the first chiplet
-                            diff = [segments{k}.centerX, segments{k}.centerY] - obj.chipletPos("0_0");
+                            diff = [segments{k}.centerX, segments{k}.centerY] - obj.chiplets("0_0");
 
-                            function output = roundWithTolerance(input, tolerance)
-                                output = round(input);
-                                if abs(output-input) > tolerance
-                                    output = NaN;
-                                end
-                            end
-
-                            xCoord = roundWithTolerance(double(diff(1))/obj.chipletDistanceX_pixel, obj.tolerance);
-                            yCoord = roundWithTolerance(double(diff(2))/obj.chipletDistanceY_pixel, obj.tolerance);
+                            % Decompose diff onto Horizontal/Vertical distance vecotrs
+                            baseMatrix = [obj.chipletHorDistanceX_pixel, obj.chipletVerDistanceX_pixel; obj.chipletHorDistanceY_pixel, obj.chipletVerDistanceY_pixel];
+                            decomposeVector = baseMatrix^(-1)*diff';
+                            xCoord = roundWithTolerance(decomposeVector(1), obj.tolerance);
+                            yCoord = roundWithTolerance(decomposeVector(1), obj.tolerance);
                             if ~isnan(xCoord) && ~isnan(yCoord)
-                                obj.chipletPos(sprintf("%d_%d", xCoord, yCoord)) = [segments{k}.centerX, segments{k}.centerY];
+                                obj.chiplets(sprintf("%d_%d", xCoord, yCoord)) = struct('x', segments{k}.centerX, 'y', segments{k}.centerY);
                             end
                         end
                     end
@@ -356,10 +354,11 @@ classdef ChipletTracker < Modules.Imaging
                     continue;
                 end
                 pos = [segments{k}.centerX, segments{k}.centerY];
-                prevCoord = obj.chipletPos.keys;
+                prevCoord = obj.chiplets.keys;
                 for l = length(prevCoord)
                     testCoord = prevCoord{l};
-                    testPos = obj.chipletPos(testCoord);
+                    chiplet = obj.chiplets(testCoord);
+                    testPos = [chiplet.x, chiplet.y];
                     if norm(testPos-pos) < obj.maxMovement
                         % Match successfully
                         matched(k) = true;
@@ -401,6 +400,43 @@ classdef ChipletTracker < Modules.Imaging
                 return;
             end
             
+
+            % Update old chiplet positions and add new chiplet positions based on new movement information.
+            chipletCoords = obj.chiplets.keys;
+            for k = 1:length(chipletCoords)
+                obj.chiplets(chipletCoords{k}).x = obj.chiplets(chipletCoords{k}).x + moveX;
+                obj.chiplets(chipletCoords{k}).y = obj.chiplets(chipletCoords{k}).y + moveY;
+            end
+
+            % Overwrite matched chiplet positions for existing chiplets
+            for k = 1:nSegments
+                if matched(k)
+                    obj.chiplets(matchedCoord{k}).x = segment{k}.centerX;
+                    obj.chiplets(matchedCoord{k}).y = segment{k}.centerY;
+                end
+            end
+
+            for k = 1:nSegments
+                if valid(k) && ~matched(k) % Add new chiplets
+                    % There should be at least one matched chiplet, which can be a reference
+                    matchedIdx = find(matched, 1);
+                    matchedChiplet = obj.chiplets(matchedCoord{matchedIdx});
+                    coord = str2num(split(matchedCoord{matchedIdx}, "_"));
+                    matchedX = coord(1);
+                    matchedY = coord(2);
+                    diff = [segments{k}.centerX, segments{k}.centerY] - [matchedChiplet.x, matchedChiplet.y];
+
+                    % Decompose diff onto Horizontal/Vertical distance vecotrs
+                    baseMatrix = [obj.chipletHorDistanceX_pixel, obj.chipletVerDistanceX_pixel; obj.chipletHorDistanceY_pixel, obj.chipletVerDistanceY_pixel];
+                    decomposeVector = baseMatrix^(-1)*diff';
+                    
+                    xCoord = roundWithTolerance(decomposeVector(1), obj.tolerance)+matchedX;
+                    yCoord = roundWithTolerance(decomposeVector(1), obj.tolerance)+matchedY;
+                    if ~isnan(xCoord) && ~isnan(yCoord)
+                        obj.chiplets(sprintf("%d_%d", xCoord, yCoord)) = struct('x', segments{k}.centerX, 'y', segments{k}.centerY);
+                    end
+                end
+            end
 
         end
         function im = drawMatching(obj, im, pos, template, templateCorners, fill_color) % pos is in image coordinate i.e. (y, x)
@@ -456,7 +492,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.movementX_pixel = 0;
             obj.movementY_pixel = 0;
             obj.im = [];
-            obj.chipletPos = [];
+            obj.chiplets = [];
             obj.chipletCoordinateX = NaN;
             obj.chipletCoordinateY = NaN;
         end
@@ -473,19 +509,27 @@ classdef ChipletTracker < Modules.Imaging
             end
             persistent chipletPos
             if ~exist('chipletPos', 'var') || isempty(chipletPos)
-                chipletPos = obj.chipletPos(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chipletPos = [chiplet.x, chiplet.y];
+            end
+            persistent movement
+            if ~exist('movement', 'var') || isempty(movement)
+                movement = [obj.movementX_pixel, obj.movementY_pixel];
             end
             if val
                 movement = [obj.movementX_pixel, obj.movementY_pixel];
-                chipletPos = obj.chipletPos(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
                 fprintf("X distance calibration started. Please move the stage until the chiplet on the right is the closest to the image center, then press this button again.\n")
-                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chipletPos(1), chipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chiplet.x, chiplet.y, obj.movementX_pixel, obj.movementY_pixel);
             else
                 fprintf("X distance calibration ended.\n")
-                newChipletPos = obj.chipletPos(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
-                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, newChipletPos(1), newChipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
-                obj.chipletDistanceX_pixel = norm(newChipletPos-chipletPos);
-                fprintf("X distance: %.3f", obj.chipletDistanceX_pixel);
+                newChipletPos = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                newMovement = [obj.movementX_pixel, obj.movementY_pixel]
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, newChipletPos.x, newChipletPos.y, obj.movementX_pixel, obj.movementY_pixel);
+                diff = newChipletPos-chipletPos+newMovement-movement;
+                obj.chipletHorDistanceX_pixel = diff(1);
+                obj.chipletVerDistanceY_pixel = diff(2);
+                fprintf("Horizontal distance (x, y) = (%d, %d)\n", obj.chipletHorDistanceX_pixel, obj.chipletHorDistanceY_pixel);
             end
             obj.prevCalibrateDistanceX = val;
         end
@@ -494,3 +538,10 @@ classdef ChipletTracker < Modules.Imaging
     end
 end
 
+
+function output = roundWithTolerance(input, tolerance)
+    output = round(input);
+    if abs(output-input) > tolerance
+        output = NaN;
+    end
+end
