@@ -12,10 +12,11 @@ classdef ImageProcessor < Modules.Driver
         waveguideWidth_pixel = Prefs.Integer(5, 'unit', 'pixel', 'min', 1, 'max', 20, 'help', 'Width of the waveguide in each chiplet. Used for angle detection.')
         cornerLengthRatio = Prefs.Integer(6, 'min', 1, 'max', 10, 'help', 'When doing corner detection, the ratio between edge length and width.')
         showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
-        cornerValidThres = Prefs.Double(0.8, 'min', 0, 'max', 1, 'help', 'When detecting corners, a corner position will be valid if its correlation is at least this value relative to the correlation of the best matched corner.')
         angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'readonly', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position. Can be set by calling `setTemplate`')
         cornerHorDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Horizontal distance between two corners (angle is considered)');
         cornerVerDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Vertical distance between two corners (angle is considered');
+        cornerValidThres = Prefs.Double(0.8, 'min', 0, 'max', 1, 'help', 'When detecting corners, a corner position will be valid if its correlation is at least this value relative to the correlation of the best matched corner.')
+        tolerance = Prefs.Double(0.2, 'min', 0, 'max', 1, 'help', 'To what extent the snapped image can be different from the template parameters when it is still valid.')
     end
     properties
         prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel'};
@@ -448,30 +449,55 @@ classdef ImageProcessor < Modules.Driver
                 end
                 
                 for l = 1:4
-                    if segments{k}.corners{l}.val > maxVal*obj.cornerValidThres
-                        segments{k}.corners{l}.valid = true;
-                        cornerValid(l) = true;
+                    if corners{l}.val > maxVal*obj.cornerValidThres
+                        corners{l}.valid = true;
                     end
                 end
+                
+                
+                % Use Template to verify the relative position of four corners
+                if ~isempty(obj.template) && isstruct(obj.template)
+                    templateX = size(obj.template.image, 2);
+                    templateY = size(obj.template.image, 1);
+                    ratio = 1+obj.tolerance;
+                    if corners{1}.y > obj.template.corners{1}.y*ratio || corners{1}.x > obj.template.corners{1}.x*ratio
+                        corners{1}.valid = false;
+                    end
+                    if segY - corners{2}.y > max(templateY - obj.template.corners{2}.y, 1)*ratio || corners{2}.x > obj.template.corners{2}.x*ratio
+                        corners{2}.valid = false;
+                    end
+                    if segY - corners{3}.y > max(templateY - obj.template.corners{3}.y, 1)*ratio || segX - corners{3}.x > max(templateX - obj.template.corners{3}.x, 1)*ratio
+                        corners{3}.valid = false;
+                    end
+                    if corners{4}.y > obj.template.corners{4}.y*ratio || segX - corners{4}.x > max(templateX - obj.template.corners{4}.x, 1)*ratio
+                        corners{4}.valid = false;
+                    end
+                    [sortedVals, idxs] = sort(cornerVals, 'descend');
+                    for l = 1:4
+                        if corners{idxs(l)}.valid
+                            idx = idxs(l);
+                            break; % Get the valid corner with the largest correlation value
+                        end
+                    end
+                    for l = 1:4
+                        if l == idx || corners{l}.valid == false
+                            continue;
+                        end
+                        templateDiffX = obj.template.corners{l}.x-obj.template.corners{idx}.x;
+                        templateDiffY = obj.template.corners{l}.y-obj.template.corners{idx}.y;
+                        actualDiffX = corners{l}.x-corners{idx}.x;
+                        actualDiffY = corners{l}.y-corners{idx}.y;
+                        if abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance || abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance
+                            corners{l}.valid = false;
+                        end
+                    end
 
+                end
 
-                % Use 
-                % if segments{k}.corners{1}.y > segY/2 || segments{k}.corners{1}.x > segX/2
-                %     segments{k}.corners{1}.valid = false;
-                %     cornerValid(1) = false;
-                % end
-                % if segments{k}.corners{2}.y < segY/2 || segments{k}.corners{2}.x > segX/2
-                %     segments{k}.corners{2}.valid = false;
-                %     cornerValid(2) = false;
-                % end
-                % if segments{k}.corners{3}.y < segY/2 || segments{k}.corners{3}.x < segX/2
-                %     segments{k}.corners{3}.valid = false;
-                %     cornerValid(3) = false;
-                % end
-                % if segments{k}.corners{4}.y > segY/2 || segments{k}.corners{4}.x < segX/2
-                %     segments{k}.corners{4}.valid = false;
-                %     cornerValid(4) = false;
-                % end
+                for l = 1:4
+                    cornerValid(l) = corners{l}.valid;
+                end
+                segments{k}.corners = corners;
 
                 switch sum(cornerValid)
                 
