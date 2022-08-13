@@ -5,7 +5,7 @@ classdef ChipletTracker < Modules.Imaging
     properties(SetObservable, GetObservable)
         exposure_ms = Prefs.Double(100, 'unit', 'ms', 'set', 'set_exposure_ms', 'help', 'Will override the exposure time in the camera.')
         initTemplate = Prefs.Button('unit', 'Snap', 'set', 'set_initTemplate', 'help', 'Start to set a template and assign its corners.')
-        matchTemplate = Prefs.Boolean(true);
+        detectChiplets = Prefs.Boolean(true, 'set', 'set_detectChiplets', 'help', 'Cancel this option will reset the tracking movements.');
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         contrastOffset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.');
         brightness = Prefs.Double(NaN, 'readonly', true, 'help', 'Average value off the intensity of the current image.');
@@ -13,11 +13,22 @@ classdef ChipletTracker < Modules.Imaging
         maxMovement = Prefs.Double(50, 'min', 10, 'max', 100, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.');
         camera = Prefs.ModuleInstance(Imaging.Hamamatsu.instance, 'inherits', {'Modules.Imaging'});
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
-        offsetAngle = Prefs.Double(0, 'min', 0, 'max', 1, 'help', 'The offset angle of the image relative to the horizontal position.');
-        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'matchTemplate', 'maxMovement', 'offsetAngle'};
+        movementX_pixel = Prefs.Integer(0, 'unit', 'pixel', 'readonly', true, 'help', 'Overall x movement of the camera image since detectChiplets started.')
+        movementY_pixel = Prefs.Integer(0, 'unit', 'pixel', 'readonly', true, 'help', 'Overall y movement of the camera image since detectChiplets started.')
+        chipletDistanceX_pixel = Prefs.Double(400, 'unit', 'pixel', 'help', 'Distance between two X-adjacent chiplets in pixel. Set by pressing calibrateDistanceX.');
+        chipletDistanceY_pixel = Prefs.Double(300, 'unit', 'pixel', 'help', 'Distance between two Y-adjacent chiplets in pixel. Set by pressing calibrateDistanceY.');
+        calibrateDistanceX = Prefs.ToggleButton(false, 'unit', 'start', 'set', 'set_calibrateDistanceX', 'help', 'First move along x axis (horizontal) to aling the center of the next chiplet with the laser center, then press this button again to confirm.')
+        calibrateDistanceY = Prefs.ToggleButton(false, 'unit', 'start', 'set', 'set_calibrateDistanceY', 'help', 'First move along y axis (vertical) to aling the center of the next chiplet with the laser center, then press this button again to confirm.')
+        chipletCoordinateX = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise X coordinate of the chiplet that is closest to the imaging center.');
+        chipletCoordinateY = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise Y coordinate of the chiplet that is closest to the imaging center.');
+        tolerance = Prefs.Double(0.2, 'help', 'How much difference is tolerable relative to the calibrated distance.')
+        correlationThres = Prefs.Double(100000, 'min', 0, 'max', 32767^2, 'help', 'A valid movement should let the cross correlation be larger than this threshold.')
+        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'chipletDistanceX_pixel', 'chipletDistanceY_pixel'};
     end
     properties
         maxROI
+        im = []; % Previous raw image 
+        chipletPos = []; % containers.Map, key: global chiplet coordinate "chipletX_chipletY"; value: image relative coordinate(imagePosX, imagePosY);
     end
     properties(SetObservable)
         continuous = false;
@@ -35,6 +46,8 @@ classdef ChipletTracker < Modules.Imaging
         centerPos;              % Normal Coordinates
         prevContrast;
         initialized = false;
+        prevCalibrateDistanceX = false;
+        prevCalibrateDistanceY = false;
     end
     
     methods(Access=private)
@@ -143,9 +156,13 @@ classdef ChipletTracker < Modules.Imaging
             end
             im = obj.snapImage;
             obj.updateContrast(im);
-            if obj.matchTemplate
-                im = obj.updateMatching(im, true); % Enable forced update
+            if obj.detectChiplets
+                [displayIm, segments] = obj.updateDetection(im, true); % Enable forced update
+                [movementX, movementY, movementMask] = obj.updateTracking(im, segments);
             end
+
+
+
             set(hImage,'cdata',im);
         end
         function startVideo(obj,hImage)
@@ -168,24 +185,25 @@ classdef ChipletTracker < Modules.Imaging
         end
         function grabFrame(obj,~,~,hImage)
             % Timer Callback for frame acquisition
-            dat = obj.camera.fetchSnapping(0, true);
-            if isempty(dat)
+            im = obj.camera.fetchSnapping(0, true);
+            if isempty(im)
                 return
             end
             % obj.camera.startSnapping; % To save time
-            obj.updateContrast(dat);
+            obj.updateContrast(im);
 
-            if obj.matchTemplate 
+            if obj.detectChiplets 
                 if obj.contrast > 0.7*obj.prevContrast
                     % To prevent position shift caused by stage shifting
-                    dat = obj.updateMatching(dat); % 0.1s
+                    [displayIm, segments] = obj.updateDetection(im); % 0.1s
+                    [movementX, movementY, movementMask] = obj.updateTracking(im, segments);
                 end
             end
             if isempty(hImage) || ~isvalid(hImage)
                 obj.stopVideo;
                 return;
             end
-            set(hImage,'cdata',dat);
+            set(hImage,'cdata',displayIm);
             drawnow; % 0.1s
         end
         function stopVideo(obj)
@@ -220,7 +238,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.processor.setTemplate(im);
             
         end
-        function display_im = updateMatching(obj, im, forceUpdate)
+        function [displayIm, segments] = updateDetection(obj, im, forceUpdate)
             persistent wasBright
             if ~exist('wasBright', 'var')
                 wasBright = true;
@@ -229,7 +247,7 @@ classdef ChipletTracker < Modules.Imaging
                 if wasBright
                     fprintf("Current brightness %d is lower than its threshold %d. Matching template is temporarily disabled.\n", obj.brightness, obj.brightnessThreshold);
                     wasBright = false;
-                    display_im = im;
+                    displayIm = im;
                     return;
                 end
                 wasBright = false;
@@ -241,7 +259,7 @@ classdef ChipletTracker < Modules.Imaging
             if ~exist('forceUpdate', 'var')
                 forceUpdate = false;
             end
-            [display_im, segments] = obj.processor.processImage(im);
+            [displayIm, segments] = obj.processor.processImage(im);
             % [processed_im, segment_images] = frame_detection(im, false, struct('pixel_thres_ratio', obj.pixelThresRatio));
             
             % if obj.showFiltered
@@ -280,6 +298,110 @@ classdef ChipletTracker < Modules.Imaging
             % otherwise
             %     error(fprintf("size(obj.prevTemplatePos, 1) should be at most 2, but got %d.", size(obj.prevTemplatePos)));
             % end
+        end
+
+        function [movementX, movementY, movementMask] = updateTracking(obj, im, segments)
+            movementX = NaN;
+            movementY = NaN;
+            movementMask = zeros(size(im));
+            nSegments = length(segments);
+            imSizeX = size(im, 2);
+            imSizeY = size(im, 1);
+            if nSegments == 0
+                fprintf("No segments found. Skip updateTracking.\n");
+            end
+
+            if isempty(obj.chipletPos)
+                for k = 1:nSegments
+                    if ~isnan(segments{k}.centerX) && ~isnan(segments{k}.centerY)
+                        
+                        if isempty(obj.chipletPos) % Usually the first valid segment is the closest to the image center
+                            obj.chipletPos = containers.Map;
+                            obj.chipletPos("0_0") = [segments{k}.centerX, segments{k}.centerY];
+                        else
+                            % First determine what is the direction relative to the first chiplet
+                            diff = [segments{k}.centerX, segments{k}.centerY] - obj.chipletPos("0_0");
+
+                            function output = roundWithTolerance(input, tolerance)
+                                output = round(input);
+                                if abs(output-input) > tolerance
+                                    output = NaN;
+                                end
+                            end
+
+                            xCoord = roundWithTolerance(double(diff(1))/obj.chipletDistanceX_pixel, obj.tolerance);
+                            yCoord = roundWithTolerance(double(diff(2))/obj.chipletDistanceY_pixel, obj.tolerance);
+                            if ~isnan(xCoord) && ~isnan(yCoord)
+                                obj.chipletPos(sprintf("%d_%d", xCoord, yCoord)) = [segments{k}.centerX, segments{k}.centerY];
+                            end
+                        end
+                    end
+                end
+                obj.chipletCoordinateX = 0;
+                obj.chipletCoordinateY = 0;
+                obj.movementX_pixel = 0;
+                obj.movementY_pixel = 0;
+                obj.im = im;
+                return;
+            end
+
+            % There already are some recorded chiplet positions:
+            matched = zeros(nSegments, 1);
+            matchedCoord = cell(nSegments, 1);
+            movements = nan(nSegments, 2); % (x, y) for each segment
+            valid = ones(nSegments, 1);
+            for k = 1:nSegments
+                if isnan(segments{k}.centerX) || isnan(segments{k}.centerY)
+                    valid(k) = false;
+                    continue;
+                end
+                pos = [segments{k}.centerX, segments{k}.centerY];
+                prevCoord = obj.chipletPos.keys;
+                for l = length(prevCoord)
+                    testCoord = prevCoord{l};
+                    testPos = obj.chipletPos(testCoord);
+                    if norm(testPos-pos) < obj.maxMovement
+                        % Match successfully
+                        matched(k) = true;
+                        matchedCoord{k} = testCoord;
+                        movements(k, :) = pos - testPos;
+                        break;
+                    end
+                end 
+            end
+            
+            if sum(matched(k)) == 0
+                fprintf("Matched center not found. Please move the stage slowly back to its previous position.\n");
+                return;
+            end
+            % Estimate movement according to matched chiplets
+            estimatedMovement = mean(movements(matched, :), 1); % (x, y)
+            standardDeviation = [std(movements(matched, 1)), std(movements(matched:2))];
+            if any(abs(standardDeviation) > abs(estimatedMovement)/2)
+                fprintf("Standard deviation (%.3f, %.3f) is larger than half of the estimated movement (%.3f, %.3f). Abort update.\n", standardDeviation(1), standardDeviation(2), estimatedMovement(1), estimatedMovement(2));
+                return;
+            end
+
+            
+            if isempty(obj.im) || ~isequal(size(im), size(obj.im))
+                fprintf("obj.im is empty or size is not compatible. Update obj.im. Abort update.\n");
+                obj.im = im;
+                return
+            else % Verify movement by taking image correlation
+                moveX = estimatedMovement(1);
+                moveY = estimatedMovement(2);
+                prevImOverlap = double(obj.im(max(moveY+1, 1):min(imSizeY, imSizeY+moveY), max(moveX+1, 1):min(imSizeX, imSizeX+moveX)));
+                newImOverlap = double(im(max(1-moveY, 1):min(imSizeY, imSizeY-moveY), max(1-moveX, 1):min(imSizeX, imSizeX-moveX)));
+                prevImOverlap = prevImOverlap - mean2(prevImOverlap);
+                newImOverlap = newImOverlap - mean2(newImOverlap);
+                corrVal = mean2(prevImOverlap.*newImOverlap);
+                if corrVal < obj.correlationThres
+                    fprintf("Correlation (%f) of the shifted image does not meet obj.correlationThres (%f). Abort update.\n", corrVal, obj.correlationThres);
+                end
+                return;
+            end
+            
+
         end
         function im = drawMatching(obj, im, pos, template, templateCorners, fill_color) % pos is in image coordinate i.e. (y, x)
             y = pos(1);
@@ -330,12 +452,44 @@ classdef ChipletTracker < Modules.Imaging
             end
             obj.snapTemplate;
         end
+        function val = set_detectChiplets(obj, val, ~)
+            obj.movementX_pixel = 0;
+            obj.movementY_pixel = 0;
+            obj.im = [];
+            obj.chipletPos = [];
+            obj.chipletCoordinateX = NaN;
+            obj.chipletCoordinateY = NaN;
+        end
         function set.ROI(obj,val)
             assert(~obj.continuous,'Cannot set while video running.')
             obj.camera.ROI = val;
         end
         function val = get.ROI(obj)
             val = obj.camera.ROI;
+        end
+        function val = set_calibrateDistanceX(obj, val, ~)
+            if val == obj.prevCalibrateDistanceX
+                return;
+            end
+            persistent chipletPos
+            if ~exist('chipletPos', 'var') || isempty(chipletPos)
+                chipletPos = obj.chipletPos(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+            end
+            if val
+                movement = [obj.movementX_pixel, obj.movementY_pixel];
+                chipletPos = obj.chipletPos(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                fprintf("X distance calibration started. Please move the stage until the chiplet on the right is the closest to the image center, then press this button again.\n")
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chipletPos(1), chipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
+            else
+                fprintf("X distance calibration ended.\n")
+                newChipletPos = obj.chipletPos(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, newChipletPos(1), newChipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
+                obj.chipletDistanceX_pixel = norm(newChipletPos-chipletPos);
+                fprintf("X distance: %.3f", obj.chipletDistanceX_pixel);
+            end
+            obj.prevCalibrateDistanceX = val;
+        end
+        function val = set_calibrateDistanceY(obj, val, ~)
         end
     end
 end
