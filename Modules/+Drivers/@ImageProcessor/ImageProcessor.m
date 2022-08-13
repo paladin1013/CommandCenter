@@ -10,16 +10,17 @@ classdef ImageProcessor < Modules.Driver
         display = Prefs.MultipleChoice('Raw', 'allow_empty', false, 'choices', Drivers.ImageProcessor.displayTypes);
         plotAllIntermediate = Prefs.Boolean(false, 'help', 'Whether to display the intermediate filtered results.')
         waveguideWidth_pixel = Prefs.Integer(5, 'unit', 'pixel', 'min', 1, 'max', 20, 'help', 'Width of the waveguide in each chiplet. Used for angle detection.')
-        angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position.')
-        cornerLengthRatio = Prefs.Integer(6, 'allow_nan', false, 'min', 1, 'max', 10, 'help', 'When doing corner detection, the ratio between edge length and width.')
+        cornerLengthRatio = Prefs.Integer(6, 'min', 1, 'max', 10, 'help', 'When doing corner detection, the ratio between edge length and width.')
         showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
         cornerValidThres = Prefs.Double(0.8, 'min', 0, 'max', 1, 'help', 'When detecting corners, a corner position will be valid if its correlation is at least this value relative to the correlation of the best matched corner.')
+        angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'readonly', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position. Can be set by calling `setTemplate`')
         cornerHorDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Horizontal distance between two corners (angle is considered)');
         cornerVerDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Vertical distance between two corners (angle is considered');
     end
     properties
-        prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'angle_deg'};
+        prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel'};
         angleCalibrated = false;
+        template; % Follows the same structure as a segment: has fields 'image', 'corners', 'center', 
     end
     properties(Constant)
         displayTypes = {'Raw', 'Binarized 1', 'Bandpass filtered', 'Binarized 2', 'Removed small components', 'Connected', 'Chiplets selected'};
@@ -34,6 +35,43 @@ classdef ImageProcessor < Modules.Driver
         end
     end
     methods
+        function setTemplate(obj, inputImage)
+            [displayImage, segments] = obj.filterImage(inputImage, struct('pixelThresRatio', 1)); % Only keep the largest component
+            obj.getAngle(segments, true);
+            segments = obj.detectCorners(segments);
+            if isempty(segments)
+                fprintf("No template chiplet found");
+                return;
+            end
+            templateIm = segments{1}.image;
+            templateCorners = zeros(4, 2);
+            for l = 1:4
+                templateCorners(l, :) = [segments{1}.corners{l}.x, segments{1}.corners{l}.y];
+            end
+            frame_fig = figure(12);
+            frame_fig.Position = [200, 200, 560, 420];
+            frame_ax = axes('Parent', frame_fig);
+            imH = imagesc(frame_ax, templateIm);
+            colormap(frame_ax, 'bone');
+
+            polyH = drawpolygon(frame_ax, 'Position', templateCorners);
+            set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
+            imH.ButtonDownFcn = @ROIConfirm;
+            frame_fig.KeyPressFcn = @ROIConfirm;
+            uiwait(frame_fig);
+            templateCorners = polyH.Position;
+            for l = 1:4
+                segments{1}.corners{l}.x = templateCorners(l, 1);
+                segments{1}.corners{l}.y = templateCorners(l, 2);
+            end
+            segments{1}.centerX = mean(templateCorners(:, 1));
+            segments{1}.centerY = mean(templateCorners(:, 2));
+            
+            obj.cornerHorDist = (norm(templateCorners(1, :)-templateCorners(4, :))+norm(templateCorners(2, :)-templateCorners(3, :)))/2;
+            obj.cornerVerDist = (norm(templateCorners(1, :)-templateCorners(2, :))+norm(templateCorners(3, :)-templateCorners(4, :)))/2;
+            obj.template = segments{1};
+            delete(polyH);
+        end
         function [displayImage, segments] = processImage(obj, inputImage, args)
             if exist('args', 'var')
                 [displayImage, segments] = obj.filterImage(inputImage, args);
@@ -415,6 +453,9 @@ classdef ImageProcessor < Modules.Driver
                         cornerValid(l) = true;
                     end
                 end
+
+
+                % Use 
                 % if segments{k}.corners{1}.y > segY/2 || segments{k}.corners{1}.x > segX/2
                 %     segments{k}.corners{1}.valid = false;
                 %     cornerValid(1) = false;
@@ -437,8 +478,6 @@ classdef ImageProcessor < Modules.Driver
                 case 4
                     % All corners are matched
                     center = mean(cornerPos, 1);
-                    obj.cornerHorDist = (norm(cornerPos(1, :)-cornerPos(4, :))+norm(cornerPos(2, :)-cornerPos(3, :)))/2;
-                    obj.cornerVerDist = (norm(cornerPos(1, :)-cornerPos(2, :))+norm(cornerPos(3, :)-cornerPos(4, :)))/2;
                 case 3
                     % Only one corner is not matched: 
                     unmatchedIdx = find(~cornerValid);

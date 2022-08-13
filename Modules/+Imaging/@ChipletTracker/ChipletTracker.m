@@ -28,14 +28,12 @@ classdef ChipletTracker < Modules.Imaging
         videoTimer       % Handle to video timer object for capturing frames
         hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
         hManagers       % Handle to CommandCenter managers. Will be set when `focus` is called from the ImagingManager.
-        template = [];
         frameCnt = 0;           % Frame num counter for updating pattern detection (in video mode). 
         prevTemplatePos = []; % 2*2 matrix to store the coordinates of two rounds.
         templatePos;            % Imaging Coordinates
         prevCenterPos = [];
         centerPos;              % Normal Coordinates
         prevContrast;
-        templateCorners;
         initialized = false;
     end
     
@@ -219,29 +217,8 @@ classdef ChipletTracker < Modules.Imaging
             if ~exist('im', 'var') || isempty(im)
                 im = obj.snapImage;
             end
-            [template, segments] = obj.processor.processImage(im, struct('pixelThresRatio', 1, 'display', 'Raw')); % When snapping the template, only keep the maximal segment.
-            if isempty(segments)
-                return;
-            end
-            obj.template = segments{1}.image;
-            frame_fig = figure(41);
-            frame_fig.Position = [200, 200, 560, 420];
-            frame_ax = axes('Parent', frame_fig);
-            imH = imagesc(frame_ax, obj.template);
-            colormap(frame_ax, 'bone');
-            x_size = size(obj.template, 2);
-            y_size = size(obj.template, 1);
-            if isempty(obj.templateCorners)
-                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
-            else
-                polyH = drawpolygon(frame_ax, 'Position', obj.templateCorners);
-            end
-            set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
-            imH.ButtonDownFcn = @ROIConfirm;
-            frame_fig.KeyPressFcn = @ROIConfirm;
-            uiwait(frame_fig);
-            obj.templateCorners = round(polyH.Position);
-            delete(polyH);
+            obj.processor.setTemplate(im);
+            
         end
         function display_im = updateMatching(obj, im, forceUpdate)
             persistent wasBright
@@ -263,9 +240,6 @@ classdef ChipletTracker < Modules.Imaging
 
             if ~exist('forceUpdate', 'var')
                 forceUpdate = false;
-            end
-            if isempty(obj.template) || isempty(obj.templateCorners)
-                obj.snapTemplate(im);
             end
             [display_im, segments] = obj.processor.processImage(im);
             % [processed_im, segment_images] = frame_detection(im, false, struct('pixel_thres_ratio', obj.pixelThresRatio));
@@ -351,6 +325,9 @@ classdef ChipletTracker < Modules.Imaging
             end
         end
         function val = set_initTemplate(obj, val, ~)
+            if ~obj.initialized
+                return;
+            end
             obj.snapTemplate;
         end
         function set.ROI(obj,val)
