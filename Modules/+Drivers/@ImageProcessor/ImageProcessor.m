@@ -65,9 +65,10 @@ classdef ImageProcessor < Modules.Driver
                 segments{1}.corners{l}.x = templateCorners(l, 1);
                 segments{1}.corners{l}.y = templateCorners(l, 2);
             end
-            segments{1}.centerX = mean(templateCorners(:, 1));
-            segments{1}.centerY = mean(templateCorners(:, 2));
-            
+            segments{1}.relCenterX = mean(templateCorners(:, 1));
+            segments{1}.relCenterY = mean(templateCorners(:, 2));
+            segments{1}.absCenterX = segments{1}.relCenterX+segments{1}.xmin;
+            segments{1}.absCenterY = segments{1}.relCenterY+segments{1}.ymin;
             obj.cornerHorDist = (norm(templateCorners(1, :)-templateCorners(4, :))+norm(templateCorners(2, :)-templateCorners(3, :)))/2;
             obj.cornerVerDist = (norm(templateCorners(1, :)-templateCorners(2, :))+norm(templateCorners(3, :)-templateCorners(4, :)))/2;
             obj.template = segments{1};
@@ -445,6 +446,10 @@ classdef ImageProcessor < Modules.Driver
                 [maxVal, maxIdx] = max(cornerVals);
                 if maxVal < 200
                     fprintf("Corners of segment %d are not detected.", k);
+                    segments{k}.relCenterX = NaN;
+                    segments{k}.relCenterY = NaN;
+                    segments{k}.absCenterX = NaN;
+                    segments{k}.absCenterY = NaN;
                     continue;
                 end
                 
@@ -519,6 +524,10 @@ classdef ImageProcessor < Modules.Driver
                         center = mean(cornerPos(matchedIdx, :), 1);
                     else % Two neighbor corners
                         if isnan(obj.cornerHorDist) || isnan(obj.cornerVerDist)
+                            segments{k}.relCenterX = NaN;
+                            segments{k}.relCenterY = NaN;
+                            segments{k}.absCenterX = NaN;
+                            segments{k}.absCenterY = NaN;
                             continue;
                         end
                         if isequal(matchedIdx, [1; 2]) % left
@@ -532,12 +541,16 @@ classdef ImageProcessor < Modules.Driver
                         end
                     end
                 otherwise
-                    segments{k}.centerX = NaN;
-                    segments{k}.centerY = NaN;
+                    segments{k}.relCenterX = NaN;
+                    segments{k}.relCenterY = NaN;
+                    segments{k}.absCenterX = NaN;
+                    segments{k}.absCenterY = NaN;
                     continue;
                 end
-                segments{k}.centerX = round(center(2));
-                segments{k}.centerY = round(center(1));
+                segments{k}.relCenterX = round(center(2));
+                segments{k}.relCenterY = round(center(1));
+                segments{k}.absCenterX = segments{k}.relCenterX+segments{k}.xmin;
+                segments{k}.absCenterY = segments{k}.relCenterY+segments{k}.ymin;
             end
 
 
@@ -574,8 +587,8 @@ classdef ImageProcessor < Modules.Driver
                         tempCornerIm(cornerOverlapYmin:cornerOverlapYmax, cornerOverlapXmin:cornerOverlapXmax)) ; % Add corners
                     cornerMask(confine(cornerY-1, 1, segSizeY):confine(cornerY+1, 1, segSizeY), confine(cornerX-1, 1, segSizeX):confine(cornerX+1, 1, segSizeX)) = 0; % Add dots
                 end
-                if ~isnan(segments{k}.centerX) && ~isnan(segments{k}.centerY)
-                    cornerMask(confine(segments{k}.centerY-2, 1, segSizeY):confine(segments{k}.centerY+2, 1, segSizeY), confine(segments{k}.centerX-2, 1, segSizeX):confine(segments{k}.centerX+2, 1, segSizeX)) = 1;
+                if ~isnan(segments{k}.relCenterX) && ~isnan(segments{k}.relCenterY)
+                    cornerMask(confine(segments{k}.relCenterY-2, 1, segSizeY):confine(segments{k}.relCenterY+2, 1, segSizeY), confine(segments{k}.relCenterX-2, 1, segSizeX):confine(segments{k}.relCenterX+2, 1, segSizeX)) = 1;
                 end
                 segments{k}.cornerMask = cornerMask;
             end

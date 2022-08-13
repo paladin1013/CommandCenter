@@ -25,12 +25,12 @@ classdef ChipletTracker < Modules.Imaging
         chipletCoordinateY = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise Y coordinate of the chiplet that is closest to the imaging center.');
         tolerance = Prefs.Double(0.2, 'help', 'How much difference is tolerable relative to the calibrated distance.')
         correlationThres = Prefs.Double(100000, 'min', 0, 'max', 32767^2, 'help', 'A valid movement should let the cross correlation be larger than this threshold.')
-        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'chipletHorDistanceX_pixel', 'chipletHorDistanceY_pixel', 'chipletVerDistanceX_pixel', 'chipletVerDistanceY_pixel'};
+        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'chipletHorDistanceX_pixel', 'chipletHorDistanceY_pixel', 'chipletVerDistanceX_pixel', 'chipletVerDistanceY_pixel', 'movementX_pixel', 'movementY_pixel'};
     end
     properties
         maxROI
         im = []; % Previous raw image 
-        chiplets = []; % containers.Map, key: global chiplet coordinate "chipletX_chipletY"; value: struct (x, y, ...) image relative coordinate(imagePosX, imagePosY);
+        chiplets = []; % containers.Map, key: global chiplet coordinate "chipletX_chipletY"; value: struct (x, y, ...) image relative coordinate(imagePosX, imagePosY); The (x, y) order is different from the imaging coordinate (y, x) !!!!!
     end
     properties(SetObservable)
         continuous = false;
@@ -63,12 +63,28 @@ classdef ChipletTracker < Modules.Imaging
             obj.maxROI = obj.camera.maxROI;
             obj.resolution = obj.camera.resolution;
             obj.initialized = true;
+            obj.chiplets = obj.fetchPrefData('chiplets');
+            obj.im = obj.fetchPrefData('im');  
         end
     end
     methods(Static)
         obj = instance()
     end
     methods
+        function savePrefData(obj, name, data)
+            if ~exist('data', 'var')
+                data = obj.(name);
+            end
+            setpref(obj.namespace, name, data);
+        end
+        function data = fetchPrefData(obj, name)
+            try
+                data = getpref(obj.namespace, name);
+            catch
+                data = [];
+                warning(sprintf("obj.%s is not properly saved in matlab prefs."), name);
+            end
+        end
         function metric = focus(obj,ax,managers) %#ok<INUSD>
             if ~exist('managers', 'var')
                 if isempty(obj.hManagers)
@@ -197,8 +213,10 @@ classdef ChipletTracker < Modules.Imaging
             if obj.detectChiplets 
                 if obj.contrast > 0.7*obj.prevContrast
                     % To prevent position shift caused by stage shifting
-                    [displayIm, segments] = obj.updateDetection(im); % 0.1s
+                    [displayIm, segments] = obj.updateDetection(im); % 0.1s\
                     [movementX, movementY, movementMask] = obj.updateTracking(im, segments);
+                else
+                    displayIm = im;
                 end
             end
             if isempty(hImage) || ~isvalid(hImage)
@@ -315,14 +333,14 @@ classdef ChipletTracker < Modules.Imaging
 
             if isempty(obj.chiplets)
                 for k = 1:nSegments
-                    if ~isnan(segments{k}.centerX) && ~isnan(segments{k}.centerY)
+                    if ~isnan(segments{k}.absCenterX) && ~isnan(segments{k}.absCenterY)
                         
                         if isempty(obj.chiplets) % Usually the first valid segment is the closest to the image center
                             obj.chiplets = containers.Map;
-                            obj.chiplets("0_0") = struct('x', segments{k}.centerX, 'y', segments{k}.centerY);
+                            obj.chiplets("0_0") = struct('x', segments{k}.absCenterX, 'y', segments{k}.absCenterY);
                         else
                             % First determine what is the direction relative to the first chiplet
-                            diff = [segments{k}.centerX, segments{k}.centerY] - obj.chiplets("0_0");
+                            diff = [segments{k}.absCenterX, segments{k}.absCenterY] - obj.chiplets("0_0");
 
                             % Decompose diff onto Horizontal/Vertical distance vecotrs
                             baseMatrix = [obj.chipletHorDistanceX_pixel, obj.chipletVerDistanceX_pixel; obj.chipletHorDistanceY_pixel, obj.chipletVerDistanceY_pixel];
@@ -330,7 +348,7 @@ classdef ChipletTracker < Modules.Imaging
                             xCoord = roundWithTolerance(decomposeVector(1), obj.tolerance);
                             yCoord = roundWithTolerance(decomposeVector(1), obj.tolerance);
                             if ~isnan(xCoord) && ~isnan(yCoord)
-                                obj.chiplets(sprintf("%d_%d", xCoord, yCoord)) = struct('x', segments{k}.centerX, 'y', segments{k}.centerY);
+                                obj.chiplets(sprintf("%d_%d", xCoord, yCoord)) = struct('x', segments{k}.absCenterX, 'y', segments{k}.absCenterY);
                             end
                         end
                     end
@@ -349,11 +367,11 @@ classdef ChipletTracker < Modules.Imaging
             movements = nan(nSegments, 2); % (x, y) for each segment
             valid = ones(nSegments, 1);
             for k = 1:nSegments
-                if isnan(segments{k}.centerX) || isnan(segments{k}.centerY)
+                if isnan(segments{k}.absCenterX) || isnan(segments{k}.absCenterY)
                     valid(k) = false;
                     continue;
                 end
-                pos = [segments{k}.centerX, segments{k}.centerY];
+                pos = [segments{k}.absCenterX, segments{k}.absCenterY];
                 prevCoord = obj.chiplets.keys;
                 for l = length(prevCoord)
                     testCoord = prevCoord{l};
@@ -375,7 +393,7 @@ classdef ChipletTracker < Modules.Imaging
             end
             % Estimate movement according to matched chiplets
             estimatedMovement = mean(movements(matched, :), 1); % (x, y)
-            standardDeviation = [std(movements(matched, 1)), std(movements(matched:2))];
+            standardDeviation = [std(movements(matched, 1)), std(movements(matched, 2))];
             if any(abs(standardDeviation) > abs(estimatedMovement)/2)
                 fprintf("Standard deviation (%.3f, %.3f) is larger than half of the estimated movement (%.3f, %.3f). Abort update.\n", standardDeviation(1), standardDeviation(2), estimatedMovement(1), estimatedMovement(2));
                 return;
@@ -387,44 +405,49 @@ classdef ChipletTracker < Modules.Imaging
                 obj.im = im;
                 return
             else % Verify movement by taking image correlation
-                moveX = estimatedMovement(1);
-                moveY = estimatedMovement(2);
-                prevImOverlap = double(obj.im(max(moveY+1, 1):min(imSizeY, imSizeY+moveY), max(moveX+1, 1):min(imSizeX, imSizeX+moveX)));
-                newImOverlap = double(im(max(1-moveY, 1):min(imSizeY, imSizeY-moveY), max(1-moveX, 1):min(imSizeX, imSizeX-moveX)));
+                movementX = estimatedMovement(1);
+                movementY = estimatedMovement(2);
+                prevImOverlap = double(obj.im(max(movementY+1, 1):min(imSizeY, imSizeY+movementY), max(movementX+1, 1):min(imSizeX, imSizeX+movementX)));
+                newImOverlap = double(im(max(1-movementY, 1):min(imSizeY, imSizeY-movementY), max(1-movementX, 1):min(imSizeX, imSizeX-movementX)));
                 prevImOverlap = prevImOverlap - mean2(prevImOverlap);
                 newImOverlap = newImOverlap - mean2(newImOverlap);
                 corrVal = mean2(prevImOverlap.*newImOverlap);
                 if corrVal < obj.correlationThres
                     fprintf("Correlation (%f) of the shifted image does not meet obj.correlationThres (%f). Abort update.\n", corrVal, obj.correlationThres);
+                    return;
                 end
-                return;
             end
             
 
             % Update old chiplet positions and add new chiplet positions based on new movement information.
             chipletCoords = obj.chiplets.keys;
             for k = 1:length(chipletCoords)
-                obj.chiplets(chipletCoords{k}).x = obj.chiplets(chipletCoords{k}).x + moveX;
-                obj.chiplets(chipletCoords{k}).y = obj.chiplets(chipletCoords{k}).y + moveY;
+                chiplet = obj.chiplets(chipletCoords{k});
+                chiplet.x = chiplet.x + movementX;
+                chiplet.y = chiplet.y + movementY;
+                obj.chiplets(chipletCoords{k}) = chiplet;
             end
 
             % Overwrite matched chiplet positions for existing chiplets
             for k = 1:nSegments
                 if matched(k)
-                    obj.chiplets(matchedCoord{k}).x = segment{k}.centerX;
-                    obj.chiplets(matchedCoord{k}).y = segment{k}.centerY;
+                    chiplet = struct('x', segments{k}.absCenterX, 'y', segments{k}.absCenterY);
+                    obj.chiplets(chipletCoords{k}) = chiplet;
                 end
             end
 
+            % There should be at least one matched chiplet, which can be a reference
+            matchedIdx = find(matched, 1);
+            matchedChiplet = obj.chiplets(matchedCoord{matchedIdx});
+            coord = int16(str2double(split(matchedCoord{matchedIdx}, "_")));
+            matchedX = coord(1);
+            matchedY = coord(2);
+
+            % Add new chiplets
             for k = 1:nSegments
-                if valid(k) && ~matched(k) % Add new chiplets
-                    % There should be at least one matched chiplet, which can be a reference
-                    matchedIdx = find(matched, 1);
-                    matchedChiplet = obj.chiplets(matchedCoord{matchedIdx});
-                    coord = str2num(split(matchedCoord{matchedIdx}, "_"));
-                    matchedX = coord(1);
-                    matchedY = coord(2);
-                    diff = [segments{k}.centerX, segments{k}.centerY] - [matchedChiplet.x, matchedChiplet.y];
+                if valid(k) && ~matched(k)
+                    
+                    diff = [segments{k}.absCenterX, segments{k}.absCenterY] - [matchedChiplet.x, matchedChiplet.y];
 
                     % Decompose diff onto Horizontal/Vertical distance vecotrs
                     baseMatrix = [obj.chipletHorDistanceX_pixel, obj.chipletVerDistanceX_pixel; obj.chipletHorDistanceY_pixel, obj.chipletVerDistanceY_pixel];
@@ -433,11 +456,27 @@ classdef ChipletTracker < Modules.Imaging
                     xCoord = roundWithTolerance(decomposeVector(1), obj.tolerance)+matchedX;
                     yCoord = roundWithTolerance(decomposeVector(1), obj.tolerance)+matchedY;
                     if ~isnan(xCoord) && ~isnan(yCoord)
-                        obj.chiplets(sprintf("%d_%d", xCoord, yCoord)) = struct('x', segments{k}.centerX, 'y', segments{k}.centerY);
+                        matchedCoord{k} = sprintf("%d_%d", xCoord, yCoord);
+                        obj.chiplets(matchedCoord{k}) = struct('x', segments{k}.absCenterX, 'y', segments{k}.absCenterY);
                     end
                 end
+            end             
+            % Update cloest chiplet
+            centerDistance = nan(nSegments, 1);
+            for k = 1:nSegments
+                if valid(k) && ~isempty(matchedCoord{k})
+                    centerDistance(k) = norm([segments{k}.absCenterX-imSizeX/2, segments{k}.absCenterY-imSizeY/2]);
+                end
             end
-
+            [minDist, idx] = min(centerDistance);
+            minCoord = int16(str2double(split(matchedCoord{idx}, "_")));
+            obj.chipletCoordinateX = minCoord(1);
+            obj.chipletCoordinateY = minCoord(2);
+            obj.movementX_pixel = obj.movementX_pixel + movementX;
+            obj.movementY_pixel = obj.movementY_pixel + movementY;
+            obj.im = im;
+            obj.savePrefData('im');
+            obj.savePrefData('chiplets');
         end
         function im = drawMatching(obj, im, pos, template, templateCorners, fill_color) % pos is in image coordinate i.e. (y, x)
             y = pos(1);
