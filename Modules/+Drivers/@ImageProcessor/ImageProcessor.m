@@ -13,6 +13,9 @@ classdef ImageProcessor < Modules.Driver
         angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position.')
         cornerLengthRatio = Prefs.Integer(6, 'allow_nan', false, 'min', 1, 'max', 10, 'help', 'When doing corner detection, the ratio between edge length and width.')
         showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
+        cornerValidThres = Prefs.Double(0.8, 'min', 0, 'max', 1, 'help', 'When detecting corners, a corner position will be valid if its correlation is at least this value relative to the correlation of the best matched corner.')
+        cornerHorDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Horizontal distance between two corners (angle is considered)');
+        cornerVerDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Vertical distance between two corners (angle is considered');
     end
     properties
         prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'angle_deg'};
@@ -32,6 +35,37 @@ classdef ImageProcessor < Modules.Driver
     end
     methods
         function [displayImage, segments] = processImage(obj, inputImage, args)
+            if exist('args', 'var')
+                [displayImage, segments] = obj.filterImage(inputImage, args);
+            else
+                [displayImage, segments] = obj.filterImage(inputImage);
+            end
+
+            if isempty(obj.angle_deg) || isnan(obj.angle_deg) || ~obj.angleCalibrated
+                obj.getAngle(segments, true);
+            end
+            segments = obj.detectCorners(segments);
+
+
+            % Normalize displayImage to uint16
+            displayImage = double(displayImage);
+            minVal = min(displayImage(:));
+            maxVal = max(displayImage(:));
+            displayImage = uint16((displayImage-minVal)*65535/(maxVal-minVal));
+            
+
+            if obj.showCorners
+                for k = 1:length(segments)
+                    xmin = segments{k}.xmin;
+                    ymin = segments{k}.ymin;
+                    xmax = xmin + size(segments{k}.image, 2)-1;
+                    ymax = ymin + size(segments{k}.image, 1)-1;
+                    displayImage(ymin:ymax, xmin:xmax) = displayImage(ymin:ymax, xmin:xmax).*uint16((~segments{k}.cornerMask));
+                end
+            end
+        end
+
+        function [displayImage, segments] = filterImage(obj, inputImage, args)
             % Parse args
             if exist('args', 'var') && isfield(args, 'binarizeThresRatio')
                 binarizeThresRatio = args.binarizeThresRatio;
@@ -114,14 +148,6 @@ classdef ImageProcessor < Modules.Driver
                 subplot(2, 3, 5), imshow(openedImage), set(get(gca, 'Title'), 'String', sprintf("Imopen min pixel: %d", minPixel));
                 subplot(2, 3, 6), imshow(selectedImage), set(get(gca, 'Title'), 'String', sprintf("Imclose disk radius: %d\nKeep biggest component", diskRadius));
             end
-        
-            
-            if isempty(obj.angle_deg) || isnan(obj.angle_deg) || ~obj.angleCalibrated
-                obj.getAngle(segments, true);
-            end
-            segments = obj.detectCorners(segments);
-
-
 
             switch display
             case Drivers.ImageProcessor.displayTypes{1}
@@ -139,24 +165,7 @@ classdef ImageProcessor < Modules.Driver
             case Drivers.ImageProcessor.displayTypes{7}
                 displayImage = selectedImage;
             end
-            % Normalize displayImage to uint16
-            displayImage = double(displayImage);
-            minVal = min(displayImage(:));
-            maxVal = max(displayImage(:));
-            displayImage = uint16((displayImage-minVal)*65535/(maxVal-minVal));
-            
-
-            if obj.showCorners
-                for k = 1:length(segments)
-                    xmin = segments{k}.xmin;
-                    ymin = segments{k}.ymin;
-                    xmax = xmin + size(segments{k}.image, 2)-1;
-                    ymax = ymin + size(segments{k}.image, 1)-1;
-                    displayImage(ymin:ymax, xmin:xmax) = displayImage(ymin:ymax, xmin:xmax).*uint16((~segments{k}.cornerMask));
-                end
-            end
         end
-
         function im = binarize(obj, im, thresRatio)
             if ~exist('thresRatio', 'var')
                 thresRatio = obj.binarizeThresRatio;
@@ -376,11 +385,97 @@ classdef ImageProcessor < Modules.Driver
                     cornerX = maxX-cornerImCenterOffset+1;
                     cornerY = maxY-cornerImCenterOffset+1;
 
-                    corners{l} = struct('x', cornerX, 'y', cornerY, 'val', maxVal, 'valid', true);
+                    corners{l} = struct('x', cornerX, 'y', cornerY, 'val', maxVal, 'valid', false);
                     segments{k}.corners = corners;
                 end
             end
             
+            % Check the validity of each corners
+            for k = 1:nSegments
+                seg = segments{k};
+                segX = size(seg.image, 2);
+                segY = size(seg.image, 1);
+                corners = seg.corners;
+                cornerVals = zeros(4, 1);
+                cornerValid = zeros(4, 1);
+                cornerPos = zeros(4, 2); % (y, x);
+                for l = 1:4
+                    cornerVals(l) = corners{l}.val;
+                    cornerPos(l, :) = [corners{l}.y, corners{l}.x];
+                end
+                [maxVal, maxIdx] = max(cornerVals);
+                if maxVal < 200
+                    fprintf("Corners of segment %d are not detected.", k);
+                    continue;
+                end
+                
+                for l = 1:4
+                    if segments{k}.corners{l}.val > maxVal*obj.cornerValidThres
+                        segments{k}.corners{l}.valid = true;
+                        cornerValid(l) = true;
+                    end
+                end
+                % if segments{k}.corners{1}.y > segY/2 || segments{k}.corners{1}.x > segX/2
+                %     segments{k}.corners{1}.valid = false;
+                %     cornerValid(1) = false;
+                % end
+                % if segments{k}.corners{2}.y < segY/2 || segments{k}.corners{2}.x > segX/2
+                %     segments{k}.corners{2}.valid = false;
+                %     cornerValid(2) = false;
+                % end
+                % if segments{k}.corners{3}.y < segY/2 || segments{k}.corners{3}.x < segX/2
+                %     segments{k}.corners{3}.valid = false;
+                %     cornerValid(3) = false;
+                % end
+                % if segments{k}.corners{4}.y > segY/2 || segments{k}.corners{4}.x < segX/2
+                %     segments{k}.corners{4}.valid = false;
+                %     cornerValid(4) = false;
+                % end
+
+                switch sum(cornerValid)
+                
+                case 4
+                    % All corners are matched
+                    center = mean(cornerPos, 1);
+                    obj.cornerHorDist = (norm(cornerPos(1, :)-cornerPos(4, :))+norm(cornerPos(2, :)-cornerPos(3, :)))/2;
+                    obj.cornerVerDist = (norm(cornerPos(1, :)-cornerPos(2, :))+norm(cornerPos(3, :)-cornerPos(4, :)))/2;
+                case 3
+                    % Only one corner is not matched: 
+                    unmatchedIdx = find(~cornerValid);
+                    prevIdx = modulo(unmatchedIdx-1, 4);
+                    nextIdx = modulo(unmatchedIdx+1, 4);
+                    oppositeIdx = modulo(unmatchedIdx+2, 4);
+                    % Derive the chiplet center by only two corners 
+                    center = mean(cornerPos([prevIdx, nextIdx], :), 1);
+                case 2
+                    % Two corners are matched:
+                    matchedIdx = find(cornerValid);
+                    if isequal(matchedIdx, [1; 3]) || isequal(matchedIdx, [2; 4])
+                        center = mean(cornerPos(matchedIdx, :), 1);
+                    else % Two neighbor corners
+                        if isnan(obj.cornerHorDist) || isnan(obj.cornerVerDist)
+                            continue;
+                        end
+                        if isequal(matchedIdx, [1; 2]) % left
+                            center = mean(cornerPos(matchedIdx, :), 1) + obj.cornerHorDist/2*[-sin(obj.angle_deg/180*pi), cos(obj.angle_deg/180*pi)];
+                        elseif isequal(matchedIdx, [2; 3]) % bottom
+                            center = mean(cornerPos(matchedIdx, :), 1) + obj.cornerVerDist/2*[-cos(obj.angle_deg/180*pi), -sin(obj.angle_deg/180*pi)];
+                        elseif isequal(matchedIdx, [3; 4]) % right
+                            center = mean(cornerPos(matchedIdx, :), 1) + obj.cornerHorDist/2*[sin(obj.angle_deg/180*pi), -cos(obj.angle_deg/180*pi)];
+                        else % top
+                            center = mean(cornerPos(matchedIdx, :), 1) + obj.cornerVerDist/2*[cos(obj.angle_deg/180*pi), sin(obj.angle_deg/180*pi)];
+                        end
+                    end
+                otherwise
+                    segments{k}.centerX = NaN;
+                    segments{k}.centerY = NaN;
+                    continue;
+                end
+                segments{k}.centerX = round(center(2));
+                segments{k}.centerY = round(center(1));
+            end
+
+
 
             % Add cornerMask to each segment for display
             for k = 1:nSegments
@@ -414,10 +509,11 @@ classdef ImageProcessor < Modules.Driver
                         tempCornerIm(cornerOverlapYmin:cornerOverlapYmax, cornerOverlapXmin:cornerOverlapXmax)) ; % Add corners
                     cornerMask(confine(cornerY-1, 1, segSizeY):confine(cornerY+1, 1, segSizeY), confine(cornerX-1, 1, segSizeX):confine(cornerX+1, 1, segSizeX)) = 0; % Add dots
                 end
+                if ~isnan(segments{k}.centerX) && ~isnan(segments{k}.centerY)
+                    cornerMask(confine(segments{k}.centerY-2, 1, segSizeY):confine(segments{k}.centerY+2, 1, segSizeY), confine(segments{k}.centerX-2, 1, segSizeX):confine(segments{k}.centerX+2, 1, segSizeX)) = 1;
+                end
                 segments{k}.cornerMask = cornerMask;
-
             end
-
         end
     end
 end
@@ -425,3 +521,10 @@ end
 function val = confine(val, lower_bound, upper_bound)
     val = max(min(val, upper_bound), lower_bound);
 end
+
+function result = modulo(input, divider)
+    result = mod(input, divider);
+    if result == 0
+        result = divider;
+    end
+end 

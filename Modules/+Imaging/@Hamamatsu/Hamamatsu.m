@@ -423,6 +423,10 @@ classdef Hamamatsu < Modules.Imaging
                 if obj.FlipHor
                     dat = fliplr(dat);
                 end
+                if isempty(hImage) || ~isvalid(hImage)
+                    obj.stopVideo;
+                    return;
+                end
                 set(hImage,'cdata',dat);
             end
             drawnow;

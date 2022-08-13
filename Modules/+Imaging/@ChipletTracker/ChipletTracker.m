@@ -36,6 +36,7 @@ classdef ChipletTracker < Modules.Imaging
         centerPos;              % Normal Coordinates
         prevContrast;
         templateCorners;
+        initialized = false;
     end
     
     methods(Access=private)
@@ -48,6 +49,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.ROI = obj.camera.ROI;
             obj.maxROI = obj.camera.maxROI;
             obj.resolution = obj.camera.resolution;
+            obj.initialized = true;
         end
     end
     methods(Static)
@@ -181,6 +183,10 @@ classdef ChipletTracker < Modules.Imaging
                     dat = obj.updateMatching(dat); % 0.1s
                 end
             end
+            if isempty(hImage) || ~isvalid(hImage)
+                obj.stopVideo;
+                return;
+            end
             set(hImage,'cdata',dat);
             drawnow; % 0.1s
         end
@@ -207,6 +213,9 @@ classdef ChipletTracker < Modules.Imaging
             obj.brightness = mean2(frame);
         end
         function snapTemplate(obj, im)
+            if ~obj.initialized
+                return;
+            end
             if ~exist('im', 'var') || isempty(im)
                 im = obj.snapImage;
             end
