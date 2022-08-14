@@ -331,15 +331,17 @@ classdef Hamamatsu < Modules.Imaging
                     end
                 end
             end
-            try
-                dat = obj.core.popNextImage;
-            catch err
-                warning(sprintf("Error fetching EMCCD image: %s\n"), err.message);
-                obj.startSnapping;
-                while(obj.core.getRemainingImageCount == 0)
-                    pause(0.01);
+            while(obj.core.getRemainingImageCount > 0)
+                try
+                    dat = obj.core.popNextImage;
+                catch err
+                    warning(sprintf("Error fetching EMCCD image: %s\n"), err.message);
+                    obj.startSnapping;
+                    while(obj.core.getRemainingImageCount == 0)
+                        pause(0.01);
+                    end
+                    dat = obj.core.popNextImage;
                 end
-                dat = obj.core.popNextImage;
             end
 
             width = obj.core.getImageWidth();

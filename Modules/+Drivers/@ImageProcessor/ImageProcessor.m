@@ -60,7 +60,7 @@ classdef ImageProcessor < Modules.Driver
             imH.ButtonDownFcn = @ROIConfirm;
             frame_fig.KeyPressFcn = @ROIConfirm;
             uiwait(frame_fig);
-            templateCorners = polyH.Position;
+            templateCorners = round(polyH.Position);
             for l = 1:4
                 segments{1}.corners{l}.x = templateCorners(l, 1);
                 segments{1}.corners{l}.y = templateCorners(l, 2);
@@ -178,8 +178,15 @@ classdef ImageProcessor < Modules.Driver
             % Select valid segments
             [selectedImage, segments] = obj.selectSegments(closedImage);
 
+            function cancelCallback(hObj, event)
+                if ~isempty(obj) && isvalid(obj) && isfield(obj, 'plotAllIntermediate')
+                    obj.plotAllIntermediate = false;
+                end
+                delete(hObj);
+            end
             if obj.plotAllIntermediate
                 fig = figure(5);
+                fig.CloseRequestFcn = @cancelCallback;
                 % Displaying Input Image and Output Image
                 subplot(2, 3, 1), imshow(inputImage), set(get(gca, 'Title'), 'String', 'Input image');
                 subplot(2, 3, 2), imshow(bin1Image), set(get(gca, 'Title'), 'String', sprintf("Binarized thres ratio: %.2f", binarizeThresRatio));
@@ -492,8 +499,23 @@ classdef ImageProcessor < Modules.Driver
                         templateDiffY = obj.template.corners{l}.y-obj.template.corners{idx}.y;
                         actualDiffX = corners{l}.x-corners{idx}.x;
                         actualDiffY = corners{l}.y-corners{idx}.y;
-                        if abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance || abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance
-                            corners{l}.valid = false;
+                        % fprintf("templateDiffY %d actualDiffY %d templateDiffX %d actualDiffX %d\n", templateDiffY, actualDiffY, templateDiffX, actualDiffX);
+                        if abs(actualDiffY) > abs(actualDiffX)
+                            if abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance
+                                corners{l}.valid = false;
+                            elseif abs(actualDiffX) > 80 || abs(templateDiffX) > 80
+                                if abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance
+                                    corners{l}.valid = false;
+                                end
+                            end
+                        else
+                            if abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance
+                                corners{l}.valid = false;
+                            elseif abs(actualDiffY) > 100 || abs(templateDiffY) > 100
+                                if abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance
+                                    corners{l}.valid = false;
+                                end
+                            end
                         end
                     end
 
