@@ -35,6 +35,7 @@ classdef ChipletTracker < Modules.Imaging
         maxROI
         im = []; % Previous raw image 
         chiplets = []; % containers.Map, key: global chiplet coordinate "chipletX_chipletY"; value: struct (x, y, ...) image relative coordinate(imagePosX, imagePosY); The (x, y) order is different from the imaging coordinate (y, x) !!!!!
+        managerInitialized = false;
     end
     properties(SetObservable)
         continuous = false;
@@ -70,6 +71,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.maxROI = obj.camera.maxROI;
             obj.resolution = obj.camera.resolution;
             obj.initialized = true;
+            obj.managerInitialized = false;
             obj.chiplets = obj.fetchPrefData('chiplets');
             obj.im = obj.fetchPrefData('im');  
         end
@@ -101,6 +103,7 @@ classdef ChipletTracker < Modules.Imaging
                 end
             else
                 obj.hManagers = managers;
+                obj.managerInitialized = true;
             end
             prevExposure_ms = obj.exposure_ms;
             obj.exposure_ms = 100;
@@ -108,6 +111,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.detectChiplets = false;
             prevIntensity = obj.wl.intensity;
             obj.wl.intensity = 100;
+            prevContinuous = obj.continuous;
             ms = managers.MetaStage.active_module;
 
             prev_sample_num = ms.sample_num;
@@ -133,12 +137,19 @@ classdef ChipletTracker < Modules.Imaging
             obj.camera.exposure = prevExposure_ms;
             obj.wl.intensity = prevIntensity;
             ms.sample_num = prev_sample_num;
+            if prevContinuous
+                obj.startVideo;
+            end
         end
         function stop_triggered_acquisition(obj)
             obj.core.stopSequenceAcquisition()
         end
         function delete(obj)
             obj.camera = Imaging.Hamamatsu.empty(1, 0); % Avoid deleting the camera instance
+            try
+                stop(obj.videoTimer);
+                delete(obj.videoTimer);
+            end
         end
 
         function dat = snapImage(obj)
@@ -184,8 +195,8 @@ classdef ChipletTracker < Modules.Imaging
 
         function snap(obj,hImage)
             % This function calls snapImage and applies to hImage.
-            if ~exist('hImage', 'var')
-                if isempty(obj.hImage)
+            if ~exist('hImage', 'var') || ~isvalid(hImage)
+                if isempty(obj.hImage) || ~isvalid(obj.hImage)
                     error('Please click `snap` in image panel to initialize obj.hImage');
                 end
                 hImage = obj.hImage;
@@ -259,8 +270,10 @@ classdef ChipletTracker < Modules.Imaging
         end
         function stopVideo(obj)
             obj.camera.stopSnapping;
-            stop(obj.videoTimer)
-            delete(obj.videoTimer)
+            try
+                stop(obj.videoTimer)
+                delete(obj.videoTimer)
+            end
             obj.continuous = false;
             obj.savePrefData('im');
             obj.savePrefData('chiplets');
@@ -368,7 +381,7 @@ classdef ChipletTracker < Modules.Imaging
 
             if isempty(obj.chiplets)
                 for k = 1:nSegments
-                    if ~isnan(segments{k}.absCenterX) && ~isnan(segments{k}.absCenterY)
+                    if isfield(segments{k}, 'absCenterX') && isfield(segments{k}, 'absCenterY') && ~isnan(segments{k}.absCenterX) && ~isnan(segments{k}.absCenterY)
                         
                         if isempty(obj.chiplets) % Usually the first valid segment is the closest to the image center
                             obj.chiplets = containers.Map;
@@ -393,8 +406,8 @@ classdef ChipletTracker < Modules.Imaging
                 obj.movementX_pixel = 0;
                 obj.movementY_pixel = 0;
                 chiplet = obj.chiplets("0_0");
-                obj.chipletPositionX = chiplet.absCenterX;
-                obj.chipletPositionY = chiplet.absCenterY;
+                obj.chipletPositionX = chiplet.x;
+                obj.chipletPositionY = chiplet.y;
                 obj.im = im;
                 return;
             end

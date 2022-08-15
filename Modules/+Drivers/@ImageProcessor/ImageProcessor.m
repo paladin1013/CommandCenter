@@ -427,6 +427,12 @@ classdef ImageProcessor < Modules.Driver
 
             for k = 1:nSegments
                 segIm = segments{k}.image;
+                segSizeX = size(segIm, 2);
+                segSizeY = size(segIm, 1);
+
+                if obj.enableTemplateMatching && ~isempty(obj.template) &&  segSizeX > size(obj.template.image, 2)*(1-obj.tolerance) && segSizeY > size(obj.template.image, 1)*(1-obj.tolerance)
+                    continue;
+                end
                 if exist('showPlots', 'var') && showPlots
 
                     identityMask = zeros((2*lr+1)*w);
