@@ -5,7 +5,7 @@ classdef ChipletTracker < Modules.Imaging
     properties(SetObservable, GetObservable)
         exposure_ms = Prefs.Double(100, 'unit', 'ms', 'set', 'set_exposure_ms', 'help', 'Will override the exposure time in the camera.')
         initTemplate = Prefs.Button('unit', 'Snap', 'set', 'set_initTemplate', 'help', 'Start to set a template and assign its corners.')
-        detectChiplets = Prefs.Boolean(true, 'set', 'set_detectChiplets', 'help', 'Cancel this option will reset the tracking movements.');
+        detectChiplets = Prefs.Boolean(true, 'help', 'Cancel this option will reset the tracking movements.');
         contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         contrastOffset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.');
         brightness = Prefs.Double(NaN, 'readonly', true, 'help', 'Average value off the intensity of the current image.');
@@ -24,9 +24,12 @@ classdef ChipletTracker < Modules.Imaging
         calibrateDistanceY = Prefs.ToggleButton(false, 'unit', 'start', 'set', 'set_calibrateDistanceY', 'help', 'First move along y axis (vertical) to aling the center of the next chiplet with the laser center, then press this button again to confirm.')
         chipletCoordinateX = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise X coordinate of the chiplet that is closest to the imaging center.');
         chipletCoordinateY = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'The chiplet-wise Y coordinate of the chiplet that is closest to the imaging center.');
+        chipletPositionX = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'X pisition (in image axes) of the chiplet that is closest to the imaging center.')
+        chipletPositionY = Prefs.Integer(NaN, 'allow_nan', true, 'readonly', true, 'help', 'Y pisition (in image axes) of the chiplet that is closest to the imaging center.')
+        resetOrigin = Prefs.Button('unit', 'Reset', 'set', 'set_resetOrigin', 'help', 'Reset chiplet coordinates and movements.')
         tolerance = Prefs.Double(0.2, 'help', 'How much difference is tolerable relative to the calibrated distance.')
         correlationThres = Prefs.Double(100000, 'min', 0, 'max', 32767^2, 'help', 'A valid movement should let the cross correlation be larger than this threshold.')
-        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'movementX_pixel', 'movementY_pixel', 'chipletCoordinateX', 'chipletCoordinateY', 'chipletHorDistanceX_pixel', 'chipletHorDistanceY_pixel', 'chipletVerDistanceX_pixel', 'chipletVerDistanceY_pixel'};
+        prefs = {'exposure_ms', 'contrast', 'contrastOffset', 'initTemplate', 'detectChiplets', 'maxMovement', 'movementX_pixel', 'movementY_pixel', 'chipletCoordinateX', 'chipletCoordinateY', 'chipletPositionX', 'chipletPositionY', 'chipletHorDistanceX_pixel', 'chipletHorDistanceY_pixel', 'chipletVerDistanceX_pixel', 'chipletVerDistanceY_pixel'};
     end
     properties
         maxROI
@@ -379,6 +382,9 @@ classdef ChipletTracker < Modules.Imaging
                 obj.chipletCoordinateY = 0;
                 obj.movementX_pixel = 0;
                 obj.movementY_pixel = 0;
+                chiplet = obj.chiplets("0_0");
+                obj.chipletPositionX = chiplet.absCenterX;
+                obj.chipletPositionY = chiplet.absCenterY;
                 obj.im = im;
                 return;
             end
@@ -488,11 +494,20 @@ classdef ChipletTracker < Modules.Imaging
                     end
                 end
             end             
-            % Update cloest chiplet
+
+
+            % Update cloest chiplet; if enableTemplateMatching in Image processor, will only consider the ones that best matches the template 
             centerDistance = nan(nSegments, 1);
+            corrVals = nan(nSegments, 1);
             for k = 1:nSegments
                 if valid(k) && ~isempty(matchedCoord{k})
-                    centerDistance(k) = norm([segments{k}.absCenterX-imSizeX/2, segments{k}.absCenterY-imSizeY/2]);
+                    if obj.processor.enableTemplateMatching
+                        if isfield(segments{k}, 'corrVal')
+                            corrVals(k) = segments{k}.corrVal;
+                        end
+                    else
+                        centerDistance(k) = norm([segments{k}.absCenterX-imSizeX/2, segments{k}.absCenterY-imSizeY/2]);
+                    end
                     if abs(movementX) > abs(movementY) && movementX ~= 0
                         if movementX < 0
                             interval = 1;
@@ -516,10 +531,17 @@ classdef ChipletTracker < Modules.Imaging
                     end
                 end
             end
-            [minDist, idx] = min(centerDistance);
+            if obj.processor.enableTemplateMatching
+                [maxCorr, idx] = max(corrVals);
+            else
+                [minDist, idx] = min(centerDistance);
+            end
             minCoord = int16(str2double(split(matchedCoord{idx}, "_")));
             obj.chipletCoordinateX = minCoord(1);
             obj.chipletCoordinateY = minCoord(2);
+            chiplet = obj.chiplets(matchedCoord{idx});
+            obj.chipletPositionX = chiplet.x;
+            obj.chipletPositionY = chiplet.y;
             obj.movementX_pixel = obj.movementX_pixel + movementX;
             obj.movementY_pixel = obj.movementY_pixel + movementY;
             obj.im = im;
@@ -576,13 +598,15 @@ classdef ChipletTracker < Modules.Imaging
             end
             obj.snapTemplate;
         end
-        function val = set_detectChiplets(obj, val, ~)
+        function val = set_resetOrigin(obj, val, ~)
             obj.movementX_pixel = 0;
             obj.movementY_pixel = 0;
             obj.im = [];
             obj.chiplets = [];
             obj.chipletCoordinateX = NaN;
             obj.chipletCoordinateY = NaN;
+            obj.chipletPositionX = NaN;
+            obj.chipletPositionY = NaN;
         end
         function set.ROI(obj,val)
             assert(~obj.continuous,'Cannot set while video running.')

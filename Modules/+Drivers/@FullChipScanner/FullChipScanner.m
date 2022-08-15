@@ -2,19 +2,22 @@ classdef FullChipScanner < Modules.Driver
     properties(SetObservable, GetObservable)
         
 
-        x_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'set', 'set_x_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
-        y_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'set', 'set_y_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
-        x_movement_um = Prefs.DoubleArray([0, 0, 0], 'unit', 'um', 'allow_nan', false, 'min', -50, 'max', 50, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along x axis');
-        y_movement_um = Prefs.DoubleArray([0, 0, 0], 'unit', 'um', 'allow_nan', false, 'min', -50, 'max', 50, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along y axis');
+        x_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'default_step', 1, 'set', 'set_x_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
+        y_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'default_step', 1, 'set', 'set_y_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
+        x_movement_step = Prefs.DoubleArray([0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along x axis');
+        y_movement_step = Prefs.DoubleArray([0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along y axis');
         current_position_um = Prefs.DoubleArray([NaN, NaN, NaN], 'unit', 'um', 'readonly', true, 'help', 'Current piezo stage position');
         calibrate_x_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_x_movement', 'help', 'First move along x axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
         calibrate_y_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_y_movement', 'help', 'First move along y axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
         laser_center = Prefs.DoubleArray([NaN, NaN], 'unit', 'pixel', 'help', 'Laser center relative position in the camera image.'); % Regular 
-        set_laser_center = Prefs.Button('set', 'set_laser_center_graphical', 'help', 'Set the relative position of laser center on the current snapped image');
-        reverse_step_direction = Prefs.Boolean(true, 'help', 'Check this option if stepping stage forward will result in decreasing of the absolute position.');
+        set_laser_center = Prefs.Button('set', 'set_laser_center_callback', 'help', 'Set the relative position of laser center on the current snapped image');
+        set_align_laser = Prefs.ToggleButton(false, 'set', 'set_align_laser_callback', 'help', 'Align the center of the current chiplet to the laser center.');
+        step_delay_s = Prefs.Double(0.25, 'unit', 's', 'help', 'Delay between each stage steps');
+        flip_x_movement = Prefs.Boolean(true, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
+        flip_y_movement = Prefs.Boolean(false, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
+        % reverse_step_direction = Prefs.Boolean(true, 'help', 'Check this option if stepping stage forward will result in decreasing of the absolute position.');
         abort
 
-        % camera = Prefs.ModuleInstance(Imaging.Hamamatsu.instance, 'inherits', {'Modules.Imaging'});
         % stage = Prefs.ModuleInstance(Drivers.Attocube.ANC350.instance("18.25.29.30"), 'inherits', {'Modules.Driver'});
     end
     properties(Access=private)
@@ -24,21 +27,22 @@ classdef FullChipScanner < Modules.Driver
         prev_calibrate_x_movement = false;
         prev_calibrate_y_movement = false;
         initialized = false;
+        laser_alignment_running = false;
     end
     properties
-        prefs = {'x_pos', 'y_pos', 'x_movement_um', 'y_movement_um', 'laser_center', 'reverse_step_direction'};
+        prefs = {'x_pos', 'y_pos', 'x_movement_step', 'y_movement_step', 'laser_center', 'flip_x_movement', 'flip_y_movement'};
     end
     properties(SetObservable)
-        camera;
         stage;
+        tracker;
     end
     methods(Static)
         obj = instance()
     end
     methods(Access = private)
         function obj = FullChipScanner()
-            obj.camera = Imaging.Hamamatsu.instance;
             obj.stage = Drivers.Attocube.ANC350.instance("18.25.29.30");
+            obj.tracker = Imaging.ChipletTracker.instance();
             obj.loadPrefs;
             try
                 obj.current_position_um = round(obj.stage.get_coordinate_um);
@@ -55,106 +59,40 @@ classdef FullChipScanner < Modules.Driver
     end
     methods
         function delete(obj)
-            obj.camera = Imaging.Hamamatsu.empty(1, 0); % Only set the handles to empty and avoid deleting the drivers. 
             obj.stage = Drivers.Attocube.ANC350.empty(1, 0);
+            obj.tracker = Imaging.ChipletTracker.empty(1, 0);
             try
                 delete(obj.stage_listener);
             catch err
                 warning(sprintf("Error deleting stage_listener, %s", err.message))
             end
         end
-        function success = step_approximate(obj, axis_name, forward, max_steps, max_wrong_cnt, step_delay_s)
+        function success = step_approximate(obj, axis_name, forward)
             if ~obj.initialized
                 % Disable movement if CommandCenter is not fully initialized
                 return
             end
-            % Use absolute position to approximately move the stage (x_movement_um)
             % success: logical scalar, if true when this movement is successful; false if error occurs
             assert(any(strcmp(axis_name, {'x', 'y', 'X', 'Y'})), "axis_name should be one of {'x', 'X', 'y', 'Y'}");
             assert(islogical(forward), "Second argument (forward) should be ether true or false");
-            success = false;
-            initial_position_um = obj.stage.get_coordinate_um(5);
-            obj.current_position_um = round(initial_position_um);
-            fprintf("Start moving along %s axis\n", axis_name);
-            fprintf("  initial position: (%.2f, %.2f, %.2f)\n", initial_position_um(1), initial_position_um(2), initial_position_um(3));
-            if forward
-                target_position_um = initial_position_um + obj.x_movement_um;
+
+            if strcmp(axis_name, 'x')
+                stage_steps = obj.x_movement_step;
             else
-                target_position_um = initial_position_um - obj.x_movement_um;
+                stage_steps = obj.y_movement_step;
             end
-
-            fprintf("  target position: (%.2f, %.2f, %.2f)\n", target_position_um(1), target_position_um(2) , target_position_um(3));
-            if ~exist('max_steps', 'var')
-                max_steps = 50;
-            end
-            if ~exist('max_wrong_cnt', 'var')
-                % reverse the stepping direction after 3 wrong moves.
-                max_wrong_cnt = 5;
-            end
-            if ~exist('step_delay_s', 'var')
-                % Time interval between each moving steps
-                step_delay_s = 0.2;
-            end
-            for checkpoint = [0.5, 1]  % Finish the whole process in how many subroutines (using checkpoint)
-                obj.stage.set_new_origin(true);
-                for axis_num = 1:2
-                    if strcmp(axis_name, 'x') || strcmp(axis_name, 'X')
-                        target_movement = obj.x_movement_um(axis_num)*checkpoint;
-                    else
-                        target_movement = obj.y_movement_um(axis_num)*checkpoint;
-                    end
-                    if ~forward
-                        target_movement = -target_movement;
-                    end
-                    wrong_cnt = 0;
-                    reverse_direction = obj.reverse_step_direction;
-
-                    current_movement = obj.current_position_um(axis_num) - initial_position_um(axis_num);
-                    for k = 1:ceil(max_steps*checkpoint)
-                        if reverse_direction
-                            next_steps_moved = obj.stage.lines(axis_num).steps_moved - sign(target_movement);
-                        else
-                            next_steps_moved = obj.stage.lines(axis_num).steps_moved + sign(target_movement);
-                        end
-                        fprintf("Setting line(%d).steps_moved to %d\n", axis_num, next_steps_moved);
-                        obj.stage.lines(axis_num).steps_moved = next_steps_moved;
-                        cnt = 0;
-                        while (obj.stage.lines(axis_num).steps_moved ~= next_steps_moved)
-                            cnt = cnt + 1;
-                            pause(0.01);
-                            if cnt > 100
-                                success = false;
-                                warning("stage.lines is not responding in 1s. Stepping failed.\n");
-                                return;
-                            end
-                        end
-                        current_position_um = obj.stage.get_coordinate_um(5);
-                        obj.current_position_um = round(current_position_um);
-                        step_movement = current_position_um(axis_num) - initial_position_um(axis_num)-current_movement; % Position increament of this single step
-                        current_movement = current_position_um(axis_num) - initial_position_um(axis_num);
-                        fprintf("    target_movement:%f, step_movement:%f, current_movement:%f\n", target_movement, step_movement, current_movement);
-                        if step_movement*target_movement < 0 || abs(step_movement) < 0.3 % moving toward a wrong direction or the stage is not moving (less than 0.5um)
-                            wrong_cnt = wrong_cnt + 1;
-                            if wrong_cnt >= max_wrong_cnt
-                                reverse_direction = ~reverse_direction;
-                                if reverse_direction == obj.reverse_step_direction % Tried both directions: failed to go to the correct place
-                                    success = false;
-                                    warning("Stepping failed. Please check the stage output.")
-                                    return;
-                                end
-                                wrong_cnt = 0;
-                            end
-                        else % moving toward a correct direction
-                            wrong_cnt = 0;
-                            if abs(current_movement) > abs(target_movement)
-                                break;
-                            end
-                        end
-                        pause(step_delay_s);
-                    end
-                end
+            
+            if forward == false
+                stage_steps = -stage_steps;
             end
             success = true;
+            prev_steps_moved = obj.stage.get_steps_moved;
+            for line = 1:3
+                for k = 1:abs(stage_steps(line))
+                    obj.stage.lines(line).steps_moved = obj.stage.lines(line).steps_moved + sign(stage_steps(line));
+                    pause(obj.step_delay_s);
+                end
+            end
         end
         function val = set_x_pos(obj, val, ~)
             if ~obj.initialized
@@ -179,6 +117,8 @@ classdef FullChipScanner < Modules.Driver
             obj.prev_y_pos = val;
         end
         function val = set_calibrate_x_movement(obj, val, ~)
+            prev_detect_chiplets = obj.tracker.detectChiplets;
+            obj.tracker.detectChiplets = false;
             if val == obj.prev_calibrate_x_movement % Otherwise this function will be executed 2 times for unknown reason.
                 return;
             end
@@ -191,33 +131,26 @@ classdef FullChipScanner < Modules.Driver
                 prev_steps_moved = obj.stage.get_steps_moved;
             end
             new_position = obj.stage.get_coordinate_um(5);
+            new_steps_moved = obj.stage.get_steps_moved;
             if val
                 fprintf("x movement calibration started. Please move the stage until the center of the next chiplet is aligned with the laser center, then press this button again.\n");
-                fprintf("Initial stage position: (%f, %f, %f)\n", new_position(1), new_position(2), new_position(3));
-                
+                fprintf("Initial stage steps_moved: (%d, %d, %d)\n", new_steps_moved(1), new_steps_moved(2), new_steps_moved(3));
             else
-                fprintf("x movement calibration ended. Final stage position: (%f, %f, %f)\n", new_position(1), new_position(2), new_position(3));
-                obj.x_movement_um = new_position-prev_position;
+                fprintf("x movement calibration ended. Final stage steps_moved: (%d, %d, %d)\n", new_steps_moved(1), new_steps_moved(2), new_steps_moved(3));
+                movement_um = new_position-prev_position;
                 steps_moved = obj.stage.get_steps_moved - prev_steps_moved;
-                movement = obj.x_movement_um;
-                movement(abs(movement) < 1) = 0;
-                if all(double(steps_moved).*movement >= 0)
-                    % If steps have the same direction as absolute movements.
-                    obj.reverse_step_direction = false;
-                elseif all(double(steps_moved).*movement <= 0)
-                    % If steps have the opposite direction as absolute movements.
-                    obj.reverse_step_direction = true;
-                end
-                fprintf("Movement: (%f, %f, %f)\n", obj.x_movement_um(1), obj.x_movement_um(2), obj.x_movement_um(3));
+                obj.x_movement_step = steps_moved;
                 fprintf("Steps moved: (%d, %d, %d)\n", steps_moved(1), steps_moved(2), steps_moved(3))
+                fprintf("Movement: (%f, %f, %f)\n", movement_um(1), movement_um(2), movement_um(3));
             end
             prev_position = new_position;
-            prev_steps_moved = obj.stage.get_steps_moved;   
-
+            prev_steps_moved = new_steps_moved;   
             obj.prev_calibrate_x_movement = val;
+            obj.tracker.detectChiplets = prev_detect_chiplets;
         end
         function val = set_calibrate_y_movement(obj, val, ~)
-            
+            prev_detect_chiplets = obj.tracker.detectChiplets;
+            obj.tracker.detectChiplets = false;
             if val == obj.prev_calibrate_y_movement
                 return;
             end
@@ -230,31 +163,26 @@ classdef FullChipScanner < Modules.Driver
                 prev_steps_moved = obj.stage.get_steps_moved;
             end
             new_position = obj.stage.get_coordinate_um(5);
+            new_steps_moved = obj.stage.get_steps_moved;
             if val
                 fprintf("y movement calibration started. Please move the stage until the center of the next chiplet is aligned with the laser center, then press this button again.\n");
-                fprintf("Initial stage position: (%f, %f, %f)\n", new_position(1), new_position(2), new_position(3));
+                fprintf("Initial stage steps_moved: (%d, %d, %d)\n", new_steps_moved(1), new_steps_moved(2), new_steps_moved(3));
+
             else
-                fprintf("y movement calibration ended. Final stage position: (%f, %f, %f)\n", new_position(1), new_position(2), new_position(3));
-                obj.y_movement_um = new_position-prev_position;
-                steps_moved = obj.stage.get_steps_moved - prev_steps_moved;
-                movement = obj.y_movement_um;
-                movement(abs(movement) < 1) = 0;
-                if all(double(steps_moved).*movement >= 0)
-                    % If steps have the same direction as absolute movements.
-                    obj.reverse_step_direction = false;
-                elseif all(double(steps_moved).*movement <= 0)
-                    % If steps have the opposite direction as absolute movements.
-                    obj.reverse_step_direction = true;
-                end
-                fprintf("Movement: (%f, %f, %f)\n", obj.y_movement_um(1), obj.y_movement_um(2), obj.y_movement_um(3));
+                fprintf("y movement calibration ended. Final stage steps_moved: (%d, %d, %d)\n", new_steps_moved(1), new_steps_moved(2), new_steps_moved(3));
+                movement_um = new_position-prev_position;
+                steps_moved = new_steps_moved - prev_steps_moved;
+                obj.y_movement_step = steps_moved;
                 fprintf("Steps moved: (%d, %d, %d)\n", steps_moved(1), steps_moved(2), steps_moved(3))
+                fprintf("Movement: (%f, %f, %f)\n", movement_um(1), movement_um(2), movement_um(3));
             end
             prev_position = new_position;    
-            prev_steps_moved = obj.stage.get_steps_moved;   
+            prev_steps_moved = new_steps_moved;   
             obj.prev_calibrate_y_movement = val;
+            obj.tracker.detectChiplets = prev_detect_chiplets;
         end
-        function val = set_laser_center_graphical(obj, val, ~)
-            img = obj.camera.snapImage;
+        function val = set_laser_center_callback(obj, val, ~)
+            img = obj.tracker.snapImage;
             fig = figure(53);
             ax = axes('Parent', fig);
             imH = imagesc(ax, img);
@@ -273,6 +201,41 @@ classdef FullChipScanner < Modules.Driver
             uiwait(fig);
             obj.laser_center = round(pointH.Position);
             delete(fig);
+        end
+        function align_laser(obj)
+            % obj.tracker.focus;
+            try
+                obj.tracker.stopVideo;
+            catch
+            end
+            distance = norm([obj.tracker.chipletPositionX, obj.tracker.chipletPositionY] - obj.laser_center);
+            move_x = true;
+            while distance > 10 && obj.laser_alignment_running
+                if move_x
+                    diff = obj.laser_center(1) - obj.tracker.chipletPositionX;
+                    if obj.flip_x_movement
+                        step = -sign(diff);
+                    else
+                        step = sign(diff);
+                    end
+                    obj.stage.lines(1).steps_moved = obj.stage.lines(1).steps_moved + step;
+                else
+                    diff = obj.laser_center(2) - obj.tracker.chipletPositionY;
+                    if obj.flip_y_movement
+                        step = -sign(diff);
+                    else
+                        step = sign(diff);
+                    end
+                    obj.stage.lines(2).steps_moved = obj.stage.lines(2).steps_moved + step;
+                end
+                move_x = ~move_x;
+                pause(obj.step_delay_s);
+                obj.tracker.snap;
+            end
+        end
+        function val = set_align_laser_callback(obj, val, ~)
+            obj.laser_alignment_running = val;
+            obj.align_laser;
         end
         function update_position(obj, varargin)
             obj.current_position_um = round(obj.stage.get_coordinate_um);

@@ -662,6 +662,7 @@ classdef ImageProcessor < Modules.Driver
             segment.cornerPos =  obj.template.cornerPos + [posY, posX] - size(obj.template.image);
             segment.cornerValid = [true;true;true;true];
             segment.cornerVal = nan(4, 1);
+            segment.corrVal = maxCorr;
 
             if exist('show_plots', 'var') && show_plots
                 try 
