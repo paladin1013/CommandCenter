@@ -343,6 +343,18 @@ classdef Hamamatsu < Modules.Imaging
                     dat = obj.core.popNextImage;
                 end
             end
+            try
+                if ~exist('dat', 'var')
+                    obj.startSnapping;
+                    while(obj.core.getRemainingImageCount == 0)
+                        pause(0.01);
+                    end
+                    dat = obj.core.popNextImage;
+                end
+            catch
+                dat = obj.snapImage;
+            end
+
 
             width = obj.core.getImageWidth();
             height = obj.core.getImageHeight();

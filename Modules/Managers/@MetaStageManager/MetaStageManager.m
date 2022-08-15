@@ -664,7 +664,16 @@ classdef MetaStageManager < Base.Manager
             test_vals = zeros(1, sample_num);
             for k = 1:sample_num
                 pause(obj.active_module.sample_interval);
-                test_vals(k) = target.read;
+                if strcmp(target.reference.name, 'contrast')
+                    ct = target.reference.parent; % ChipletTracker
+                    prev = ct.detectChiplets;
+                    ct.detectChiplets = false;
+                    ct.snap;
+                    ct.detectChiplets = prev;
+                    test_vals(k) = ct.contrast;
+                else
+                    test_vals(k) = target.read;
+                end
             end
             avg = mean(test_vals);
             st = std(test_vals);

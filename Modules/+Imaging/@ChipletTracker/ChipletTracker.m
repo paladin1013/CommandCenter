@@ -6,7 +6,7 @@ classdef ChipletTracker < Modules.Imaging
         exposure_ms = Prefs.Double(100, 'unit', 'ms', 'set', 'set_exposure_ms', 'help', 'Will override the exposure time in the camera.')
         initTemplate = Prefs.Button('unit', 'Snap', 'set', 'set_initTemplate', 'help', 'Start to set a template and assign its corners.')
         detectChiplets = Prefs.Boolean(true, 'help', 'Cancel this option will reset the tracking movements.');
-        contrast = Prefs.Double(NaN, 'readonly', true, 'get', 'get_contrast', 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
+        contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         contrastOffset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.');
         brightness = Prefs.Double(NaN, 'readonly', true, 'help', 'Average value off the intensity of the current image.');
         brightnessThreshold = Prefs.Double(5000, 'allow_nan', false, 'help', 'Brightness lower than this value will disable the template matching.');
@@ -102,9 +102,6 @@ classdef ChipletTracker < Modules.Imaging
             else
                 obj.hManagers = managers;
             end
-            if check_call_stack_func('grabFrame')
-                error("The optimization callback is interupting the timer function. Please stop the ChipletTracker continuous mode and then start the optimization again.");
-            end
             prevExposure_ms = obj.exposure_ms;
             obj.exposure_ms = 100;
             prevDetectChiplets = obj.detectChiplets;
@@ -112,6 +109,9 @@ classdef ChipletTracker < Modules.Imaging
             prevIntensity = obj.wl.intensity;
             obj.wl.intensity = 100;
             ms = managers.MetaStage.active_module;
+
+            prev_sample_num = ms.sample_num;
+            ms.sample_num = 1;
 
             Z = ms.get_meta_pref('Z');
             anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
@@ -127,10 +127,12 @@ classdef ChipletTracker < Modules.Imaging
             end
             
             managers.MetaStage.optimize('Z', true);
-            metric = Target.read;
+            metric = obj.contrast;
             obj.detectChiplets = prevDetectChiplets;
             obj.exposure_ms = prevExposure_ms;
+            obj.camera.exposure = prevExposure_ms;
             obj.wl.intensity = prevIntensity;
+            ms.sample_num = prev_sample_num;
         end
         function stop_triggered_acquisition(obj)
             obj.core.stopSequenceAcquisition()
@@ -196,6 +198,8 @@ classdef ChipletTracker < Modules.Imaging
                 [displayIm, segments] = obj.updateDetection(im, true); % Enable forced update
                 [movementX, movementY, movementMask] = obj.updateTracking(im, segments);
                 displayIm = displayIm.*uint16(~movementMask);
+            else
+                displayIm = im;
             end
 
 
@@ -219,6 +223,8 @@ classdef ChipletTracker < Modules.Imaging
                                 'TimerFcn',{@obj.grabFrame,hImage}); % Use exposure time as timer period to detect the frame update
             start(obj.videoTimer)
             obj.continuous = true;
+            obj.savePrefData('im');
+            obj.savePrefData('chiplets');
         end
         function grabFrame(obj,~,~,hImage)
             % Timer Callback for frame acquisition
@@ -256,9 +262,11 @@ classdef ChipletTracker < Modules.Imaging
             stop(obj.videoTimer)
             delete(obj.videoTimer)
             obj.continuous = false;
+            obj.savePrefData('im');
+            obj.savePrefData('chiplets');
         end
         
-        function contrast = updateContrast(obj,frame)
+        function contrast = updateContrast(obj,frame, disableUpdateContrast)
             frame = double(frame);
             xmin = obj.contrastOffset+1;
             xmax = size(frame, 2)-obj.contrastOffset;
@@ -270,7 +278,9 @@ classdef ChipletTracker < Modules.Imaging
             dI = (imagex-image).^2+(imagey-image).^2;
             contrast = mean2(dI);
             obj.prevContrast = obj.contrast;
-            obj.contrast = contrast;
+            if ~exist('disableUpdateContrast', 'var') || ~disableUpdateContrast
+                obj.contrast = contrast;
+            end
             obj.brightness = mean2(frame);
         end
         function snapTemplate(obj, im)
@@ -545,9 +555,6 @@ classdef ChipletTracker < Modules.Imaging
             obj.movementX_pixel = obj.movementX_pixel + movementX;
             obj.movementY_pixel = obj.movementY_pixel + movementY;
             obj.im = im;
-
-            obj.savePrefData('im');
-            obj.savePrefData('chiplets');
         end
         function im = drawMatching(obj, im, pos, template, templateCorners, fill_color) % pos is in image coordinate i.e. (y, x)
             y = pos(1);
@@ -670,11 +677,6 @@ classdef ChipletTracker < Modules.Imaging
             obj.prevChipletPos = chipletPos;
             obj.prevMovement = movement;
             obj.prevCalibrateDistanceY = val;
-        end
-        function val = get_contrast(obj, ~)
-            obj.snap;
-            fprintf("Contrast: %f\n", obj.contrast);
-            val = obj.contrast;
         end
     end
 end
