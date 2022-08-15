@@ -50,6 +50,8 @@ classdef ChipletTracker < Modules.Imaging
         initialized = false;
         prevCalibrateDistanceX = false;
         prevCalibrateDistanceY = false;
+        prevChipletPos = []; % (x, y)
+        prevMovement = []; % (x, y)
     end
     
     methods(Access=private)
@@ -579,34 +581,58 @@ classdef ChipletTracker < Modules.Imaging
         function val = set_calibrateDistanceX(obj, val, ~)
             if val == obj.prevCalibrateDistanceX
                 return;
-            end
-            persistent chipletPos
-            if ~exist('chipletPos', 'var') || isempty(chipletPos)
-                chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
-                chipletPos = [chiplet.x, chiplet.y];
-            end
-            persistent movement
-            if ~exist('movement', 'var') || isempty(movement)
-                movement = [obj.movementX_pixel, obj.movementY_pixel];
+            end            
+            if obj.prevCalibrateDistanceY
+                fprintf("Please disable Y distance calibration before starting X calibration.\n");
             end
             if val
                 movement = [obj.movementX_pixel, obj.movementY_pixel];
                 chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chipletPos = [chiplet.x, chiplet.y];
                 fprintf("X distance calibration started. Please move the stage until the chiplet on the right is the closest to the image center, then press this button again.\n")
                 fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chiplet.x, chiplet.y, obj.movementX_pixel, obj.movementY_pixel);
             else
                 fprintf("X distance calibration ended.\n")
-                newChipletPos = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
-                newMovement = [obj.movementX_pixel, obj.movementY_pixel];
-                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, newChipletPos.x, newChipletPos.y, obj.movementX_pixel, obj.movementY_pixel);
-                diff = newChipletPos-chipletPos+newMovement-movement;
+                chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chipletPos = [chiplet.x, chiplet.y];
+                movement = [obj.movementX_pixel, obj.movementY_pixel];
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chipletPos(1), chipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
+                diff = chipletPos-obj.prevChipletPos-movement+obj.prevMovement;
                 obj.chipletHorDistanceX_pixel = diff(1);
-                obj.chipletVerDistanceY_pixel = diff(2);
+                obj.chipletHorDistanceY_pixel = diff(2);
                 fprintf("Horizontal distance (x, y) = (%d, %d)\n", obj.chipletHorDistanceX_pixel, obj.chipletHorDistanceY_pixel);
             end
+            obj.prevChipletPos = chipletPos;
+            obj.prevMovement = movement;
             obj.prevCalibrateDistanceX = val;
         end
         function val = set_calibrateDistanceY(obj, val, ~)
+            if  val == obj.prevCalibrateDistanceY
+                return;
+            end            
+            if obj.prevCalibrateDistanceX
+                fprintf("Please disable X distance calibration before starting Y calibration.\n");
+            end
+            if val
+                movement = [obj.movementX_pixel, obj.movementY_pixel];
+                chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chipletPos = [chiplet.x, chiplet.y];
+                fprintf("Y distance calibration started. Please move the stage until the chiplet on the right is the closest to the image center, then press this button again.\n")
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, Y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chiplet.x, chiplet.y, obj.movementX_pixel, obj.movementY_pixel);
+            else
+                fprintf("X distance calibration ended.\n")
+                chiplet = obj.chiplets(sprintf("%d_%d", obj.chipletCoordinateX, obj.chipletCoordinateY));
+                chipletPos = [chiplet.x, chiplet.y];
+                movement = [obj.movementX_pixel, obj.movementY_pixel];
+                fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, Y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chipletPos(1), chipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
+                diff = chipletPos-obj.prevChipletPos-movement+obj.prevMovement;
+                obj.chipletHorDistanceX_pixel = diff(1);
+                obj.chipletHorDistanceY_pixel = diff(2);
+                fprintf("Horizontal distance (x, y) = (%d, %d)\n", obj.chipletHorDistanceX_pixel, obj.chipletHorDistanceY_pixel);
+            end
+            obj.prevChipletPos = chipletPos;
+            obj.prevMovement = movement;
+            obj.prevCalibrateDistanceX = val;
         end
     end
 end
