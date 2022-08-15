@@ -12,14 +12,15 @@ classdef ImageProcessor < Modules.Driver
         waveguideWidth_pixel = Prefs.Integer(5, 'unit', 'pixel', 'min', 1, 'max', 20, 'help', 'Width of the waveguide in each chiplet. Used for angle detection.')
         cornerLengthRatio = Prefs.Integer(15, 'min', 1, 'max', 20, 'help', 'When doing corner detection, the ratio between edge length and width.')
         showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
-        angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'readonly', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position. Can be set by calling `setTemplate`')
+        angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'readonly', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position. Can be set by calling `setTemplate`');
         cornerHorDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Horizontal distance between two corners (angle is considered)');
         cornerVerDist = Prefs.Double(NaN, 'min', 0, 'readonly', true, 'unit', 'pixel', 'help', 'Vertical distance between two corners (angle is considered');
-        cornerValidThres = Prefs.Double(0.6, 'min', 0, 'max', 1, 'help', 'When detecting corners, a corner position will be valid if its correlation is at least this value relative to the correlation of the best matched corner.')
+        cornerValidThres = Prefs.Double(0.6, 'min', 0, 'max', 1, 'help', 'When detecting corners, a corner position will be valid if its correlation is at least this value relative to the correlation of the best matched corner.');
+        enableTemplateMatching = Prefs.Boolean(true, 'help', 'Use template to match segments whose size is as large as the template.');
         tolerance = Prefs.Double(0.3, 'min', 0, 'max', 1, 'help', 'To what extent the snapped image can be different from the template parameters when it is still valid.')
     end
     properties
-        prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel'};
+        prefs = {'binarizeThresRatio','cutoffLow','cutoffHigh','minPixel','diskRadius','pixelThresRatio','display','plotAllIntermediate', 'waveguideWidth_pixel', 'enableTemplateMatching'};
         angleCalibrated = false;
         template; % Follows the same structure as a segment: has fields 'image', 'corners', 'center', 
     end
@@ -33,9 +34,24 @@ classdef ImageProcessor < Modules.Driver
         function obj = ImageProcessor()
             obj.loadPrefs;
             obj.angleCalibrated = false;
+            obj.template = obj.fetchPrefData('template');  
         end
     end
     methods
+        function savePrefData(obj, name, data)
+            if ~exist('data', 'var')
+                data = obj.(name);
+            end
+            setpref(obj.namespace, name, data);
+        end
+        function data = fetchPrefData(obj, name)
+            try
+                data = getpref(obj.namespace, name);
+            catch
+                data = [];
+                warning(sprintf("obj.%s is not properly saved in matlab prefs."), name);
+            end
+        end
         function setTemplate(obj, inputImage)
             [displayImage, segments] = obj.filterImage(inputImage, struct('pixelThresRatio', 1)); % Only keep the largest component
             obj.getAngle(segments, true);
@@ -65,14 +81,15 @@ classdef ImageProcessor < Modules.Driver
                 segments{1}.corners{l}.x = templateCorners(l, 1);
                 segments{1}.corners{l}.y = templateCorners(l, 2);
             end
-            segments{1}.relCenterX = mean(templateCorners(:, 1));
-            segments{1}.relCenterY = mean(templateCorners(:, 2));
+            segments{1}.relCenterX = round(mean(templateCorners(:, 1)));
+            segments{1}.relCenterY = round(mean(templateCorners(:, 2)));
             segments{1}.absCenterX = segments{1}.relCenterX+segments{1}.xmin;
             segments{1}.absCenterY = segments{1}.relCenterY+segments{1}.ymin;
             obj.cornerHorDist = (norm(templateCorners(1, :)-templateCorners(4, :))+norm(templateCorners(2, :)-templateCorners(3, :)))/2;
             obj.cornerVerDist = (norm(templateCorners(1, :)-templateCorners(2, :))+norm(templateCorners(3, :)-templateCorners(4, :)))/2;
             obj.template = segments{1};
             delete(polyH);
+            obj.savePrefData('template', obj.template);
         end
         function [displayImage, segments] = processImage(obj, inputImage, args)
             if exist('args', 'var')
@@ -437,162 +454,154 @@ classdef ImageProcessor < Modules.Driver
             end
             
             % Check the validity of each corners
-            for k = 1:nSegments
-                seg = segments{k};
-                segments{k}.relCenterX = NaN; % Assign values for early termination (continue)
-                segments{k}.relCenterY = NaN;
-                segments{k}.absCenterX = NaN;
-                segments{k}.absCenterY = NaN;
-                segX = size(seg.image, 2);
-                segY = size(seg.image, 1);
-                corners = seg.corners;
-                cornerVals = zeros(4, 1);
-                cornerValid = zeros(4, 1);
-                cornerPos = zeros(4, 2); % (y, x);
-                segments{k}.cornerValid = cornerValid;
-                for l = 1:4
-                    cornerVals(l) = corners{l}.val;
-                    cornerPos(l, :) = [corners{l}.y, corners{l}.x];
-                end
-                [maxVal, maxIdx] = max(cornerVals);
-                segments{k}.cornerVals = cornerVals;
-                segments{k}.cornerPos = cornerPos;
-                if maxVal < 200
-                    fprintf("Corners of segment %d are not detected.", k);
-                    continue;
-                end
-                
-                for l = 1:4
-                    if corners{l}.val > maxVal*obj.cornerValidThres
-                        corners{l}.valid = true;
-                    end
-                end
-                
-                
-                % Use Template to verify the relative position of four corners
-                if ~isempty(obj.template) && isstruct(obj.template)
-                    templateX = size(obj.template.image, 2);
-                    templateY = size(obj.template.image, 1);
-                    ratio = 1+obj.tolerance;
-                    if corners{1}.y > obj.template.corners{1}.y*ratio + 10 || corners{1}.x > obj.template.corners{1}.x*ratio + 10
-                        corners{1}.valid = false;
-                    end
-                    if segY - corners{2}.y > max(templateY - obj.template.corners{2}.y, 1)*ratio + 10 || corners{2}.x > obj.template.corners{2}.x*ratio + 10
-                        corners{2}.valid = false;
-                    end
-                    if segY - corners{3}.y > max(templateY - obj.template.corners{3}.y, 1)*ratio + 10 || segX - corners{3}.x > max(templateX - obj.template.corners{3}.x, 1)*ratio + 10
-                        corners{3}.valid = false;
-                    end
-                    if corners{4}.y > obj.template.corners{4}.y*ratio + 10 || segX - corners{4}.x > max(templateX - obj.template.corners{4}.x, 1)*ratio + 10
-                        corners{4}.valid = false;
-                    end
-                    [sortedVals, idxs] = sort(cornerVals, 'descend');
+            for k = 1:nSegments 
+                segIm = segments{k}.image;
+                segSizeX = size(segIm, 2);
+                segSizeY = size(segIm, 1);
+                if obj.enableTemplateMatching && ~isempty(obj.template) &&  segSizeX > size(obj.template.image, 2)*(1-obj.tolerance) && segSizeY > size(obj.template.image, 1)*(1-obj.tolerance)
+                    % Use template to match all corners and centers. Override the previous detection results
+                    segments{k} = obj.matchTemplate(segments{k});
+                else
+                    seg = segments{k};
+                    segments{k}.relCenterX = NaN; % Assign values for early termination (continue)
+                    segments{k}.relCenterY = NaN;
+                    segments{k}.absCenterX = NaN;
+                    segments{k}.absCenterY = NaN;
+                    segX = size(seg.image, 2);
+                    segY = size(seg.image, 1);
+                    corners = seg.corners;
+                    cornerVals = zeros(4, 1);
+                    cornerValid = zeros(4, 1);
+                    cornerPos = zeros(4, 2); % (y, x);
+                    segments{k}.cornerValid = cornerValid;
                     for l = 1:4
-                        if corners{idxs(l)}.valid
-                            idx = idxs(l);
-                            break; % Get the valid corner with the largest correlation value
-                        end
+                        cornerVals(l) = corners{l}.val;
+                        cornerPos(l, :) = [corners{l}.y, corners{l}.x];
                     end
+                    [maxVal, maxIdx] = max(cornerVals);
+                    segments{k}.cornerVals = cornerVals;
+                    segments{k}.cornerPos = cornerPos;
+                    if maxVal < 200
+                        fprintf("Corners of segment %d are not detected.", k);
+                        continue;
+                    end
+                    
                     for l = 1:4
-                        if l == idx || corners{l}.valid == false
-                            continue;
-                        end
-                        templateDiffX = obj.template.corners{l}.x-obj.template.corners{idx}.x;
-                        templateDiffY = obj.template.corners{l}.y-obj.template.corners{idx}.y;
-                        actualDiffX = corners{l}.x-corners{idx}.x;
-                        actualDiffY = corners{l}.y-corners{idx}.y;
-                        % fprintf("templateDiffY %d actualDiffY %d templateDiffX %d actualDiffX %d\n", templateDiffY, actualDiffY, templateDiffX, actualDiffX);
-                        % if abs(actualDiffY) > abs(actualDiffX)
-                        %     if abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance
-                        %         corners{l}.valid = false;
-                        %     elseif abs(actualDiffX) > 80 || abs(templateDiffX) > 80
-                        %         if abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance
-                        %             corners{l}.valid = false;
-                        %         end
-                        %     end
-                        % else
-                        %     if abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance
-                        %         corners{l}.valid = false;
-                        %     elseif abs(actualDiffY) > 100 || abs(templateDiffY) > 100
-                        %         if abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance
-                        %             corners{l}.valid = false;
-                        %         end
-                        %     end
-                        % end
-                        if abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance + 10 || abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance + 10
-                            corners{l}.valid = false;
+                        if corners{l}.val > maxVal*obj.cornerValidThres
+                            corners{l}.valid = true;
                         end
                     end
-
-                end
-
-                for l = 1:4
-                    cornerValid(l) = corners{l}.valid;
-                end
-                segments{k}.corners = corners;
-                segments{k}.cornerValid = cornerValid;
-
-                horOffset = obj.cornerHorDist/2*[-sin(obj.angle_deg/180*pi), cos(obj.angle_deg/180*pi)];
-                verOffset = obj.cornerVerDist/2*[cos(obj.angle_deg/180*pi), sin(obj.angle_deg/180*pi)];
-
-                switch sum(cornerValid)
-                
-                case 4
-                    % All corners are matched
-                    center = mean(cornerPos, 1);
-                case 3
-                    % Only one corner is not matched: 
-                    unmatchedIdx = find(~cornerValid);
-                    prevIdx = modulo(unmatchedIdx-1, 4);
-                    nextIdx = modulo(unmatchedIdx+1, 4);
-                    oppositeIdx = modulo(unmatchedIdx+2, 4);
-                    % Derive the chiplet center by only two corners 
-                    center = mean(cornerPos([prevIdx, nextIdx], :), 1);
-                case 2
-                    % Two corners are matched:
-                    matchedIdx = find(cornerValid);
-                    if isequal(matchedIdx, [1; 3]) || isequal(matchedIdx, [2; 4])
-                        center = mean(cornerPos(matchedIdx, :), 1);
-                    else % Two neighbor corners
-                        if isnan(obj.cornerHorDist) || isnan(obj.cornerVerDist)
-                            continue;
+                    
+                    
+                    % Use Template to verify the relative position of four corners
+                    if ~isempty(obj.template) && isstruct(obj.template)
+                        templateX = size(obj.template.image, 2);
+                        templateY = size(obj.template.image, 1);
+                        ratio = 1+obj.tolerance;
+                        if corners{1}.y > obj.template.corners{1}.y*ratio + 10 || corners{1}.x > obj.template.corners{1}.x*ratio + 10
+                            corners{1}.valid = false;
                         end
-                        if isequal(matchedIdx, [1; 2]) % left
-                            center = mean(cornerPos(matchedIdx, :), 1) + horOffset;
-                        elseif isequal(matchedIdx, [2; 3]) % bottom
-                            center = mean(cornerPos(matchedIdx, :), 1) - verOffset;
-                        elseif isequal(matchedIdx, [3; 4]) % right
-                            center = mean(cornerPos(matchedIdx, :), 1) - horOffset;
-                        else % top
-                            center = mean(cornerPos(matchedIdx, :), 1) + verOffset;
+                        if segY - corners{2}.y > max(templateY - obj.template.corners{2}.y, 1)*ratio + 10 || corners{2}.x > obj.template.corners{2}.x*ratio + 10
+                            corners{2}.valid = false;
                         end
-                    end
-                case 1
-                    matchedIdx = find(cornerValid);
-                    if segments{k}.corners{matchedIdx}.val > min(max(segments{k}.cornerVals)*0.8, 250) % if the only corner is valid enough: still useful to find the center position
-                        switch matchedIdx
-                        case 1
-                            center = cornerPos(matchedIdx, :) + horOffset + verOffset;
-                        case 2
-                            center = cornerPos(matchedIdx, :) + horOffset - verOffset;
-                        case 3
-                            center = cornerPos(matchedIdx, :) - horOffset - verOffset;
-                        case 4
-                            center = cornerPos(matchedIdx, :) - horOffset + verOffset;
+                        if segY - corners{3}.y > max(templateY - obj.template.corners{3}.y, 1)*ratio + 10 || segX - corners{3}.x > max(templateX - obj.template.corners{3}.x, 1)*ratio + 10
+                            corners{3}.valid = false;
                         end
+                        if corners{4}.y > obj.template.corners{4}.y*ratio + 10 || segX - corners{4}.x > max(templateX - obj.template.corners{4}.x, 1)*ratio + 10
+                            corners{4}.valid = false;
+                        end
+                        [sortedVals, idxs] = sort(cornerVals, 'descend');
+                        for l = 1:4
+                            if corners{idxs(l)}.valid
+                                idx = idxs(l);
+                                break; % Get the valid corner with the largest correlation value
+                            end
+                        end
+                        for l = 1:4
+                            if l == idx || corners{l}.valid == false
+                                continue;
+                            end
+                            templateDiffX = obj.template.corners{l}.x-obj.template.corners{idx}.x;
+                            templateDiffY = obj.template.corners{l}.y-obj.template.corners{idx}.y;
+                            actualDiffX = corners{l}.x-corners{idx}.x;
+                            actualDiffY = corners{l}.y-corners{idx}.y;
+                            % fprintf("templateDiffY %d actualDiffY %d templateDiffX %d actualDiffX %d\n", templateDiffY, actualDiffY, templateDiffX, actualDiffX);
+                            if abs(actualDiffY-templateDiffY) > abs(templateDiffY)*obj.tolerance + 10 || abs(actualDiffX-templateDiffX) > abs(templateDiffX)*obj.tolerance + 10
+                                corners{l}.valid = false;
+                            end
+                        end
+
                     end
 
-                otherwise
-                    continue;
+                    for l = 1:4
+                        cornerValid(l) = corners{l}.valid;
+                    end
+                    segments{k}.corners = corners;
+                    segments{k}.cornerValid = cornerValid;
+
+                    horOffset = obj.cornerHorDist/2*[-sin(obj.angle_deg/180*pi), cos(obj.angle_deg/180*pi)];
+                    verOffset = obj.cornerVerDist/2*[cos(obj.angle_deg/180*pi), sin(obj.angle_deg/180*pi)];
+
+                    switch sum(cornerValid)
+                    
+                    case 4
+                        % All corners are matched
+                        center = mean(cornerPos, 1);
+                    case 3
+                        % Only one corner is not matched: 
+                        unmatchedIdx = find(~cornerValid);
+                        prevIdx = modulo(unmatchedIdx-1, 4);
+                        nextIdx = modulo(unmatchedIdx+1, 4);
+                        oppositeIdx = modulo(unmatchedIdx+2, 4);
+                        % Derive the chiplet center by only two corners 
+                        center = mean(cornerPos([prevIdx, nextIdx], :), 1);
+                    case 2
+                        % Two corners are matched:
+                        matchedIdx = find(cornerValid);
+                        if isequal(matchedIdx, [1; 3]) || isequal(matchedIdx, [2; 4])
+                            center = mean(cornerPos(matchedIdx, :), 1);
+                        else % Two neighbor corners
+                            if isnan(obj.cornerHorDist) || isnan(obj.cornerVerDist)
+                                continue;
+                            end
+                            if isequal(matchedIdx, [1; 2]) % left
+                                center = mean(cornerPos(matchedIdx, :), 1) + horOffset;
+                            elseif isequal(matchedIdx, [2; 3]) % bottom
+                                center = mean(cornerPos(matchedIdx, :), 1) - verOffset;
+                            elseif isequal(matchedIdx, [3; 4]) % right
+                                center = mean(cornerPos(matchedIdx, :), 1) - horOffset;
+                            else % top
+                                center = mean(cornerPos(matchedIdx, :), 1) + verOffset;
+                            end
+                        end
+                    case 1
+                        matchedIdx = find(cornerValid);
+                        if segments{k}.corners{matchedIdx}.val > min(max(segments{k}.cornerVals)*0.8, 250) % if the only corner is valid enough: still useful to find the center position
+                            switch matchedIdx
+                            case 1
+                                center = cornerPos(matchedIdx, :) + horOffset + verOffset;
+                            case 2
+                                center = cornerPos(matchedIdx, :) + horOffset - verOffset;
+                            case 3
+                                center = cornerPos(matchedIdx, :) - horOffset - verOffset;
+                            case 4
+                                center = cornerPos(matchedIdx, :) - horOffset + verOffset;
+                            end
+                        end
+
+                    otherwise
+                        continue;
+                    end
+                    segments{k}.relCenterX = round(center(2));
+                    segments{k}.relCenterY = round(center(1));
+                    segments{k}.absCenterX = segments{k}.relCenterX+segments{k}.xmin;
+                    segments{k}.absCenterY = segments{k}.relCenterY+segments{k}.ymin;
                 end
-                segments{k}.relCenterX = round(center(2));
-                segments{k}.relCenterY = round(center(1));
-                segments{k}.absCenterX = segments{k}.relCenterX+segments{k}.xmin;
-                segments{k}.absCenterY = segments{k}.relCenterY+segments{k}.ymin;
             end
 
 
 
+            
             % Add cornerMask to each segment for display
             for k = 1:nSegments
                 segIm = segments{k}.image;
@@ -630,6 +639,46 @@ classdef ImageProcessor < Modules.Driver
                 end
                 segments{k}.cornerMask = cornerMask;
             end
+        end
+        function [segment, maxCorr] = matchTemplate(obj, segment, showPlots)
+            % showPlots: bool
+            
+            xcorrResult = xcorr2(double(segment.image),double(obj.template.image));
+            [maxCorr,idx] = max(xcorrResult(:));
+            [posY, posX] = ind2sub(size(xcorrResult),idx);
+            templateSizeY = size(obj.template.image, 1);
+            templateSizeX = size(obj.template.image, 2);
+            segment.relCenterX = posX - templateSizeX + obj.template.relCenterX;
+            segment.relCenterY = posY - templateSizeY + obj.template.relCenterY;
+            segment.absCenterX = segment.relCenterX + segment.xmin;
+            segment.absCenterY = segment.relCenterY + segment.ymin;
+            
+            for l = 1:4
+                segment.corners{l}.x = posX - templateSizeX + obj.template.corners{l}.x;
+                segment.corners{l}.y = posY - templateSizeY + obj.template.corners{l}.y;
+                segment.corners{l}.valid = true;
+                segment.corners{l}.val = NaN;
+            end
+            segment.cornerPos =  obj.template.cornerPos + [posY, posX] - size(obj.template.image);
+            segment.cornerValid = [true;true;true;true];
+            segment.cornerVal = nan(4, 1);
+
+            if exist('show_plots', 'var') && show_plots
+                try 
+                    close(13);
+                catch
+                end
+                corr_fig = figure(13);
+                s1 = subplot(2, 2, 1); imshow(segment.image); set(get(s1, 'Title'), 'String', sprintf("Processed input image"));
+                s2 = subplot(2, 2, 2); imshow(obj.template.image); set(get(s2, 'Title'), 'String', sprintf("Trimmed template image"));
+                s3 = subplot(2, 2, 3);
+                surf(s3, xcorrResult); shading(s3, "flat"); set(get(s3, 'Title'), 'String', 'Cross correlation results');
+                s4 = subplot(2, 2, 4);
+                imshow(segment.image); 
+                hold(s4, 'on');
+                plot(s4, [y], [x], 'r.', 'MarkerSize', 10);
+            end
+        
         end
     end
 end

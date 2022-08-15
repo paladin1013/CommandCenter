@@ -13,6 +13,7 @@ classdef ChipletTracker < Modules.Imaging
         maxMovement = Prefs.Double(150, 'min', 10, 'max', 200, 'help', 'Maximum possible movement of both template position and image center position. Single movement larger than this value will be filtered out.');
         camera = Prefs.ModuleInstance(Imaging.Hamamatsu.instance, 'inherits', {'Modules.Imaging'});
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
+        wl = Prefs.ModuleInstance(Sources.WhiteLight_remote.instance, 'inherits', {'Modules.Source'});
         movementX_pixel = Prefs.Integer(0, 'unit', 'pixel', 'readonly', true, 'help', 'Overall x movement of the camera image since detectChiplets started.')
         movementY_pixel = Prefs.Integer(0, 'unit', 'pixel', 'readonly', true, 'help', 'Overall y movement of the camera image since detectChiplets started.')
         chipletHorDistanceX_pixel = Prefs.Double(400, 'unit', 'pixel', 'help', 'Distance between two X-adjacent chiplets in pixel. Set by pressing calibrateDistanceX.');
@@ -61,6 +62,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.continuous = false;
             obj.camera = Imaging.Hamamatsu.instance;
             obj.processor = Drivers.ImageProcessor.instance;
+            obj.wl = Sources.WhiteLight_remote.instance;
             obj.ROI = obj.camera.ROI;
             obj.maxROI = obj.camera.maxROI;
             obj.resolution = obj.camera.resolution;
@@ -97,7 +99,15 @@ classdef ChipletTracker < Modules.Imaging
             else
                 obj.hManagers = managers;
             end
-
+            if check_call_stack_func('grabFrame')
+                error("The optimization callback is interupting the timer function. Please stop the ChipletTracker continuous mode and then start the optimization again.");
+            end
+            prevExposure_ms = obj.exposure_ms;
+            obj.exposure_ms = 100;
+            prevDetectChiplets = obj.detectChiplets;
+            obj.detectChiplets = false;
+            prevIntensity = obj.wl.intensity;
+            obj.wl.intensity = 100;
             ms = managers.MetaStage.active_module;
 
             Z = ms.get_meta_pref('Z');
@@ -115,6 +125,9 @@ classdef ChipletTracker < Modules.Imaging
             
             managers.MetaStage.optimize('Z', true);
             metric = Target.read;
+            obj.detectChiplets = prevDetectChiplets;
+            obj.exposure_ms = prevExposure_ms;
+            obj.wl.intensity = prevIntensity;
         end
         function stop_triggered_acquisition(obj)
             obj.core.stopSequenceAcquisition()
@@ -199,7 +212,7 @@ classdef ChipletTracker < Modules.Imaging
             obj.videoTimer = timer('tag','Video Timer',...
                                 'ExecutionMode','FixedSpacing',...
                                 'BusyMode','drop',...
-                                'Period', obj.exposure_ms/1e3/5,...
+                                'Period', obj.exposure_ms/1e3/2,...
                                 'TimerFcn',{@obj.grabFrame,hImage}); % Use exposure time as timer period to detect the frame update
             start(obj.videoTimer)
             obj.continuous = true;
@@ -626,13 +639,13 @@ classdef ChipletTracker < Modules.Imaging
                 movement = [obj.movementX_pixel, obj.movementY_pixel];
                 fprintf("Current chiplet coordinate: X %d, Y %d; chipletPos: X %d, Y %d; movement: X %d, Y %d\n", obj.chipletCoordinateX, obj.chipletCoordinateY, chipletPos(1), chipletPos(2), obj.movementX_pixel, obj.movementY_pixel);
                 diff = chipletPos-obj.prevChipletPos-movement+obj.prevMovement;
-                obj.chipletHorDistanceX_pixel = diff(1);
-                obj.chipletHorDistanceY_pixel = diff(2);
-                fprintf("Horizontal distance (x, y) = (%d, %d)\n", obj.chipletHorDistanceX_pixel, obj.chipletHorDistanceY_pixel);
+                obj.chipletVerDistanceX_pixel = diff(1);
+                obj.chipletVerDistanceY_pixel = diff(2);
+                fprintf("Vertical distance (x, y) = (%d, %d)\n", obj.chipletVerDistanceX_pixel, obj.chipletVerDistanceY_pixel);
             end
             obj.prevChipletPos = chipletPos;
             obj.prevMovement = movement;
-            obj.prevCalibrateDistanceX = val;
+            obj.prevCalibrateDistanceY = val;
         end
     end
 end
