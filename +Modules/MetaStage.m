@@ -96,11 +96,13 @@ classdef MetaStage < Base.Module
                 chiplet_tracker = obj.get_meta_pref('Target').reference.parent;
                 running = chiplet_tracker.continuous;
                 if running 
-                    if check_call_stack_func('grabFrame')
-                        error("The optimization callback is interupting the timer function. Please stop the ChipletTracker continuous mode and then start the optimization again.");
+                    if ~check_call_stack_func('grabFrame')
+                        % error("The optimization callback is interupting the timer function. Please stop the ChipletTracker continuous mode and then start the optimization again.");
+                        try
+                            chiplet_tracker.stopVideo;
+                        catch
+                        end
                     end
-                else
-                    chiplet_tracker.startVideo;
                 end
             end
         end

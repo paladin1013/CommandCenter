@@ -11,7 +11,7 @@ classdef FullChipScanner < Modules.Driver
         calibrate_y_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_y_movement', 'help', 'First move along y axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
         laser_center = Prefs.DoubleArray([NaN, NaN], 'unit', 'pixel', 'help', 'Laser center relative position in the camera image.'); % Regular 
         set_laser_center = Prefs.Button('set', 'set_laser_center_callback', 'help', 'Set the relative position of laser center on the current snapped image');
-        set_align_laser = Prefs.ToggleButton(false, 'set', 'set_align_laser_callback', 'help', 'Align the center of the current chiplet to the laser center.');
+        start_align_laser = Prefs.ToggleButton(false, 'set', 'start_align_laser_callback', 'help', 'Align the center of the current chiplet to the laser center.');
         step_delay_s = Prefs.Double(0.25, 'unit', 's', 'help', 'Delay between each stage steps');
         flip_x_movement = Prefs.Boolean(true, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
         flip_y_movement = Prefs.Boolean(false, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
@@ -219,6 +219,14 @@ classdef FullChipScanner < Modules.Driver
                         step = sign(diff);
                     end
                     obj.stage.lines(1).steps_moved = obj.stage.lines(1).steps_moved + step;
+                    pause(obj.step_delay_s);
+                    obj.tracker.snap;
+                    diff = [obj.tracker.chipletPositionX, obj.tracker.chipletPositionY] - obj.laser_center;
+                    distance = norm(diff);
+                    if diff(2) >= 5
+                        move_x = false;
+                    end
+
                 else
                     diff = obj.laser_center(2) - obj.tracker.chipletPositionY;
                     if obj.flip_y_movement
@@ -227,15 +235,23 @@ classdef FullChipScanner < Modules.Driver
                         step = sign(diff);
                     end
                     obj.stage.lines(2).steps_moved = obj.stage.lines(2).steps_moved + step;
+                    pause(obj.step_delay_s);
+                    obj.tracker.snap;
+                    diff = [obj.tracker.chipletPositionX, obj.tracker.chipletPositionY] - obj.laser_center;
+                    distance = norm(diff);
+                    if diff(1) >= 5
+                        move_x = true;
+                    end
                 end
-                move_x = ~move_x;
-                pause(obj.step_delay_s);
-                obj.tracker.snap;
             end
+            obj.laser_alignment_running = false;
+            obj.start_align_laser = false;
         end
-        function val = set_align_laser_callback(obj, val, ~)
+        function val = start_align_laser_callback(obj, val, ~)
             obj.laser_alignment_running = val;
-            obj.align_laser;
+            if val
+                obj.align_laser;
+            end
         end
         function update_position(obj, varargin)
             obj.current_position_um = round(obj.stage.get_coordinate_um);

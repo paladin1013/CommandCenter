@@ -6,7 +6,7 @@ classdef ChipletTracker < Modules.Imaging
         exposure_ms = Prefs.Double(100, 'unit', 'ms', 'set', 'set_exposure_ms', 'help', 'Will override the exposure time in the camera.')
         initTemplate = Prefs.Button('unit', 'Snap', 'set', 'set_initTemplate', 'help', 'Start to set a template and assign its corners.')
         detectChiplets = Prefs.Boolean(true, 'help', 'Cancel this option will reset the tracking movements.');
-        contrast = Prefs.Double(NaN, 'readonly', true, 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
+        contrast = Prefs.Double(NaN, 'readonly', true, 'get', 'get_contrast', 'help', 'Difference square contrast. Larger contrast indicates being better focused.');
         contrastOffset = Prefs.Integer(5, 'min', 1, 'max', 10, 'help', 'Move image `offset` pixels then calculate the contrast.');
         brightness = Prefs.Double(NaN, 'readonly', true, 'help', 'Average value off the intensity of the current image.');
         brightnessThreshold = Prefs.Double(5000, 'allow_nan', false, 'help', 'Brightness lower than this value will disable the template matching.');
@@ -670,6 +670,11 @@ classdef ChipletTracker < Modules.Imaging
             obj.prevChipletPos = chipletPos;
             obj.prevMovement = movement;
             obj.prevCalibrateDistanceY = val;
+        end
+        function val = get_contrast(obj, ~)
+            obj.snap;
+            fprintf("Contrast: %f\n", obj.contrast);
+            val = obj.contrast;
         end
     end
 end
