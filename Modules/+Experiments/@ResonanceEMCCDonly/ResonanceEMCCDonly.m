@@ -21,7 +21,9 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         wavemeter_channel = Prefs.Integer(false);
         wightlight_file = Prefs.File('filter_spec','*.mat','help','Snapped whightlight image.', 'custom_validate','validate_wl_file');
         discard_raw_data = Prefs.Boolean(false, 'help', 'Skip saving raw data to speed up experiment.');
+        skip_analysis = Prefs.Boolean(false, 'help', 'Skip the analisys program.')
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
+
     end
     
     properties(Constant)

@@ -116,11 +116,13 @@ function run( obj,status,managers,ax )
     end
     c = fix(clock);
     save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
-    try
-        EMCCDDataAnalysis(true, obj.autosave.exp_dir, obj.processed_data);
-    catch err
-        obj.abort_request = true;
-        rethrow(err);
+    if ~obj.skip_analysis
+        try
+            EMCCDDataAnalysis(true, obj.autosave.exp_dir, obj.processed_data);
+        catch err
+            obj.abort_request = true;
+            rethrow(err);
+        end
     end
 end
 

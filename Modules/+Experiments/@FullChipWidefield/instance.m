@@ -12,7 +12,5 @@ function obj = instance(varargin)
     end
     obj = Experiments.FullChipWidefield(varargin{:});
     obj.singleton_id = varargin;
-    obj.imaging_source = Sources.Cobolt_PB.instance;
-    obj.experiments = [Experiments.Spectrum.instance];
     Objects(end+1) = obj;
 end
