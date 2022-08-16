@@ -198,7 +198,11 @@ classdef ChipletTracker < Modules.Imaging
             % This function calls snapImage and applies to hImage.
             if ~exist('hImage', 'var') || ~isvalid(hImage)
                 if isempty(obj.hImage) || ~isvalid(obj.hImage)
-                    error('Please click `snap` in image panel to initialize obj.hImage');
+                    if isempty(obj.camera.hImage) || ~isvalid(obj.camera.hImage)
+                        error('Please click `snap` in image panel to initialize obj.hImage');
+                    else
+                        obj.hImage = obj.camera.hImage;
+                    end
                 end
                 hImage = obj.hImage;
             else
@@ -221,7 +225,11 @@ classdef ChipletTracker < Modules.Imaging
         function startVideo(obj,hImage)
             if ~exist('hImage', 'var')
                 if isempty(obj.hImage)
-                    error('Please click `snap` in image panel to initialize obj.hImage');
+                    if isempty(obj.camera.hImage) || ~isvalid(obj.camera.hImage)
+                        error('Please click `snap` in image panel to initialize obj.hImage');
+                    else
+                        obj.hImage = obj.camera.hImage;
+                    end
                 end
                 hImage = obj.hImage;
             else

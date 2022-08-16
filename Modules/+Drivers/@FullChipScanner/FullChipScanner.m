@@ -2,8 +2,8 @@ classdef FullChipScanner < Modules.Driver
     properties(SetObservable, GetObservable)
         
 
-        x_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'default_step', 1, 'set', 'set_x_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
-        y_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'default_step', 1, 'set', 'set_y_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
+        x_pos = Prefs.Integer(0, 'min', -20, 'max', 20, 'steponly', true, 'default_step', 1, 'set', 'set_x_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
+        y_pos = Prefs.Integer(0, 'min', -20, 'max', 20, 'steponly', true, 'default_step', 1, 'set', 'set_y_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
         x_movement_step = Prefs.DoubleArray([0, 0, 0; 0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'Steps piezo stage need to move in 3 axis when moving forward along x axis (forward/backward)');
         y_movement_step = Prefs.DoubleArray([0, 0, 0; 0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'Steps piezo stage need to move in 3 axis when moving forward along y axis (forward/backward)');
         current_position_um = Prefs.DoubleArray([NaN, NaN, NaN], 'unit', 'um', 'readonly', true, 'help', 'Current piezo stage position');
@@ -17,7 +17,7 @@ classdef FullChipScanner < Modules.Driver
         flip_y_movement = Prefs.Boolean(false, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
         % reverse_step_direction = Prefs.Boolean(true, 'help', 'Check this option if stepping stage forward will result in decreasing of the absolute position.');
         user_abort;
-
+        disable_movement = Prefs.Boolean(false, 'help', 'Changing position after checking this option will no longer move the stage.');
         % stage = Prefs.ModuleInstance(Drivers.Attocube.ANC350.instance("18.25.29.30"), 'inherits', {'Modules.Driver'});
     end
     properties(Access=private)
@@ -121,6 +121,10 @@ classdef FullChipScanner < Modules.Driver
             end
         end
         function val = set_x_pos(obj, val, ~)
+            if obj.disable_movement
+                obj.prev_x_pos = val;
+                return;
+            end
             % if obj.x_pos_triggered
             %     obj.x_pos_triggered = false;
             %     val = obj.prev_x_pos;
@@ -128,7 +132,7 @@ classdef FullChipScanner < Modules.Driver
             % end
             obj.x_pos_triggered = true;
             for k = 1:3
-                if abs(obj.stage.lines(k).steps_moved) > 150
+                if abs(obj.stage.lines(k).steps_moved) > 100
                     obj.stage.set_new_origin(true);
                     break
                 end
@@ -151,6 +155,10 @@ classdef FullChipScanner < Modules.Driver
             obj.tracker.startVideo;
         end
         function val = set_y_pos(obj, val, ~)
+            if obj.disable_movement
+                obj.prev_y_pos = val;
+                return;
+            end
             % if obj.y_pos_triggered
             %     obj.y_pos_triggered = false;
             %     val = obj.prev_y_pos;
@@ -158,7 +166,7 @@ classdef FullChipScanner < Modules.Driver
             % end
             obj.y_pos_triggered = true;
             for k = 1:3
-                if abs(obj.stage.lines(k).steps_moved) > 150
+                if abs(obj.stage.lines(k).steps_moved) > 100
                     obj.stage.set_new_origin(true);
                     break
                 end

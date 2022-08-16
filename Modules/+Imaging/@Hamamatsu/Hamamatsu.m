@@ -38,9 +38,11 @@ classdef Hamamatsu < Modules.Imaging
         contrastUI
         setOffset
         videoTimer       % Handle to video timer object for capturing frames
-        hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
         hManagers       % Handle to CommandCenter managers. Will be set when `focus` is called from the ImagingManager.
         frameCnt = 0;           % Frame num counter for updating pattern detection (in video mode). 
+    end
+    properties
+        hImage          % Handle to the smartimage in ImagingManager. Use snap or startVideo to initialize
     end
     
     methods(Access=private)

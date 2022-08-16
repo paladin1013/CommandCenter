@@ -85,7 +85,7 @@ classdef FullChipWidefield < Modules.Experiment
                 obj.camera.exposure = 100;
                 nextX = coordsX(k);
                 nextY = coordsY(k);
-                fprintf("Going to chiplet (%d, %d), %d/%d", nextX, nextY, k, nChiplets);
+                fprintf("Going to chiplet (%d, %d), %d/%d\n", nextX, nextY, k, nChiplets);
                 if nextX ~= currentX
                     obj.scanner.x_pos = nextX;
                 elseif nextY ~= currentY
@@ -97,27 +97,18 @@ classdef FullChipWidefield < Modules.Experiment
                 currentY = nextY;
                 obj.wl.source_on = false;
                 obj.camera.exposure = 500;
-                try
-                    obj.camera.stopVideo;
-                end
                 obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorStart, obj.resonatorEnd, obj.resonatorPoints);
                 obj.experiment.set_ROI_automatic(wl_img);
                 obj.runExperiment(managers, obj.experiment, ax);
-                data1 = experiment.processed_data;
-                try
-                    obj.camera.stopVideo;
-                end
+                data1 = obj.experiment.processed_data;
                 assert(~obj.abort_request, 'User aborted.');
                 obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorEnd, obj.resonatorStart, obj.resonatorPoints);
                 obj.runExperiment(managers, obj.experiment, ax);
-                data2 = experiment.processed_data;
-                try
-                    obj.camera.stopVideo;
-                end
+                data2 = obj.experiment.processed_data;
                 data = struct('coordX', currentX, 'coordY', currentY, 'data1', data1, 'data2', data2, 'wl', wl_img);
                 obj.data{k} = data;
-                mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_", c(2), c(3))));
-                save(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_", c(2), c(3)), sprintf("Chiplet_%d.mat", k)), 'data');
+                mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
+                save(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)), sprintf("Chiplet_%d.mat", k)), 'data');
 
             end
         end
