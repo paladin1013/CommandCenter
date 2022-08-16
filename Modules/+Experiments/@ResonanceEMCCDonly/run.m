@@ -107,10 +107,10 @@ function run( obj,status,managers,ax )
     end
     if ~obj.abort_request
         EMCCD_imgs(:, :, end) = obj.data.images_EMCCD(rymin:rymax, rxmin:rxmax, end);
-        filtered_imgs(:, :, end) = uint16(imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1));
+        filtered_imgs(:, :, end) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1);
     end
 
-    obj.processed_data = struct('freqs', freqs, 'EMCCD_imgs', EMCCD_imgs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
+    obj.processed_data = struct('freqs', freqs, 'EMCCD_imgs', uint16(EMCCD_imgs), 'filtered_imgs', uint16(filtered_imgs), 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
     if ~isempty(obj.segment)
         obj.processed_data.segment = obj.segment;
     end

@@ -160,10 +160,11 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             else
                 obj.wl_img = wl_img;
             end
-            [di, seg] = obj.processor.processImage(wl_img);
-            obj.trimmed_wl_img = seg{1}.rawImage;
-            obj.rect_pos = [seg{1}.xmin, seg{1}.ymin; size(seg{1}.image, 2), size(seg{1}.image, 1)];
-            obj.poly_pos = [seg{1}.cornerPos(:, 2), seg{1}.cornerPos(:, 1)];
+            obj.processor.setTemplate(wl_img, false);
+            seg = obj.processor.template;
+            obj.trimmed_wl_img = seg.rawImage;
+            obj.rect_pos = [seg.xmin, seg.ymin, size(seg.image, 2)-1, size(seg.image, 1)-1];
+            obj.poly_pos = [seg.cornerPos(:, 2), seg.cornerPos(:, 1)];
             try close(41); end
             frame_fig = figure(41);
             frame_fig.Position = [200, 200, 560, 420];
@@ -173,7 +174,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             x_size = size(obj.trimmed_wl_img, 2);
             y_size = size(obj.trimmed_wl_img, 1);
             polyH = drawpolygon(frame_ax, 'Position', obj.poly_pos);
-            obj.segment = seg{1};
+            obj.segment = seg;
         end
         function set_ROI(obj)
             
@@ -212,7 +213,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             x_size = size(obj.trimmed_wl_img, 2);
             y_size = size(obj.trimmed_wl_img, 1);
             if isempty(obj.poly_pos)
-                polyH = drawpolygon(frame_ax, 'Position', [1, x_size, x_size, 1; 1, 1, y_size, y_size]');
+                polyH = drawpolygon(frame_ax, 'Position', [1, 1, x_size, x_size; 1, y_size, y_size, 1]');
             else
                 polyH = drawpolygon(frame_ax, 'Position', obj.poly_pos);
             end

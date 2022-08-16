@@ -92,6 +92,13 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
         result_fig = figure(11);
     end
 
+% figure(2)
+% for i=1:length(freqs)
+%     imagesc(EMCCD_imgs(:,:,i));
+%     title(strcat(num2str(i),';',num2str(freqs(i))));
+%     colorbar;
+%     waitforbuttonpress
+% end
 
 % Polygon ROI
 
@@ -240,15 +247,15 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
             if valid(i) == 1
                 wgt = yy(i, :);
                 [wgtv, wgtp] = find(wgt == max(wgt));
-                wgt(max(1, wgtp - 2):min(length(yy), wgtp + 2)) = min(wgt);
-                if max(wgt(max(1, wgtp - floor(length(wgt) / 20)):min(length(wgt), wgtp + floor(length(wgt) / 20)))) > 0.5 * max(yy(i, :))
+%                 wgt(max(1, wgtp - 2):min(length(yy), wgtp + 2)) = min(wgt);
+%                 if max(wgt(max(1, wgtp - floor(length(wgt) / 20)):min(length(wgt), wgtp + floor(length(wgt) / 20)))) > 0.5 * max(yy(i, :))
                     wgc = [wgc; freqs(wgtp)];
                     wgx = [wgx; (freqs - min(freqs) * ones(1, length(freqs))) * 1e3];
                     wgy = [wgy; yy(i, :)];
                     wgym = [wgym; max(yy(i, :))];
                     wgpx = [wgpx; realy(i)];
                     wgpy = [wgpy; realx(i)];
-                end
+%                 end
     
             end
     
@@ -441,7 +448,7 @@ function validSites = spacialFilter(poly_pos, x, y)
     minlen2 = min(norm(line2(1, :)-line2(2, :)), norm(line4(1, :)-line4(2, :)));
 
     for idx = 1:length(x)
-        space_ratio = 0.05; % To ignore sites that is to close to the boundary
+        space_ratio = 0.05; % To ignore sites that is too close to the boundary
         % space_thres = 
         exist_space_line1 = getPointLineDistance(x(idx), y(idx), line1(1, 1), line1(1, 2), line1(2, 1), line1(2, 2)) > minlen2*space_ratio;
         exist_space_line2 = getPointLineDistance(x(idx), y(idx), line2(1, 1), line2(1, 2), line2(2, 1), line2(2, 2)) > minlen1*space_ratio;

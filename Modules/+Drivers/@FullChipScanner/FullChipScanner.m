@@ -4,8 +4,8 @@ classdef FullChipScanner < Modules.Driver
 
         x_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'default_step', 1, 'set', 'set_x_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
         y_pos = Prefs.Integer(0, 'min', -5, 'max', 5, 'steponly', true, 'default_step', 1, 'set', 'set_y_pos', 'help', 'The chiplet coordinate relative to the origin chiplet.');
-        x_movement_step = Prefs.DoubleArray([0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along x axis');
-        y_movement_step = Prefs.DoubleArray([0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'The approximate distance piezo stage need to move in 3 axis when moving forward along y axis');
+        x_movement_step = Prefs.DoubleArray([0, 0, 0; 0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'Steps piezo stage need to move in 3 axis when moving forward along x axis (forward/backward)');
+        y_movement_step = Prefs.DoubleArray([0, 0, 0; 0, 0, 0], 'unit', 'step', 'allow_nan', false, 'min', -200, 'max', 200, 'help', 'Steps piezo stage need to move in 3 axis when moving forward along y axis (forward/backward)');
         current_position_um = Prefs.DoubleArray([NaN, NaN, NaN], 'unit', 'um', 'readonly', true, 'help', 'Current piezo stage position');
         calibrate_x_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_x_movement', 'help', 'First move along x axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
         calibrate_y_movement = Prefs.ToggleButton(false, 'set', 'set_calibrate_y_movement', 'help', 'First move along y axis to aling the center of the next chiplet with the laser center, then press this button again to confirm.');
@@ -22,10 +22,11 @@ classdef FullChipScanner < Modules.Driver
     end
     properties(Access=private)
         stage_listener;
-        prev_x_pos = 0;
-        prev_y_pos = 0;
         x_pos_triggered = false;
         y_pos_triggered = true;
+        
+        prev_x_pos;
+        prev_y_pos;
         prev_calibrate_x_movement = false;
         prev_calibrate_y_movement = false;
         initialized = false;
@@ -56,7 +57,8 @@ classdef FullChipScanner < Modules.Driver
             catch err
                 warning(sprintf("Position listener for stage is not set properly. Please add `get_coordinate_um` method to the current stage."));
             end
-
+            obj.prev_x_pos = obj.x_pos;
+            obj.prev_y_pos = obj.y_pos;
         end
     end
     methods
@@ -82,14 +84,19 @@ classdef FullChipScanner < Modules.Driver
             end
             
             if strcmp(axis_name, 'x')
-                stage_steps = obj.x_movement_step;
+                if forward
+                    stage_steps = obj.x_movement_step(1, :);
+                else
+                    stage_steps = obj.x_movement_step(2, :);
+                end
             else
-                stage_steps = obj.y_movement_step;
+                if forward
+                    stage_steps = obj.y_movement_step(1, :);
+                else
+                    stage_steps = obj.y_movement_step(2, :);
+                end
             end
-            
-            if forward == false
-                stage_steps = -stage_steps;
-            end
+
             success = true;
             prev_steps_moved = obj.stage.get_steps_moved;
             obj.tracker.detectChiplets = false;
@@ -114,20 +121,27 @@ classdef FullChipScanner < Modules.Driver
             end
         end
         function val = set_x_pos(obj, val, ~)
-            if obj.x_pos_triggered
-                obj.x_pos_triggered = false;
-                val = obj.prev_x_pos;
-                return;
-            end
+            % if obj.x_pos_triggered
+            %     obj.x_pos_triggered = false;
+            %     val = obj.prev_x_pos;
+            %     return;
+            % end
             obj.x_pos_triggered = true;
-            obj.stage.set_new_origin(true);
+            for k = 1:3
+                if abs(obj.stage.lines(k).steps_moved) > 150
+                    obj.stage.set_new_origin(true);
+                    break
+                end
+            end
             if ~obj.initialized
                 % Disable movement if CommandCenter is not fully initialized
                 return
             end
             assert(abs(val-obj.prev_x_pos) <= 1, "The full chip scanner can only move one step each time.");
             if abs(val-obj.prev_x_pos) == 1
-                val = obj.prev_x_pos + (val - obj.prev_x_pos)*int8(obj.step_approximate('x', val-obj.prev_x_pos == 1));
+                if ~obj.step_approximate('x', val-obj.prev_x_pos == 1)
+                    val = obj.prev_x_pos;
+                end
                 obj.tracker.focus;
             end
             obj.align_laser;
@@ -137,13 +151,18 @@ classdef FullChipScanner < Modules.Driver
             obj.tracker.startVideo;
         end
         function val = set_y_pos(obj, val, ~)
-            if obj.y_pos_triggered
-                obj.y_pos_triggered = false;
-                val = obj.prev_y_pos;
-                return;
-            end
+            % if obj.y_pos_triggered
+            %     obj.y_pos_triggered = false;
+            %     val = obj.prev_y_pos;
+            %     return;
+            % end
             obj.y_pos_triggered = true;
-            obj.stage.set_new_origin(true);
+            for k = 1:3
+                if abs(obj.stage.lines(k).steps_moved) > 150
+                    obj.stage.set_new_origin(true);
+                    break
+                end
+            end
             if ~obj.initialized
                 % Disable movement if CommandCenter is not fully initialized
                 return

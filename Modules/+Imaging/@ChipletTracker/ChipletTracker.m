@@ -123,6 +123,7 @@ classdef ChipletTracker < Modules.Imaging
             if isempty(Z.reference) || ~strcmp(replace(Z.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, 3)
                 Z.set_reference(Zline.get_meta_pref('steps_moved'));
             end
+            ms.key_step_z = 1;
 
 
             Target = ms.get_meta_pref('Target');
@@ -388,7 +389,8 @@ classdef ChipletTracker < Modules.Imaging
                             obj.chiplets("0_0") = struct('x', segments{k}.absCenterX, 'y', segments{k}.absCenterY);
                         else
                             % First determine what is the direction relative to the first chiplet
-                            diff = [segments{k}.absCenterX, segments{k}.absCenterY] - obj.chiplets("0_0");
+                            chiplet = obj.chiplets("0_0");
+                            diff = [segments{k}.absCenterX, segments{k}.absCenterY] - [chiplet.x, chiplet.y];
 
                             % Decompose diff onto Horizontal/Vertical distance vecotrs
                             baseMatrix = [obj.chipletHorDistanceX_pixel, obj.chipletVerDistanceX_pixel; obj.chipletHorDistanceY_pixel, obj.chipletVerDistanceY_pixel];

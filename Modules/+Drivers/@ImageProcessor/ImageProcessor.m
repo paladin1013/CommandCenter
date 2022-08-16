@@ -52,7 +52,9 @@ classdef ImageProcessor < Modules.Driver
                 warning(sprintf("obj.%s is not properly saved in matlab prefs."), name);
             end
         end
-        function setTemplate(obj, inputImage)
+        function setTemplate(obj, inputImage, waitUI)
+            prevMatchTemplate = obj.enableTemplateMatching;
+            obj.enableTemplateMatching = false;
             [displayImage, segments] = obj.filterImage(inputImage, struct('pixelThresRatio', 1)); % Only keep the largest component
             obj.getAngle(segments, true);
             segments = obj.detectCorners(segments);
@@ -75,7 +77,9 @@ classdef ImageProcessor < Modules.Driver
             set(get(frame_ax, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
             imH.ButtonDownFcn = @ROIConfirm;
             frame_fig.KeyPressFcn = @ROIConfirm;
-            uiwait(frame_fig);
+            if exist('waitUI', 'var') && waitUI
+                uiwait(frame_fig);
+            end
             templateCorners = round(polyH.Position);
             for l = 1:4
                 segments{1}.corners{l}.x = templateCorners(l, 1);
@@ -88,8 +92,9 @@ classdef ImageProcessor < Modules.Driver
             obj.cornerHorDist = (norm(templateCorners(1, :)-templateCorners(4, :))+norm(templateCorners(2, :)-templateCorners(3, :)))/2;
             obj.cornerVerDist = (norm(templateCorners(1, :)-templateCorners(2, :))+norm(templateCorners(3, :)-templateCorners(4, :)))/2;
             obj.template = segments{1};
-            delete(polyH);
+            % delete(polyH);
             obj.savePrefData('template', obj.template);
+            obj.enableTemplateMatching = prevMatchTemplate;
         end
         function [displayImage, segments] = processImage(obj, inputImage, args)
             if exist('args', 'var')

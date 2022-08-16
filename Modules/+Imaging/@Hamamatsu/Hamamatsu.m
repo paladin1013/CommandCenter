@@ -330,6 +330,10 @@ classdef Hamamatsu < Modules.Imaging
                         return
                     end
                 end
+                pause(0.01);
+                if time > 1 || (exist('timeout_s', 'var') && time > timeout_s)
+                    obj.startSnapping;
+                end
             end
             while(obj.core.getRemainingImageCount > 0)
                 try
