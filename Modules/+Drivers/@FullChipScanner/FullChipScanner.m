@@ -255,7 +255,7 @@ classdef FullChipScanner < Modules.Driver
             distance = norm([obj.tracker.chipletPositionX, obj.tracker.chipletPositionY] - obj.laser_center);
             move_x = true;
             obj.user_abort = false;
-            obj.boxH = abortBox(@(hObj,~)obj.abort(hObj), "Start moving into laser center.");
+            obj.boxH = abortBox(@(hObj,~)obj.abort(hObj), "Start alignment with laser center.");
             while distance > 10  && ~obj.user_abort
                 if move_x
                     diffx = obj.laser_center(1) - obj.tracker.chipletPositionX;

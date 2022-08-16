@@ -195,6 +195,11 @@ classdef ImageProcessor < Modules.Driver
             % Select valid segments
             [selectedImage, segments] = obj.selectSegments(closedImage);
 
+            for k = 1:length(segments)
+                segIm = segments{k}.image;
+                segments{k}.rawImage = inputImage(segments{k}.ymin:segments{k}.ymin+size(segIm, 1)-1, segments{k}.xmin:segments{k}.xmin+size(segIm, 2)-1); 
+            end
+
             function cancelCallback(hObj, event)
                 if ~isempty(obj) && isvalid(obj) && isprop(obj, 'plotAllIntermediate')
                     obj.plotAllIntermediate = false;
@@ -662,10 +667,10 @@ classdef ImageProcessor < Modules.Driver
             for l = 1:4
                 segment.corners{l}.x = posX - templateSizeX + obj.template.corners{l}.x;
                 segment.corners{l}.y = posY - templateSizeY + obj.template.corners{l}.y;
+                segment.cornerPos(l, :) = [segment.corners{l}.y, segment.corners{l}.x];
                 segment.corners{l}.valid = true;
                 segment.corners{l}.val = NaN;
             end
-            segment.cornerPos =  obj.template.cornerPos + [posY, posX] - size(obj.template.image);
             segment.cornerValid = [true;true;true;true];
             segment.cornerVal = nan(4, 1);
             segment.corrVal = maxCorr;

@@ -107,14 +107,17 @@ function run( obj,status,managers,ax )
     end
     if ~obj.abort_request
         EMCCD_imgs(:, :, end) = obj.data.images_EMCCD(rymin:rymax, rxmin:rxmax, end);
-        filtered_imgs(:, :, end) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1);
+        filtered_imgs(:, :, end) = uint16(imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1));
     end
 
-    processed_data = struct('freqs', freqs, 'EMCCD_imgs', EMCCD_imgs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos);
+    obj.processed_data = struct('freqs', freqs, 'EMCCD_imgs', EMCCD_imgs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
+    if ~isempty(obj.segment)
+        obj.processed_data.segment = obj.segment;
+    end
     c = fix(clock);
     save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
     try
-        EMCCDDataAnalysis(true, obj.autosave.exp_dir, processed_data);
+        EMCCDDataAnalysis(true, obj.autosave.exp_dir, obj.processed_data);
     catch err
         obj.abort_request = true;
         rethrow(err);

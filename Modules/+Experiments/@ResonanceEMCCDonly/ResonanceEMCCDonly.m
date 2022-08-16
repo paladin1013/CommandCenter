@@ -11,7 +11,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         EMCCD_binning = Prefs.Integer(1);
         EMCCD_exposure = Prefs.Integer(100, 'unit', 'ms');
         EMCCD_gain = Prefs.Integer(1200);
-        
+        ROI_automatic = Prefs.Boolean(true);
         percents = 'linspace(0,100,101)';
         tune_coarse = Prefs.Boolean(false,     'help_text', 'Whether to tune to the coarse value before the scan.');
         set_wavelength = Prefs.Double(619, 'unit', 'nm'); %nm
@@ -20,8 +20,8 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         wavemeter_override = Prefs.Boolean(false);
         wavemeter_channel = Prefs.Integer(false);
         wightlight_file = Prefs.File('filter_spec','*.mat','help','Snapped whightlight image.', 'custom_validate','validate_wl_file');
-        discard_raw_data = Prefs.Boolean(false, 'help', 'Skip saving raw data to speed up experiment.')
-        
+        discard_raw_data = Prefs.Boolean(false, 'help', 'Skip saving raw data to speed up experiment.');
+        processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
     end
     
     properties(Constant)
@@ -29,7 +29,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
     end
     
     properties
-        prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD', 'whiteLight','EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'wightlight_file', 'discard_raw_data'};  % String representation of desired prefs
+        prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD', 'whiteLight','EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'ROI_automatic', 'wightlight_file', 'discard_raw_data'};  % String representation of desired prefs
         %show_prefs = {};   % Use for ordering and/or selecting which prefs to show in GUI
         %readonly_prefs = {}; % CC will leave these as disabled in GUI (if in prefs/show_prefs)
     end
@@ -49,6 +49,8 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         poly_pos = [];
         wavemeter = [];
         autosave = [];
+        processed_data = [];
+        segment = [];
     end
 
     methods(Static)
@@ -60,6 +62,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         function obj = ResonanceEMCCDonly()
             % Constructor (should not be accessible to command line!)
             obj.loadPrefs; % Load prefs specified as obj.prefs
+            ip = Drivers.ImageProcessor.instance;
         end
     end
 
@@ -133,7 +136,11 @@ classdef ResonanceEMCCDonly < Modules.Experiment
                 assert(isfield(wl.image, 'image'), sprintf('File %s should have field "image.image"', val));
                 if ~all(size(obj.wl_img) == size(wl.image.image), 'all') || ~all(obj.wl_img == wl.image.image, 'all')
                     obj.wl_img = wl.image.image;
-                    obj.set_ROI;
+                    if obj.ROI_automatic
+                        obj.set_ROI_automatic;
+                    else
+                        obj.set_ROI;
+                    end
                 end
             % catch err
                 % fprintf("Did not take wl image successfully. Taking a new image.\n");
@@ -143,6 +150,30 @@ classdef ResonanceEMCCDonly < Modules.Experiment
                 % obj.set_ROI;
                 % rethrow(err);
             % end
+        end
+        function set_ROI_automatic(obj, wl_img)
+            if ~exist('wl_img', 'var')
+                if isempty(obj.wl_img)
+                    error("Please first assign wl_img for the experiment.")
+                end
+                wl_img = obj.wl_img;
+            else
+                obj.wl_img = wl_img;
+            end
+            [di, seg] = obj.processor.processImage(wl_img);
+            obj.trimmed_wl_img = seg{1}.rawImage;
+            obj.rect_pos = [seg{1}.xmin, seg{1}.ymin; size(seg{1}.image, 2), size(seg{1}.image, 1)];
+            obj.poly_pos = [seg{1}.cornerPos(:, 2), seg{1}.cornerPos(:, 1)];
+            try close(41); end
+            frame_fig = figure(41);
+            frame_fig.Position = [200, 200, 560, 420];
+            frame_ax = axes('Parent', frame_fig);
+            wlH = imagesc(frame_ax, obj.trimmed_wl_img);
+            colormap(frame_ax, 'bone');
+            x_size = size(obj.trimmed_wl_img, 2);
+            y_size = size(obj.trimmed_wl_img, 1);
+            polyH = drawpolygon(frame_ax, 'Position', obj.poly_pos);
+            obj.segment = seg{1};
         end
         function set_ROI(obj)
             
