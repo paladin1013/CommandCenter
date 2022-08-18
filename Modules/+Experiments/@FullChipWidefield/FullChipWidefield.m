@@ -96,9 +96,9 @@ classdef FullChipWidefield < Modules.Experiment
                 currentX = nextX;
                 currentY = nextY;
                 obj.wl.source_on = false;
-                obj.camera.exposure = 500;
                 obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorStart, obj.resonatorEnd, obj.resonatorPoints);
                 obj.experiment.set_ROI_automatic(wl_img);
+                % obj.camera.exposure = 500;
                 obj.runExperiment(managers, obj.experiment, ax);
                 data1 = obj.experiment.processed_data;
                 assert(~obj.abort_request, 'User aborted.');

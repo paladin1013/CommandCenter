@@ -152,7 +152,7 @@ classdef FullChipScanner < Modules.Driver
             obj.tracker.focus;
             obj.prev_x_pos = val;
             obj.tracker.set_resetOrigin(0);
-            obj.tracker.startVideo;
+            % obj.tracker.startVideo;
         end
         function val = set_y_pos(obj, val, ~)
             if obj.disable_movement

@@ -75,14 +75,14 @@ function run( obj,status,managers,ax )
 %         obj.resLaser.set_resonator_percent_limitrate(obj.scan_points(i));        
         t = tic;
         if (i > 1)
-            obj.cameraEMCCD.startSnapping; % Start snapping EMCCD image in background (micro-controller)
+            % obj.cameraEMCCD.startSnapping; % Start snapping EMCCD image in background (micro-controller)
             % Process data from the previous round
             EMCCD_imgs(:, :, i-1) = obj.data.images_EMCCD(rymin:rymax, rxmin:rxmax, i-1);
             filtered_imgs(:, :, i-1) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, i-1), 3), 1);
 
         else
             obj.resLaser.TunePercent(obj.scan_points(1)); % Spend longer time to make sure the first frequency spot is correct
-            obj.cameraEMCCD.startSnapping;
+            % obj.cameraEMCCD.startSnapping;
             pause(1);
         end
         if obj.wavemeter_override
@@ -95,7 +95,8 @@ function run( obj,status,managers,ax )
         if i < length(obj.scan_points) % Get prepared for the next round
             obj.resLaser.TunePercentFast(obj.scan_points(i+1)); % No response / laser locking to save time.
         end
-        obj.data.images_EMCCD(:,:,i) = obj.cameraEMCCD.fetchSnapping;
+        % obj.data.images_EMCCD(:,:,i) = obj.cameraEMCCD.fetchSnapping;
+        obj.data.images_EMCCD(:, :, i) = obj.cameraEMCCD.snapImage;
         freqs(i) = obj.data.freqMeasured(i);
         imagesc(ax,obj.data.images_EMCCD(:,:,i));
         hold(ax, 'on');
@@ -115,7 +116,9 @@ function run( obj,status,managers,ax )
         obj.processed_data.segment = obj.segment;
     end
     c = fix(clock);
+    raw = obj.data.images_EMCCD;
     save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+    save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_raw_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'raw');
     if ~obj.skip_analysis
         try
             EMCCDDataAnalysis(true, obj.autosave.exp_dir, obj.processed_data);
