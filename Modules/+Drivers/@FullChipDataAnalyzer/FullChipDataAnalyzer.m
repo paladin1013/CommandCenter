@@ -83,56 +83,63 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.y = coord(2);
             obj.updateFig;
         end
+        function valid = checkCoord(obj, x, y)
+            if isempty(obj.data{x-obj.xmin+1, y-obj.ymin+1})
+                fprintf("Data of chiplet (x:%d, y:%d) is empty. Please reload the data.\n", x, y);
+                valid = false;
+                return;
+            end
+            if x > obj.xmax
+                fprintf("x = %d reaches obj.xmax. Stop moving coordinate.\n", x);
+                valid = false;
+                return
+            end
+            if x < obj.xmin
+                fprintf("x = %d reaches obj.xmin. Stop moving coordinate.\n", x);
+                valid = false;
+                return
+            end
+            if y > obj.ymax
+                fprintf("y = %d reaches obj.ymax. Stop moving coordinate.\n", y);
+                valid = false;
+                return
+            end
+            if y < obj.ymin
+                fprintf("y = %d reaches obj.ymin. Stop moving coordinate.\n", y);
+                valid = false;
+                return
+            end
+            valid = true;
+        end
         function moveCoord(obj,hObj,event)
             switch event.Key
                 case 'rightarrow'
-                    obj.x = obj.x + 1;
+                    if obj.checkCoord(obj.x+1, obj.y)
+                        obj.x = obj.x + 1;
+                        obj.updateFig;
+                    end
                 case 'leftarrow'
-                    obj.x = obj.x - 1;
-                case 'uparrow'
-                    obj.y = obj.y + 1;
+                    if obj.checkCoord(obj.x-1, obj.y)
+                        obj.x = obj.x - 1;
+                        obj.updateFig;
+                    end
                 case 'downarrow'
-                    obj.y = obj.y - 1;
+                    if obj.checkCoord(obj.x, obj.y+1)
+                        obj.y = obj.y + 1;
+                        obj.updateFig;
+                    end
+                case 'uparrow'
+                    if obj.checkCoord(obj.x, obj.y-1)
+                        obj.y = obj.y - 1;
+                        obj.updateFig;
+                    end
             end
-            obj.updateFig;
         end
         function deleteFigH(obj,hObj,event)
             obj.figH.delete;
         end
         function updateFig(obj)
-            if isempty(obj.figH) || ~isvalid(obj.figH)
-                obj.figH = figure;
-            end
             t = tic;
-            axisNames = ["sumAxH", "wlAxH", "spectrum1AxH", "countAxH", "spectrum2AxH"];
-            for k = 1:length(axisNames)
-                if ~isempty(obj.(axisNames(k))) && isvalid(obj.(axisNames(k)))
-                    delete(obj.(axisNames(k)));
-                end
-                figure(obj.figH);
-                obj.(axisNames(k)) = subplot(5, 1, k);
-            end
-            figure(obj.figH);
-            fprintf("time1: %f\n", toc(t));
-            % Draw summary image
-            sumIm = zeros(obj.wlSize.*[obj.ymax-obj.ymin+1, obj.xmax-obj.xmin+1]);
-            for k = 1:size(obj.coords, 1)
-                coord = obj.coords(k, :);
-                tempX = coord(1);
-                tempY = coord(2);
-                wlX = obj.wlSize(2);
-                wlY = obj.wlSize(1);
-                sumIm((tempY-obj.ymin)*wlY+1:(tempY-obj.ymin+1)*wlY, (tempX-obj.xmin)*wlX + 1:(tempX-obj.xmin+1)*wlX) = obj.data{tempX-obj.xmin+1, tempY-obj.ymin+1}.wl;
-            end
-            obj.sumImH = imagesc(obj.sumAxH, sumIm);
-            obj.sumAxH.Position = [0.05, 0.05, 0.25, 0.9];
-            colormap(obj.sumAxH, 'bone');
-%             obj.sumAxH.ButtonDownFcn = @obj.selectCoord;
-%             obj.figH.KeyPressFcn = @obj.moveCoord;
-%             obj.figH.DeleteFcn = @obj.deleteFigH;
-            fprintf("Updating chiplet figure of chiplet coordinate x:%d, y:%d\n", obj.x, obj.y);
-
-            fprintf("time2: %f\n", toc(t));
 
             % Extract chiplet widefield data
             tempData = obj.data{obj.x-obj.xmin+1, obj.y-obj.ymin+1};
@@ -149,7 +156,48 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 filtered_imgs(:, :, end+1:end+nFrames) = tempFilteredImgs;
             end
             poly_pos = tempData.widefieldData(1).poly_pos;
-            fprintf("time3: %f\n", toc(t));
+            fprintf("time0: %f\n", toc(t));
+
+            if isempty(obj.figH) || ~isvalid(obj.figH)
+                obj.figH = figure;
+            end
+            axisNames = ["sumAxH", "wlAxH", "spectrum1AxH", "countAxH", "spectrum2AxH"];
+            for k = 1:length(axisNames)
+                if ~isempty(obj.(axisNames(k))) && isvalid(obj.(axisNames(k)))
+                    delete(obj.(axisNames(k)));
+                end
+                figure(obj.figH);
+                obj.(axisNames(k)) = subplot(5, 1, k);
+            end
+            figure(obj.figH);
+            fprintf("time1: %f\n", toc(t));
+            % Draw summary image
+            sumIm = zeros(obj.wlSize.*[obj.ymax-obj.ymin+1, obj.xmax-obj.xmin+1]);
+            wlX = obj.wlSize(2);
+            wlY = obj.wlSize(1);
+            for k = 1:size(obj.coords, 1)
+                coord = obj.coords(k, :);
+                tempX = coord(1);
+                tempY = coord(2);
+                sumIm((tempY-obj.ymin)*wlY+1:(tempY-obj.ymin+1)*wlY, (tempX-obj.xmin)*wlX + 1:(tempX-obj.xmin+1)*wlX) = obj.data{tempX-obj.xmin+1, tempY-obj.ymin+1}.wl;
+            end
+            obj.sumImH = imagesc(obj.sumAxH, sumIm);
+            obj.sumAxH.Position = [0.05, 0.05, 0.25, 0.9];
+            obj.sumAxH.XTickLabel = [obj.xmin:obj.xmax];
+            obj.sumAxH.XTick = linspace(wlX/2, size(sumIm, 2)-wlX/2, obj.xmax-obj.xmin+1);
+            obj.sumAxH.YTickLabel = [obj.xmin:obj.xmax];
+            obj.sumAxH.YTick = linspace(wlY/2, size(sumIm, 1)-wlY/2, obj.ymax-obj.ymin+1);
+            colormap(obj.sumAxH, 'bone');
+            obj.sumImH.ButtonDownFcn = @obj.selectCoord;
+            hold(obj.sumAxH, 'on');
+            rectangle(obj.sumAxH, 'Position', [(obj.x-obj.xmin)*wlX + 1, (obj.y-obj.ymin)*wlY+1, wlX-1, wlY-1], 'LineWidth', 5, 'EdgeColor', 'r');
+            obj.figH.KeyPressFcn = @obj.moveCoord;
+            obj.figH.DeleteFcn = @obj.deleteFigH;
+            fprintf("Updating chiplet figure of chiplet coordinate x:%d, y:%d\n", obj.x, obj.y);
+
+            fprintf("time2: %f\n", toc(t));
+
+            
 
 
             % Initialize record variables
