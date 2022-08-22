@@ -41,6 +41,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
         sumCountAxH;
         trimmedWLPosition;
         chipletColors;
+        gdsData;
+        chipletWiseAxH;
+        locationWiseAxH;
     end
     methods(Static)
         obj = instance()
@@ -70,7 +73,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 file = files(k);
                 fprintf('Checking file %s (%d/%d)\n', file.name, k, length(files));
                 if endsWith(file.name, '.mat')
-                    fprintf('Lodading Matlab data\n');
+                    fprintf('Loading Matlab data\n');
                     newData = load(fullfile(workingDir, file.name));
                     newX = newData.data.coordX;
                     newY = newData.data.coordY;
@@ -487,21 +490,55 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 allIm((tempY-obj.ymin)*wlY+1:(tempY-obj.ymin+1)*wlY, (tempX-obj.xmin)*wlX + 1:(tempX-obj.xmin+1)*wlX) = obj.data{tempX-obj.xmin+1, tempY-obj.ymin+1}.wl(trimYmin:trimYmax, trimXmin:trimXmax);
             end
             obj.allImH = imagesc(obj.allAxH, allIm);
-            obj.allAxH.Position = [0.05, 0.075, 0.35, 0.9];
-            obj.allAxH.XTickLabel = [obj.xmin:obj.xmax];
-            obj.allAxH.XTick = linspace(wlX/2, size(allIm, 2)-wlX/2, obj.xmax-obj.xmin+1);
-            obj.allAxH.YTickLabel = [obj.xmin:obj.xmax];
-            obj.allAxH.YTick = linspace(wlY/2, size(allIm, 1)-wlY/2, obj.ymax-obj.ymin+1);
-            set(get(obj.allAxH, 'XLabel'), 'String', 'x');
-            set(get(obj.allAxH, 'YLabel'), 'String', 'y');
+            obj.allAxH.Position = [0.1, 0.4, 0.8, 0.55];
+            obj.allAxH.XTick = [];
+            obj.allAxH.YTick = [];
+            % obj.allAxH.XTickLabel = [obj.xmin:obj.xmax];
+            % obj.allAxH.XTick = linspace(wlX/2, size(allIm, 2)-wlX/2, obj.xmax-obj.xmin+1);
+            % obj.allAxH.YTickLabel = [obj.xmin:obj.xmax];
+            % obj.allAxH.YTick = linspace(wlY/2, size(allIm, 1)-wlY/2, obj.ymax-obj.ymin+1);
+            % set(get(obj.allAxH, 'XLabel'), 'String', 'x');
+            % set(get(obj.allAxH, 'YLabel'), 'String', 'y');
             set(obj.allAxH, 'FontSize', 16, 'FontName', 'Times New Roman')
 
             colormap(obj.allAxH, 'bone');
             % obj.allImH.ButtonDownFcn = @obj.selectCoord;
             hold(obj.allAxH, 'on');
-            rectangle(obj.allAxH, 'Position', [(obj.x-obj.xmin)*wlX + 1, (obj.y-obj.ymin)*wlY+1, wlX-1, wlY-1], 'LineWidth', 5, 'EdgeColor', 'r');
+            % rectangle(obj.allAxH, 'Position', [(obj.x-obj.xmin)*wlX + 1, (obj.y-obj.ymin)*wlY+1, wlX-1, wlY-1], 'LineWidth', 5, 'EdgeColor', 'r');
             % obj.allFigH.KeyPressFcn = @obj.moveCoord;
             obj.allFigH.DeleteFcn = @obj.deleteAllFigH;
+
+
+            % Draw gds file figure
+            files = dir(obj.workingDir);
+            obj.gdsData = [];
+            for k = 1:length(files)
+                file = files(k);
+                if endsWith(file.name, '.png') && contains(lower(file.name), 'gds')
+                    obj.gdsData = imread(fullfile(obj.workingDir, file.name));
+                    break
+                end
+            end
+            assert(~isempty(obj.gdsData), "GDS Data is empty. Please copy gds file screenshot (gds.png) into working directory.");
+            if ~isempty(obj.gdsAxH) && isvalid(obj.gdsAxH)
+                delete(obj.gdsAxH);
+            end
+            obj.gdsAxH = axes('Parent', obj.allFigH);
+            obj.gdsImH = imagesc(obj.gdsAxH, rot90(obj.gdsData, 2));
+
+            gdsX = size(obj.gdsData, 2)/(obj.xmax-obj.xmin+1);
+            gdsY = size(obj.gdsData, 1)/(obj.ymax-obj.ymin+1);
+
+            obj.gdsAxH.XTick = linspace(1, size(obj.gdsData, 2), 7);
+            obj.gdsAxH.XTickLabel = [0:50:300];
+            obj.gdsAxH.XLabel.String = "x (\mum)";
+            obj.gdsAxH.YTick = linspace(1, size(obj.gdsData, 1), 4);
+            obj.gdsAxH.YTickLabel = [0:50:500];
+            obj.gdsAxH.YLabel.String = "y (\mum)";
+
+            obj.gdsAxH.Position = [0.55, 0.05, 0.35, 0.3];
+            obj.gdsAxH.FontSize = 16;
+
 
             % Draw joint count-frequency figure
             for k = 1:length(obj.jointCountAxH(:))
@@ -515,7 +552,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
             
             nChiplets = (obj.xmax-obj.xmin+1)*(obj.ymax-obj.ymin+1);
 
-            height = 0.9/nChiplets;
+            height = 0.3/nChiplets;
+            obj.chipletColors = jet(nChiplets);
             for x = obj.xmin:obj.xmax
                 for y = obj.ymin:obj.ymax
                     if isempty(obj.data{x-obj.xmin+1, y-obj.ymin+1})
@@ -523,35 +561,34 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     end
                     newAx = axes('Parent', obj.allFigH);
                     wlOffset_xy = [wlX*(x-obj.xmin), wlY*(y-obj.ymin)] - [trimXmin-obj.data{x-obj.xmin+1, y-obj.ymin+1}.widefieldData(1).segment.xmin, trimYmin-obj.data{x-obj.xmin+1, y-obj.ymin+1}.widefieldData(1).segment.ymin];
-                    obj.drawChiplet(x, y, newAx, obj.allAxH, wlOffset_xy);
+                    obj.drawChiplet(x, y, newAx, obj.allAxH, wlOffset_xy, obj.chipletWiseAxH, obj.locationWiseAxH);
                     k = (y-obj.ymin)*(obj.xmax-obj.xmin+1)+(x-obj.xmin);
-                    newAx.Position = [0.45, 0.075+(k)*height, 0.3, height];
+                    newAx.Position = [0.05, 0.05+(k)*height, 0.45, height];
                     newAx.XLim = [484.13, 484.16];
                     if k == 0
-                        set(get(newAx, 'XLabel'), 'String', 'Frequency (THz)');
-                        % newAx.XTickLabel = 
+                        newAx.XLabel.String = 'Frequency (THz)';
                         newAx.XTick = [484.13, 484.14, 484.15, 484.16];
-                        newAx.YLabel = [];
                         newAx.YTick = [];
                         newAx.YTickLabel = [];
                     else
                         newAx.XLabel = [];
                         newAx.XTick = [];
                         newAx.XTickLabel = [];
-                        newAx.YLabel = [];
                         newAx.YTick = [];
                         newAx.YTickLabel = [];
                     end
-                    if x == obj.x && y == obj.y
-                        newAx.LineWidth = 5;
-                        newAx.XColor = 'r';
-                        newAx.YColor = 'r';
-                    end
+                    newAx.YLabel.String = sprintf("%d", k+1);
+                    newAx.YLabel.Rotation = 0;
+                    newAx.YLabel.Color = 'black';
+                    text(obj.allAxH, wlX*(x-obj.xmin+1)-30, wlY*(y-obj.ymin+1)-10, sprintf("%d", k+1), 'Color', 'white', 'FontSize', 16, 'FontName', 'Times New Roman');
+                    text(obj.gdsAxH, gdsX*(x-obj.xmin+1)-60, gdsY*(y-obj.ymin+1)-15, sprintf("%d", k+1), 'Color', 'black', 'FontSize', 16, 'FontName', 'Times New Roman')
                     box(newAx, 'on');            
                     obj.jointCountAxH{x-obj.xmin+1, y-obj.ymin+1} = newAx;
                 end
             end
-            set(obj.allFigH, 'position', [100, 100, 1600, 800])
+
+
+            set(obj.allFigH, 'position', [100, 100, 1200, 1200])
 
         end
 
@@ -559,7 +596,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         function deleteAllFigH(obj,hObj,event)
             obj.allFigH.delete;
         end
-        function drawChiplet(obj, chipletX, chipletY, countAxH, wlAxH, wlOffset_xy)
+        function drawChiplet(obj, chipletX, chipletY, countAxH, wlAxH, wlOffset_xy, chipletWiseAxH, locationWiseAxH)
             data = obj.data{chipletX-obj.xmin+1, chipletY-obj.ymin+1};
             assert(~isempty(data), sprintf("Data of chiplet (x:%d, y:%d) is empty. Please reload the data.", chipletX, chipletY))
             nDataSet = length(data.widefieldData); % Number of datasets of the current chiplet
@@ -671,7 +708,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 figureHandles{i, 3} = scatter(countAxH, wgc(i), wgym(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
             end
             hold off
-
+            % scatter()
         end
     end
 end
