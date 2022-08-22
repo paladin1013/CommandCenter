@@ -30,6 +30,17 @@ classdef FullChipDataAnalyzer < Modules.Driver
         coords; % Keep only valid coordinates
         wlSize = [512, 512]; % y, x
         initialized = false;
+
+        % For summary figure
+        allFigH;
+        allAxH;
+        allImH;
+        jointCountAxH;
+        gdsAxH;
+        gdsImH;
+        sumCountAxH;
+        trimmedWLPosition;
+        chipletColors;
     end
     methods(Static)
         obj = instance()
@@ -75,10 +86,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
             end
         end
         function selectCoord(obj,hObj,event)
-            pt = event.IntersectionPoint([2,1]); %point that was just clicked
+            pt = event.IntersectionPoint([1, 2]); %point that was just clicked
+            pt = pt./obj.wlSize-0.5+[obj.xmin, obj.ymin];
             dist = pdist2(pt,obj.coords); %distance between selection and all points
             [~, coordID] = min(dist); % index of minimum distance to points
-            coord = obj.coords(coordID);
+            coord = obj.coords(coordID, :);
             obj.x = coord(1);
             obj.y = coord(2);
             obj.updateFig;
@@ -138,6 +150,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         function deleteFigH(obj,hObj,event)
             obj.figH.delete;
         end
+        
         function updateFig(obj)
             t = tic;
 
@@ -146,16 +159,16 @@ classdef FullChipDataAnalyzer < Modules.Driver
             assert(~isempty(tempData), sprintf("Data of chiplet (x:%d, y:%d) is empty. Please reload the data.", obj.x, obj.y))
             nDataSet = length(tempData.widefieldData); % Number of datasets of the current chiplet
             ROIsize = size(tempData.widefieldData(1).wl_img);
-            wl_img = tempData.widefieldData(1).wl_img;
-            filtered_imgs = zeros(ROIsize(1), ROIsize(2), 0);
+            wlImg = tempData.widefieldData(1).wl_img;
+            filteredImgs = zeros(ROIsize(1), ROIsize(2), 0);
             freqs = zeros(1, 0);
             for k = 1:nDataSet
                 tempFilteredImgs = tempData.widefieldData(k).filtered_imgs;
                 nFrames = size(tempFilteredImgs, 3);
                 freqs(end+1:end+nFrames) = tempData.widefieldData(k).freqs;
-                filtered_imgs(:, :, end+1:end+nFrames) = tempFilteredImgs;
+                filteredImgs(:, :, end+1:end+nFrames) = tempFilteredImgs;
             end
-            poly_pos = tempData.widefieldData(1).poly_pos;
+            polyPos = tempData.widefieldData(1).poly_pos;
             fprintf("time0: %f\n", toc(t));
 
             if isempty(obj.figH) || ~isvalid(obj.figH)
@@ -179,10 +192,13 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 coord = obj.coords(k, :);
                 tempX = coord(1);
                 tempY = coord(2);
+                if tempX < obj.xmin || tempX > obj.xmax || tempY < obj.ymin || tempY > obj.ymax
+                    continue
+                end
                 sumIm((tempY-obj.ymin)*wlY+1:(tempY-obj.ymin+1)*wlY, (tempX-obj.xmin)*wlX + 1:(tempX-obj.xmin+1)*wlX) = obj.data{tempX-obj.xmin+1, tempY-obj.ymin+1}.wl;
             end
             obj.sumImH = imagesc(obj.sumAxH, sumIm);
-            obj.sumAxH.Position = [0.05, 0.05, 0.25, 0.9];
+            obj.sumAxH.Position = [0.05, 0.075, 0.25, 0.9];
             obj.sumAxH.XTickLabel = [obj.xmin:obj.xmax];
             obj.sumAxH.XTick = linspace(wlX/2, size(sumIm, 2)-wlX/2, obj.xmax-obj.xmin+1);
             obj.sumAxH.YTickLabel = [obj.xmin:obj.xmax];
@@ -209,7 +225,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             wgpx = [];
             wgpy = [];
             wgym = [];
-            allpts0 = reshape(filtered_imgs, [numel(wl_img), length(freqs)]);
+            allpts0 = reshape(filteredImgs, [numel(wlImg), length(freqs)]);
             allpts0(max(allpts0, [], 2) < obj.mincount, :) = [];
         
             p0 = zeros(5, length(allpts0(:, 1)));
@@ -221,7 +237,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         
             for i = 1:length(allpts0(:, 1))
                 p0(4, i) = allpts0(p0(5, i), p0(3, i));
-                [a, b] = find(filtered_imgs(:, :, p0(3, i)) == p0(4, i));
+                [a, b] = find(filteredImgs(:, :, p0(3, i)) == p0(4, i));
                 p0(1, i) = a(1);
                 p0(2, i) = b(1);
             end
@@ -262,7 +278,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         
             yy = allpts0(reali, :);
         
-            valid = spacialFilter(poly_pos, realy, realx);
+            valid = spacialFilter(polyPos, realy, realx);
             for i = 1:length(fres)
                 if valid(i) == 1
                     wgt = yy(i, :);
@@ -284,8 +300,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 warning("No emitter found! Please trun down `mincount`.");
                 return;
             end
-            markerlist = ['o'; '+'; 'x'; 's'; 'd'; '^'; 'v'; '>'; '<'; 'p'; 'h'; '*'; '_'; '|'];
-            markerlist2 = ['-o'; '-+'; '-x'; '-s'; '-d'; '-^'; '-v'; '->'; '-<'; '-p'; '-h'; '-*'; ];
+            markerlist = ['o'; '>'; '<'; '+'; 'x'; 's'; 'd'; '^'; 'v'; 'p'; 'h'; '*'; '_'; '|'];
+            markerlist2 = ['-o'; '->'; '-<'; '-+'; '-x'; '-s'; '-d'; '-^'; '-v'; '-p'; '-h'; '-*'; ];
             c = [1 0 0; 1 0.5 0; 1 1 0; 0.5 1 0; 0 1 0; 0 1 1; 0 0.5 1; 0 0 1; 0.5 0 1; 1 0 1];
             figureHandles = cell(length(wgpx), 3);
             if length(wgpx) >= 40                
@@ -357,11 +373,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
         
             end
             
-            img = squeeze(max(filtered_imgs, [], 3));
-            obj.wlImH = imagesc(obj.wlAxH, wl_img);
+            img = squeeze(max(filteredImgs, [], 3));
+            obj.wlImH = imagesc(obj.wlAxH, wlImg);
             colormap('bone')
-            xlim(obj.wlAxH, [1, size(wl_img, 2)]);
-            ylim(obj.wlAxH, [1, size(wl_img, 1)]);
+            xlim(obj.wlAxH, [1, size(wlImg, 2)]);
+            ylim(obj.wlAxH, [1, size(wlImg, 1)]);
             % xticks([])
             % yticks([])
             %     image(ax, hsv2rgb(H, V, V))
@@ -372,14 +388,14 @@ classdef FullChipDataAnalyzer < Modules.Driver
             %     end
             % end
         
-            SizeData = zeros(1, length((wgpx)));
+            sizeData = zeros(1, length((wgpx)));
             for i = 1:length(wgpx)
         
-                SizeData(i) = (wgym(i)-obj.mincount)/(max(wgym)-obj.mincount)*100+30;
+                sizeData(i) = (wgym(i)-obj.mincount)/(max(wgym)-obj.mincount)*100+30;
                 hold(obj.wlAxH, 'on');
                 %     if (realx(i)<rxmax) & (realx(i)>rxmin) & (realy(i)<rymax) & (realy(i)>rymin)
                 %         scatter(wgpx(i),wgpy(i),30, c(1+(i-floor(i/10)*10),:),markerlist(1+floor(i/10)),'Linewidth',2)
-                figureHandles{i, 1} = scatter(obj.wlAxH, wgpx(i), wgpy(i), SizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
+                figureHandles{i, 1} = scatter(obj.wlAxH, wgpx(i), wgpy(i), sizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
                 %     end
             end
         
@@ -391,7 +407,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
             for i = 1:length(wgpx)
                 hold(obj.countAxH, 'on')
-                figureHandles{i, 3} = scatter(obj.countAxH, wgc(i), wgym(i), SizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
+                figureHandles{i, 3} = scatter(obj.countAxH, wgc(i), wgym(i), sizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
                 %     labels=[labels;strcat(num2str(i),':',{num2str((data.FOV.wgc(i)+0*(data.FOV.wgc(i)-484)*10000))},{'THz & '},{num2str(floor(data.FOV.wgw(i)))},{'MHz'})];
                 %     t1=text(data.FOV.wgx(i,find(data.FOV.wgy(i,:)==max(data.FOV.wgy(i,:))))-0.34,1.05*max(data.FOV.wgy(i,:)),num2str(i),'FontSize', 13, 'FontWeight', 'bold');
                 %     set(t1,'Color',[0 0 0]);
@@ -439,15 +455,233 @@ classdef FullChipDataAnalyzer < Modules.Driver
             end
             obj.updateData;
         end
+        function drawAll(obj)
+            if isempty(obj.allFigH) || ~isvalid(obj.allFigH)
+                obj.allFigH = figure;
+                obj.allAxH = axes('Parent', obj.allFigH);
+            end
+            figure(obj.allFigH);
+            if isempty(obj.allAxH) || ~isvalid(obj.allAxH)
+                obj.allAxH = axes('Parent', obj.allFigH);
+            end
+
+            % Draw all image
+            wl_example = obj.data{1, 1}.widefieldData(1).wl_img;
+            allIm = zeros(size(wl_example).*[obj.ymax-obj.ymin+1, obj.xmax-obj.xmin+1]);
+            trimXmin = obj.data{1, 1}.widefieldData(1).segment.xmin;
+            trimXmax = trimXmin + size(wl_example, 2) - 1;
+            trimYmin = obj.data{1, 1}.widefieldData(1).segment.ymin;
+            trimYmax = trimYmin + size(wl_example, 1) - 1;
+            wlX = size(wl_example, 2);
+            wlY = size(wl_example, 1);
+            
+            nValidData = 0;
+            for k = 1:size(obj.coords, 1)
+                coord = obj.coords(k, :);
+                tempX = coord(1);
+                tempY = coord(2);
+                if tempX < obj.xmin || tempX > obj.xmax || tempY < obj.ymin || tempY > obj.ymax
+                    continue
+                end
+                % nValidData = nValidData + 1;
+                allIm((tempY-obj.ymin)*wlY+1:(tempY-obj.ymin+1)*wlY, (tempX-obj.xmin)*wlX + 1:(tempX-obj.xmin+1)*wlX) = obj.data{tempX-obj.xmin+1, tempY-obj.ymin+1}.wl(trimYmin:trimYmax, trimXmin:trimXmax);
+            end
+            obj.allImH = imagesc(obj.allAxH, allIm);
+            obj.allAxH.Position = [0.05, 0.075, 0.35, 0.9];
+            obj.allAxH.XTickLabel = [obj.xmin:obj.xmax];
+            obj.allAxH.XTick = linspace(wlX/2, size(allIm, 2)-wlX/2, obj.xmax-obj.xmin+1);
+            obj.allAxH.YTickLabel = [obj.xmin:obj.xmax];
+            obj.allAxH.YTick = linspace(wlY/2, size(allIm, 1)-wlY/2, obj.ymax-obj.ymin+1);
+            set(get(obj.allAxH, 'XLabel'), 'String', 'x');
+            set(get(obj.allAxH, 'YLabel'), 'String', 'y');
+            set(obj.allAxH, 'FontSize', 16, 'FontName', 'Times New Roman')
+
+            colormap(obj.allAxH, 'bone');
+            % obj.allImH.ButtonDownFcn = @obj.selectCoord;
+            hold(obj.allAxH, 'on');
+            rectangle(obj.allAxH, 'Position', [(obj.x-obj.xmin)*wlX + 1, (obj.y-obj.ymin)*wlY+1, wlX-1, wlY-1], 'LineWidth', 5, 'EdgeColor', 'r');
+            % obj.allFigH.KeyPressFcn = @obj.moveCoord;
+            obj.allFigH.DeleteFcn = @obj.deleteAllFigH;
+
+            % Draw joint count-frequency figure
+            for k = 1:length(obj.jointCountAxH(:))
+                ax = obj.jointCountAxH{k};
+                if ~isempty(ax) && isvalid(ax)
+                    ax.delete;
+                end
+            end
+            
+            obj.jointCountAxH = cell((obj.xmax-obj.xmin+1), (obj.ymax-obj.ymin+1));
+            
+            nChiplets = (obj.xmax-obj.xmin+1)*(obj.ymax-obj.ymin+1);
+
+            height = 0.9/nChiplets;
+            for x = obj.xmin:obj.xmax
+                for y = obj.ymin:obj.ymax
+                    if isempty(obj.data{x-obj.xmin+1, y-obj.ymin+1})
+                        continue;
+                    end
+                    newAx = axes('Parent', obj.allFigH);
+                    wlOffset_xy = [wlX*(x-obj.xmin), wlY*(y-obj.ymin)] - [trimXmin-obj.data{x-obj.xmin+1, y-obj.ymin+1}.widefieldData(1).segment.xmin, trimYmin-obj.data{x-obj.xmin+1, y-obj.ymin+1}.widefieldData(1).segment.ymin];
+                    obj.drawChiplet(x, y, newAx, obj.allAxH, wlOffset_xy);
+                    k = (y-obj.ymin)*(obj.xmax-obj.xmin+1)+(x-obj.xmin);
+                    newAx.Position = [0.45, 0.075+(k)*height, 0.3, height];
+                    newAx.XLim = [484.13, 484.16];
+                    if k == 0
+                        set(get(newAx, 'XLabel'), 'String', 'Frequency (THz)');
+                        % newAx.XTickLabel = 
+                        newAx.XTick = [484.13, 484.14, 484.15, 484.16];
+                        newAx.YLabel = [];
+                        newAx.YTick = [];
+                        newAx.YTickLabel = [];
+                    else
+                        newAx.XLabel = [];
+                        newAx.XTick = [];
+                        newAx.XTickLabel = [];
+                        newAx.YLabel = [];
+                        newAx.YTick = [];
+                        newAx.YTickLabel = [];
+                    end
+                    if x == obj.x && y == obj.y
+                        newAx.LineWidth = 5;
+                        newAx.XColor = 'r';
+                        newAx.YColor = 'r';
+                    end
+                    box(newAx, 'on');            
+                    obj.jointCountAxH{x-obj.xmin+1, y-obj.ymin+1} = newAx;
+                end
+            end
+            set(obj.allFigH, 'position', [100, 100, 1600, 800])
+
+        end
+
+
+        function deleteAllFigH(obj,hObj,event)
+            obj.allFigH.delete;
+        end
+        function drawChiplet(obj, chipletX, chipletY, countAxH, wlAxH, wlOffset_xy)
+            data = obj.data{chipletX-obj.xmin+1, chipletY-obj.ymin+1};
+            assert(~isempty(data), sprintf("Data of chiplet (x:%d, y:%d) is empty. Please reload the data.", chipletX, chipletY))
+            nDataSet = length(data.widefieldData); % Number of datasets of the current chiplet
+            ROIsize = size(data.widefieldData(1).wl_img);
+            wlImg = data.widefieldData(1).wl_img;
+            filteredImgs = zeros(ROIsize(1), ROIsize(2), 0);
+            freqs = zeros(1, 0);
+            for k = 1:nDataSet
+                tempFilteredImgs = data.widefieldData(k).filtered_imgs;
+                nFrames = size(tempFilteredImgs, 3);
+                freqs(end+1:end+nFrames) = data.widefieldData(k).freqs;
+                filteredImgs(:, :, end+1:end+nFrames) = tempFilteredImgs;
+            end
+            polyPos = data.widefieldData(1).poly_pos;
+
+            % Initialize record variables
+            labels = [];
+            wgc = [];
+            wgw = [];
+            wgx = [];
+            wgy = [];
+            wgpx = [];
+            wgpy = [];
+            wgym = [];
+            allpts0 = reshape(filteredImgs, [numel(wlImg), length(freqs)]);
+            allpts0(max(allpts0, [], 2) < obj.mincount, :) = [];
+            p0 = zeros(5, length(allpts0(:, 1)));
+            [p0(5, :), p0(3, :)] = find(allpts0 == max(allpts0, [], 2));
+            for i = 1:length(allpts0(:, 1))
+                p0(4, i) = allpts0(p0(5, i), p0(3, i));
+                [a, b] = find(filteredImgs(:, :, p0(3, i)) == p0(4, i));
+                p0(1, i) = a(1);
+                p0(2, i) = b(1);
+            end
+            a1 = 1;
+            fres = unique(p0(3, :));
+            realx = zeros(1, length(fres));
+            realy = zeros(1, length(fres));
+            reali = zeros(1, length(fres));
+            reala = zeros(1, length(fres));
+            realf = zeros(1, length(fres));
+            realpoints = zeros(5, length(fres));
+            sloc = zeros(1, length(fres));
+            swid = zeros(1, length(fres));
+        
+            for i = 1:length(fres)
+                pmax = 0;
+                ptx = [];
+                pty = [];
+                for j = 1:length(allpts0(:, 1))
+                    if p0(3, j) == fres(i)
+                        pmax = max(pmax, p0(4, j));
+                        ptx = [ptx; p0(1, j)];
+                        pty = [pty; p0(2, j)];
+                    end
+                end
+                xi = find(p0(4, :) == pmax);
+                xi = xi(1);
+        
+                realx(i) = p0(1, xi);
+                realy(i) = p0(2, xi);
+                reali(i) = p0(5, xi);
+                reala(i) = p0(4, xi);
+                realf(i) = p0(3, xi);
+                %     realpoints(i)=p0(:,xi);
+            end
+            a1;
+            c = jet(length(fres));
+        
+            yy = allpts0(reali, :);
+        
+            % valid = spacialFilter(polyPos, realy, realx);
+            valid = ones(1, length(fres));
+            for i = 1:length(fres)
+                if valid(i) == 1
+                    wgt = yy(i, :);
+                    [wgtv, wgtp] = find(wgt == max(wgt));
+    %                 wgt(max(1, wgtp - 2):min(length(yy), wgtp + 2)) = min(wgt);
+    %                 if max(wgt(max(1, wgtp - floor(length(wgt) / 20)):min(length(wgt), wgtp + floor(length(wgt) / 20)))) > 0.5 * max(yy(i, :))
+                        wgc = [wgc; freqs(wgtp)];
+                        wgx = [wgx; (freqs - min(freqs) * ones(1, length(freqs))) * 1e3];
+                        wgy = [wgy; yy(i, :)];
+                        wgym = [wgym; max(yy(i, :))];
+                        wgpx = [wgpx; realy(i)];
+                        wgpy = [wgpy; realx(i)];
+    %                 end
+        
+                end
+        
+            end
+            if length(wgpx) == 0
+                warning("No emitter found! Please trun down `mincount`.");
+                return;
+            end
+            markerlist = ['o'; '>'; '<'; '+'; 'x'; 's'; 'd'; '^'; 'v'; 'p'; 'h'; '*'; '_'; '|'];
+            markerlist2 = ['-o'; '->'; '-<'; '-+'; '-x'; '-s'; '-d'; '-^'; '-v'; '-p'; '-h'; '-*'; ];
+            c = [1 0 0; 1 0.5 0; 1 1 0; 0.5 1 0; 0 1 0; 0 1 1; 0 0.5 1; 0 0 1; 0.5 0 1; 1 0 1];
+            figureHandles = cell(length(wgpx), 3);  
+            for i = 1:length(wgpx)
+                sizeData(i) = (wgym(i)-obj.mincount)/(max(wgym)-obj.mincount)*100+30;
+                hold(wlAxH, 'on');
+                figureHandles{i, 1} = scatter(wlAxH, wgpx(i)+wlOffset_xy(1), wgpy(i)+wlOffset_xy(2), sizeData(i), c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
+            end
+            hold off
+
+            set(gca, 'FontSize', 16, 'FontName', 'Times New Roman')
+            for i = 1:length(wgpx)
+                hold(countAxH, 'on')
+                figureHandles{i, 3} = scatter(countAxH, wgc(i), wgym(i), 30, c(1 + (i - floor(i / 10) * 10), :), markerlist(1 + floor(i / 10)), 'Linewidth', 2);
+            end
+            hold off
+
+        end
     end
 end
 
-function validSites = spacialFilter(poly_pos, x, y)
+function validSites = spacialFilter(polyPos, x, y)
     validSites = zeros(1, length(x));
-    line1 = poly_pos(1:2, :);
-    line2 = poly_pos(2:3, :);
-    line3 = poly_pos(3:4, :);
-    line4 = poly_pos([4, 1], :);
+    line1 = polyPos(1:2, :);
+    line2 = polyPos(2:3, :);
+    line3 = polyPos(3:4, :);
+    line4 = polyPos([4, 1], :);
     minlen1 = min(norm(line1(1, :)-line1(2, :)), norm(line3(1, :)-line3(2, :)));
     minlen2 = min(norm(line2(1, :)-line2(2, :)), norm(line4(1, :)-line4(2, :)));
 
@@ -460,7 +694,7 @@ function validSites = spacialFilter(poly_pos, x, y)
         exist_space_line4 = getPointLineDistance(x(idx), y(idx), line4(1, 1), line4(1, 2), line4(2, 1), line4(2, 2)) > minlen1*space_ratio;
         exist_space_all = exist_space_line1 && exist_space_line2 && exist_space_line3 && exist_space_line4;
 
-        if inpolygon(x(idx), y(idx), poly_pos(:, 1), poly_pos(:, 2)) && exist_space_all
+        if inpolygon(x(idx), y(idx), polyPos(:, 1), polyPos(:, 2)) && exist_space_all
             validSites(idx) = 1;
         else
             validSites(idx) = 0;
