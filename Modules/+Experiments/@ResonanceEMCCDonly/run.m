@@ -14,6 +14,10 @@ function run( obj,status,managers,ax )
     rymin = ceil(pos(2));
     rxmax = floor(pos(1)+pos(3));
     rymax = floor(pos(2)+pos(4));
+    % rxmin = 1;
+    % rxmax = 512;
+    % rymin = 1;
+    % rymax = 512;
     poly_pos = obj.poly_pos;
     wl_img = obj.trimmed_wl_img;
     Npoints = length(obj.scan_points);
@@ -111,7 +115,9 @@ function run( obj,status,managers,ax )
         filtered_imgs(:, :, end) = imgaussfilt(remove_spikes(EMCCD_imgs(:, :, end), 3), 1);
     end
 
-    obj.processed_data = struct('freqs', freqs, 'EMCCD_imgs', uint16(EMCCD_imgs), 'filtered_imgs', uint16(filtered_imgs), 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
+    EMCCD_imgs = uint16(EMCCD_imgs);
+    filtered_imgs = uint16(filtered_imgs);
+    obj.processed_data = struct('freqs', freqs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
     if ~isempty(obj.segment)
         obj.processed_data.segment = obj.segment;
     end

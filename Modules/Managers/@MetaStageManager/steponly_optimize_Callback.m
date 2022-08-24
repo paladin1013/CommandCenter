@@ -19,6 +19,7 @@ function obj = steponly_optimize_Callback(obj, src, evt, axis_name)
             end
             try
                 ms.start_target;
+                obj.get_target_avg;
             catch err
                 src.Value = false;
                 optimizing = "";

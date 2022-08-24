@@ -21,7 +21,8 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         wavemeter_channel = Prefs.Integer(false);
         wightlight_file = Prefs.File('filter_spec','*.mat','help','Snapped whightlight image.', 'custom_validate','validate_wl_file');
         discard_raw_data = Prefs.Boolean(false, 'help', 'Skip saving raw data to speed up experiment.');
-        skip_analysis = Prefs.Boolean(false, 'help', 'Skip the analisys program.')
+        skip_analysis = Prefs.Boolean(false, 'help', 'Skip the analisys program.');
+        keep_entire_image = Prefs.Boolean(true, 'help', 'Will not trim the whitelight and EMCCD image if selected.');
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
 
     end
@@ -164,9 +165,15 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             end
             obj.processor.setTemplate(wl_img, false);
             seg = obj.processor.template;
-            obj.trimmed_wl_img = seg.rawImage;
-            obj.rect_pos = [seg.xmin, seg.ymin, size(seg.image, 2)-1, size(seg.image, 1)-1];
-            obj.poly_pos = [seg.cornerPos(:, 2), seg.cornerPos(:, 1)];
+            if obj.keep_entire_image
+                obj.rect_pos = [1, 1, size(obj.wl_img, 2)-1, size(obj.wl_img, 1)-1];
+                obj.poly_pos = [seg.cornerPos(:, 2), seg.cornerPos(:, 1)]+[seg.xmin-1, seg.ymin-1];
+                obj.trimmed_wl_img = obj.wl_img;
+            else
+                obj.trimmed_wl_img = seg.rawImage;
+                obj.rect_pos = [seg.xmin, seg.ymin, size(seg.image, 2)-1, size(seg.image, 1)-1];
+                obj.poly_pos = [seg.cornerPos(:, 2), seg.cornerPos(:, 1)];
+            end
             try close(41); end
             frame_fig = figure(41);
             frame_fig.Position = [200, 200, 560, 420];
@@ -189,22 +196,27 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             im2H = imagesc(roi_ax, obj.wl_img(:, :));
             colormap(roi_ax, 'bone')
             im_size = size(obj.wl_img(:, :));
-            if isempty(obj.rect_pos)
-                rectH = images.roi.Rectangle(roi_ax, 'Position', [1, 1, im_size(1)-1, im_size(2)-1]);
+            if obj.keep_entire_image
+                obj.rect_pos = [1, 1, size(obj.wl_img, 2)-1, size(obj.wl_img, 1)-1];
+                obj.trimmed_wl_img = obj.wl_img;
             else
-                rectH = images.roi.Rectangle(roi_ax, 'Position', obj.rect_pos);
+                if isempty(obj.rect_pos)
+                    rectH = images.roi.Rectangle(roi_ax, 'Position', [1, 1, im_size(1)-1, im_size(2)-1]);
+                else
+                    rectH = images.roi.Rectangle(roi_ax, 'Position', obj.rect_pos);
+                end
+                set(get(roi_ax, 'Title'), 'String', sprintf('Please adjust ROI to trim the image and accelarate image processing\nRight click unconvered image to confirm ROI'));
+                im2H.ButtonDownFcn = @ROIConfirm;
+                uiwait(roi_fig);
+                pos = rectH.Position;
+                obj.rect_pos = pos;
+                rxmin = ceil(pos(1));
+                rymin = ceil(pos(2));
+                rxmax = floor(pos(1)+pos(3));
+                rymax = floor(pos(2)+pos(4));
+                delete(roi_fig);
+                obj.trimmed_wl_img = obj.wl_img(rymin:rymax, rxmin:rxmax);
             end
-            set(get(roi_ax, 'Title'), 'String', sprintf('Please adjust ROI to trim the image and accelarate image processing\nRight click unconvered image to confirm ROI'));
-            im2H.ButtonDownFcn = @ROIConfirm;
-            uiwait(roi_fig);
-            pos = rectH.Position;
-            obj.rect_pos = pos;
-            rxmin = ceil(pos(1));
-            rymin = ceil(pos(2));
-            rxmax = floor(pos(1)+pos(3));
-            rymax = floor(pos(2)+pos(4));
-            delete(roi_fig);
-            obj.trimmed_wl_img = obj.wl_img(rymin:rymax, rxmin:rxmax);
 
             try close(41); catch; end
             frame_fig = figure(41);

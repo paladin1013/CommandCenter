@@ -12,7 +12,7 @@ classdef FullChipScanner < Modules.Driver
         laser_center = Prefs.DoubleArray([NaN, NaN], 'unit', 'pixel', 'help', 'Laser center relative position in the camera image.'); % Regular 
         set_laser_center = Prefs.Button('set', 'set_laser_center_callback', 'help', 'Set the relative position of laser center on the current snapped image');
         start_align_laser = Prefs.Button('set', 'start_align_laser_callback', 'help', 'Align the center of the current chiplet to the laser center.');
-        step_delay_s = Prefs.Double(0.25, 'unit', 's', 'help', 'Delay between each stage steps');
+        step_delay_s = Prefs.Double(0.1, 'unit', 's', 'help', 'Delay between each stage steps');
         flip_x_movement = Prefs.Boolean(true, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
         flip_y_movement = Prefs.Boolean(false, 'help', 'Whether the x direction of stage steps is the same as the movement x direction of the image.');
         % reverse_step_direction = Prefs.Boolean(true, 'help', 'Check this option if stepping stage forward will result in decreasing of the absolute position.');
