@@ -40,7 +40,7 @@ function obj = global_optimize_Callback(obj, src, evt)
             catch err
                 src.Value = false;
                 optimizing = "";
-                error(err.message);
+                rethrow(err);
                 return;
             end
             

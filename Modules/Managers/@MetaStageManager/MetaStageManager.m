@@ -531,24 +531,24 @@ classdef MetaStageManager < Base.Manager
                     Y = ms.get_meta_pref('Y');
                     ni = Drivers.NIDAQ.dev.instance('dev1');
                 
-                    if isempty(X.reference) || ~strcmp(X.reference.name, 'X')
+                    if isempty(X.reference) || ~strcmp(X.reference.name, 'X') || ~isvalid(X.reference.parent) 
                         X.set_reference(ni.getLines('X', 'out').get_meta_pref);
                     end
-                    if isempty(Y.reference) || ~strcmp(Y.reference.name, 'Y')
+                    if isempty(Y.reference) || ~strcmp(Y.reference.name, 'Y') || ~isvalid(Y.reference.parent) 
                         Y.set_reference(ni.getLines('Y', 'out').get_meta_pref);
                     end
                 
                     Z = ms.get_meta_pref('Z');
                     anc = Drivers.Attocube.ANC350.instance('18.25.29.30');
                     line = anc.lines(3);
-                    if isempty(mp.reference) || ~strcmp(replace(Z.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, 3)
-                        mp.set_reference(line.get_meta_pref('steps_moved'));
+                    if isempty(Z.reference) || ~strcmp(replace(Z.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, 3) || ~isvalid(Z.reference.parent) || ~isvalid(Z.reference.parent.parent)
+                        Z.set_reference(line.get_meta_pref('steps_moved'));
                     end
 
 
                     Target = ms.get_meta_pref('Target');
                     counter = Drivers.Counter.instance('APD1', 'CounterSync');
-                    if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
+                    if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count') || ~isvalid(Target.reference.parent)
                         Target.set_reference(counter.get_meta_pref('count'));
                     end 
                 catch err
@@ -564,7 +564,7 @@ classdef MetaStageManager < Base.Manager
                         name = axis_names(k);
                         mp = ms.get_meta_pref(name);
                         line = anc.lines(k);
-                        if isempty(mp.reference) || ~strcmp(replace(mp.reference.name, ' ', '_'), 'steps_moved') || ~isequal(Z.reference.parent.line, k)
+                        if isempty(mp.reference) || ~strcmp(replace(mp.reference.name, ' ', '_'), 'steps_moved') || ~isequal(mp.reference.parent.line, k) || ~isvalid(mp.reference.parent) || ~isvalid(mp.reference.parent.parent)
                             mp.set_reference(line.get_meta_pref('steps_moved'));
                         end
                     end
@@ -572,12 +572,12 @@ classdef MetaStageManager < Base.Manager
 
                     try 
                         ct = Imaging.ChipletTracker.instance
-                        if isempty(Target.reference) || ~strcmp(Target.reference.name, 'contrast')
+                        if isempty(Target.reference) || ~strcmp(Target.reference.name, 'contrast') || ~isvalid(Target.reference.parent)
                             Target.set_reference(ct.get_meta_pref('contrast'));
                         end
                     catch
-                        counter = Drivers.Counter.instance('APD1', 'CounterSync');
-                        if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count')
+                    counter = Drivers.Counter.instance('APD1', 'CounterSync');
+                        if isempty(Target.reference) || ~strcmp(Target.reference.name, 'count') || ~isvalid(Target.reference.parent)
                             Target.set_reference(counter.get_meta_pref('count'));
                         end 
                     end

@@ -23,7 +23,7 @@ function obj = optimize_Callback(obj, src, evt, axis_name)
             catch err
                 src.Value = false;
                 optimizing = "";
-                error(err.message);
+                rethrow(err);
                 return;
             end
             optimizing = pref.name;
