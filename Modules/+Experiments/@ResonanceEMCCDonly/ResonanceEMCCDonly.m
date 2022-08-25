@@ -24,6 +24,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         skip_analysis = Prefs.Boolean(false, 'help', 'Skip the analisys program.');
         keep_entire_image = Prefs.Boolean(true, 'help', 'Will not trim the whitelight and EMCCD image if selected.');
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
+        accelerate = Prefs.Boolean(true, 'help', 'Start snapping data and quiring wavemeter wavelength at the same time to accelerate experiment. May be unstable.');
 
     end
     
@@ -32,7 +33,8 @@ classdef ResonanceEMCCDonly < Modules.Experiment
     end
     
     properties
-        prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD', 'whiteLight','EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'ROI_automatic', 'wightlight_file', 'discard_raw_data'};  % String representation of desired prefs
+        prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD', 'whiteLight',...
+            'EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'ROI_automatic', 'wightlight_file', 'discard_raw_data', 'accelerate'};  % String representation of desired prefs
         %show_prefs = {};   % Use for ordering and/or selecting which prefs to show in GUI
         %readonly_prefs = {}; % CC will leave these as disabled in GUI (if in prefs/show_prefs)
     end

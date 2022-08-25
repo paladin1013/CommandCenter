@@ -121,6 +121,7 @@ classdef FullChipScanner < Modules.Driver
             end
         end
         function val = set_x_pos(obj, val, ~)
+            prevContinuous = obj.tracker.continuous;
             if obj.disable_movement
                 obj.prev_x_pos = val;
                 return;
@@ -152,9 +153,12 @@ classdef FullChipScanner < Modules.Driver
             obj.tracker.focus;
             obj.prev_x_pos = val;
             obj.tracker.set_resetOrigin(0);
-            % obj.tracker.startVideo;
+            if prevContinuous
+                obj.tracker.startVideo;
+            end
         end
         function val = set_y_pos(obj, val, ~)
+            prevContinuous = obj.tracker.continuous;
             if obj.disable_movement
                 obj.prev_y_pos = val;
                 return;
@@ -184,7 +188,9 @@ classdef FullChipScanner < Modules.Driver
             obj.tracker.focus;
             obj.prev_y_pos = val;
             obj.tracker.set_resetOrigin(0);
-            obj.tracker.startVideo;
+            if prevContinuous
+                obj.tracker.startVideo;
+            end
         end
         function val = set_calibrate_x_movement(obj, val, ~)
             prev_detect_chiplets = obj.tracker.detectChiplets;
