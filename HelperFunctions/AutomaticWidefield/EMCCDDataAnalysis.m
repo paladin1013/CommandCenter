@@ -36,6 +36,7 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
         rymax = floor(pos(2)+pos(4));
         delete(roi_fig);
         wl_img = wl.image.image(rymin:rymax, rxmin:rxmax);
+        
 
 
         try close(11); catch; end
@@ -128,7 +129,7 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
     panelH.NumberTitle = 'off';
     panelH.MenuBar = 'none';
     panelH.CloseRequestFcn = @cancelCallback;
-    panelH.Position = [100, 1000, 300, 100]
+    panelH.Position = [100, 1000, 300, 100];
     mincount = 10000;
     drawImage(mincount);
     textH = uicontrol(panelH, 'style', 'text', 'string', 'mincount:', 'horizontalalignment', 'right', 'units', 'characters', 'position', [17, 4, 10, 1.5]);
@@ -247,15 +248,15 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
             if valid(i) == 1
                 wgt = yy(i, :);
                 [wgtv, wgtp] = find(wgt == max(wgt));
-%                 wgt(max(1, wgtp - 2):min(length(yy), wgtp + 2)) = min(wgt);
-%                 if max(wgt(max(1, wgtp - floor(length(wgt) / 20)):min(length(wgt), wgtp + floor(length(wgt) / 20)))) > 0.5 * max(yy(i, :))
+                % wgt(max(1, wgtp - 2):min(length(yy), wgtp + 2)) = min(wgt);
+                % if max(wgt(max(1, wgtp - floor(length(wgt) / 20)):min(length(wgt), wgtp + floor(length(wgt) / 20)))) > 0.5 * max(yy(i, :))
                     wgc = [wgc; freqs(wgtp)];
                     wgx = [wgx; (freqs - min(freqs) * ones(1, length(freqs))) * 1e3];
                     wgy = [wgy; yy(i, :)];
                     wgym = [wgym; max(yy(i, :))];
                     wgpx = [wgpx; realy(i)];
                     wgpy = [wgpy; realx(i)];
-%                 end
+                % end
     
             end
     

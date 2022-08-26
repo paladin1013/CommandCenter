@@ -9,15 +9,19 @@ classdef FullChipDataAnalyzer < Modules.Driver
         ymax = Prefs.Integer(3, 'help', 'The maximum y chiplet coordinate');
         x = Prefs.Integer(0, 'help', 'The current displaying x coordinate.');
         y = Prefs.Integer(0, 'help', 'The current displaying y coordinate.');
-        mincount = Prefs.Integer(10000, 'help', 'Minimum thresold of EMCCD image count for an emitter.');
+        mincount = Prefs.Integer(10000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
+        processMincount = Prefs.Integer(10000, 'help', 'Minimum record threshold of EMCCD image. Emitters with intensity larger than this value will be recorded.')
         freqBin_GHz = Prefs.Double(0.01, 'unit', 'GHz', 'help', 'Width of frequency binning when loading data.');
         countSelection = Prefs.MultipleChoice('average', 'choices', {'average', 'max', 'average of top 50%'}, 'help', 'Method to select the value for frequencybin');
         draw = Prefs.Button('set', 'set_draw', 'help', 'Update figure of the current coordinate.');
+        colorMode = Prefs.MultipleChoice('distinguishable', 'choices', {'distinguishable', 'classified'}, 'help', 'The way to assign emitter color when drawing widefield results.');
     end
 
     properties
         prefs = {'workingDir', 'append', 'loadData', 'xmin', 'xmax', 'ymin', 'ymax', 'x', 'y', 'mincount', 'draw'};
         data;
+        chipletData;
+        idTable;
         figH;
         sumAxH;
         sumImH;
@@ -57,6 +61,169 @@ classdef FullChipDataAnalyzer < Modules.Driver
     end
 
     methods
+        function processData(obj)
+            % Take in the recorded result `Chiplet_xxx.mat` and return & save emitter data (`emitters_chiplet_xxx.mat`)
+            files = dir(obj.workingDir);
+            nValid = 0;
+            validFileNames = {};
+            for k = 1:length(files)
+                file = files(k);
+                % fprintf('Checking file %s (%d/%d)\n', file.name, k, length(files));
+                [tokens,matches] = regexp(file.name,'Chiplet_(\d+).mat','tokens','match');
+                if ~isempty(tokens)
+                    nValid = nValid + 1;
+                    fprintf("Find widefield data file '%s'\n", file.name);
+                    validFileNames{end+1} = file.name;
+                end
+            end
+            obj.chipletData = cell(1, nValid);
+            obj.idTable =   zeros(obj.xmax-obj.xmin+1, obj.ymax-obj.ymin+1);
+            for k = 1:nValid
+                [tokens,matches] = regexp(validFileNames{k},'Chiplet_(\d+).mat','tokens','match');
+                id = str2num(tokens{1}{1});
+                fprintf("Loading file '%s' (%d/%d), id: %d.\n", validFileNames{k}, k, nValid, id);
+                tempData = load(fullfile(obj.workingDir, validFileNames{k}));
+                if isfield(tempData, 'data')
+                    tempData = tempData.data;
+                end
+
+                emitters = obj.processChiplet(tempData);
+                obj.chipletData{id} = struct('id', id, 'coordX', tempData.coordX, 'coordY', tempData.coordY, 'wl', tempData.wl, 'emitters', emitters);
+                if tempData.coordX >= obj.xmin && tempData.coordX <= obj.xmax && tempData.coordY >= obj.ymin && tempData.coordY <= obj.ymax
+                    obj.idTable(tempData.coordX-obj.xmin+1, tempData.coordY-obj.ymin+1) = id;
+                end
+            end
+        end
+        function id = getChipletID(obj, x, y)
+            id = obj.idTable(x-obj.xmin+1, y-obj.ymin+1);
+        end
+
+        function results = processChiplet(obj, chipletData, fitPeak, drawFig)
+            % Output data structure: cell array, each cell contain fields:
+            %       absPosX, absPosY (absolute in the image), relPosX, relPosY (relative to the center of the chiplet), region ('center', 'frame', 'tip', 'bulk');
+            %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
+            %       spectrums (struct array, contains `nSpectrums` spectrums)
+            %           hasPeak (boolean), intensity (N*1 array), freqs_THz (N*1 array), fitStartIdx, fitEndIdx, fittedIntensity ((fitEndIdx-fitStartIdx+1)*1 array), peakFreq_THz (double), linewidth (double)
+            nSpectrums = length(chipletData);
+            
+
+            allFilteredImgs = [];
+            allFreqs = [];
+            % Find all positions whose maximum intensity exceeds mincount (record x, y, freq, maxcount)
+            for k = 1:nSpectrums
+                tempData = chipletData.widefieldData{k};
+                allFilteredImgs = cat(3, allFilteredImgs, tempData.filtered_imgs);
+                allFreqs = [allFreqs, tempData.freqs];
+            end
+
+            [maxIntensity, maxIdx] = max(allFilteredImgs, [], 3);
+            [validYs, validXs] = find(maxIntensity > obj.processMincount); % Note that the image has different coordinate system than regular plots.
+            validInds = sub2ind(size(allFilteredImgs(:, :, 1)), validYs, validXs);
+
+            peakIntensities = maxIntensity(validInds);
+            peakIdx = maxIdx(validInds);
+            peakFreq = transpose(allFreqs(peakIdx));
+            
+
+            % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
+            emitterIdx = dbscan([validXs, validYs, peakFreq*0.5e4], 10, 1); % peakFreq: usually only changes 0.05THz during a scan. Times 1e4 to get a closer order of magnitude with image pixels (usually 512).
+            if exist('drawFig', 'var') && drawFig
+                fig = figure;
+                ax = axes('Parent', fig);
+                scatter3(ax, validXs, validYs, peakFreq, (peakIntensities-obj.processMincount+40)/40, emitterIdx);
+                colormap(ax, 'lines');
+
+            end
+            nEmitters = length(unique(emitterIdx));
+            results = [];
+            for l = 1:nEmitters
+                tempIdx = find(emitterIdx==l);
+                tempXs = validXs(tempIdx);
+                tempYs = validYs(tempIdx);
+                tempIntensities = peakIntensities(tempIdx);
+                [brightness, maxIdx] = max(tempIntensities);
+                results(l).absPosX = tempXs(maxIdx);
+                results(l).absPosY = tempYs(maxIdx);
+                results(l).relPosX = results(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
+                results(l).relPosY = results(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
+                results(l).brightness = brightness;
+                results(l).region = obj.getRegion;
+
+                % Get spectrum
+                for k = 1:nSpectrums
+                    nPoints = length(chipletData.widefieldData{k}.freqs);
+                    freqs_THz = chipletData.widefieldData{k}.freqs;
+                    freqs_THz = reshape(freqs_THz, nPoints, 1);
+                    intensity = chipletData.widefieldData{k}.filtered_imgs(results(l).absPosY, results(l).absPosX, :);
+                    intensity = reshape(intensity, nPoints, 1);
+                    if max(intensity) > obj.processMincount
+                        hasPeak = true;
+                        [peakIntensity, peakIdx] = max(intensity);
+                        peakFreq_THz = freqs_THz(peakIdx);
+                        
+                        if fitPeak % Lorentzian fitting
+                            t = tic;
+                            fitStartIdx = max(1, peakIdx-20);
+                            fitEndIdx = min(nPoints, peakIdx+20);
+                            fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
+                            fitIntensity = double(intensity(fitStartIdx:fitEndIdx));
+
+%                             limits.amplitudes = [0, Inf];
+%                             limits.widths = [0, max(fitFreqs_THz)-min(fitFreqs_THz)];
+%                             limits.locations = [min(fitFreqs_THz), max(fitFreqs_THz)];
+%                             limits.background = [0 max(fitIntensity)];
+%                             [~, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensity,fitFreqs_THz);
+%                             [init.amplitudes, findPeakIdx] = max(findPeakAmplitudes);
+%                             init.locations = findPeakFreqs(findPeakIdx);
+%                             init.widths = findPeakWidths(findPeakIdx);
+%                             init.background = median(fitIntensity);
+%                             [f,new_gof,output] = lorentzfit(fitFreqs_THz, fitIntensity, 1, init, limits);
+%                             fittedIntensity = f(fitIntensity);
+%                             figure; plot(fitFreqs_THz, fitIntensity); hold on; plot(fitFreqs_THz, fittedIntensity)
+                            [vals,confs,fit_results,gofs,init,stop_condition] = fitpeaks(fitFreqs_THz,fitIntensity,"FitType", "lorentz", "n", 1, "Span", 1);
+                            % Results are not satisfying .....
+                            fittedIntensity = fit_results{2}(fitFreqs_THz);
+                            if exist('drawFig', 'var') && drawFig
+                                fitting_fig = figure;
+                                fitting_ax = axes("Parent", fitting_fig);
+                                plot(fitting_ax, fitFreqs_THz, fitIntensity);
+                                hold(fitting_ax, 'on');
+                                plot(fitting_ax, fitFreqs_THz, fittedIntensity);
+                                fitting_ax.Title.String = sprintf("Emitter No.%d", l);
+                            end
+                            
+                            toc(t);
+                        else
+                            fitStartIdx = NaN;
+                            fitEndIdx = NaN;
+                            fittedIntensity = [];
+                        end
+                    else
+                        hasPeak = false;
+                        fitStartIdx = NaN;
+                        fitEndIdx = NaN;
+                        peakFreq_THz = NaN;
+                        fittedIntensity = [];
+                        peakIntensity = NaN;
+                    end
+                    spectrums(k) = struct('hasPeak', hasPeak, 'intensity', intensity, 'freqs_THz', freqs_THz, ...
+                    'fittedIntensity', fittedIntensity, 'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity,...
+                    'fitStartIdx', fitStartIdx, 'fitEndIdx', fitEndIdx);
+                end
+                results(l).spectrums = spectrums;
+                % Determine region
+                results(l).region = obj.getRegion(results(l).relPosX, results(l).relPosY);
+            end
+
+
+
+            % Plot figure
+
+            
+        end
+        function region = getRegion(obj, relPosX, relPosY)
+            region = 'center';
+        end
         function updateData(obj, append, workingDir)
             if ~exist('append', 'var')
                 append = obj.append;
@@ -710,6 +877,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
             hold off
             % scatter()
         end
+
+            
     end
 end
 
