@@ -6,7 +6,7 @@ classdef ANC350 < Modules.Driver
         axisNo = containers.Map({'x', 'y', 'z'}, {1, 2, 3})
                     % Note that the axis no in hwserver start from 0 (i.e. 0, 1, 2 represent x, y, z respectively)
                     % This conversion is done in Line.com()
-        maxSteps = 200;
+        maxSteps = 300;
     end
     properties(SetAccess=private,Hidden)
         connection

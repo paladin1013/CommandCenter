@@ -29,6 +29,7 @@ classdef FullChipWidefield < Modules.Experiment
         sweepEnd = Prefs.Integer(16, 'help', 'Sweep until this chiplet. This value should be no more than (abs(rangeX)+1)*(abs(rangeY)+1)');
         useScannerOrigin = Prefs.Boolean(true, 'help', 'Use the origin of FullChipScanner as the (0, 0) of the experiment. If set to false, will use the current scanner position as the origion.');
         previewChiplets = Prefs.Boolean(true, 'help', 'Will go through all chiplets to make sure `FullChipScanner` is functioning well.');
+        previewDone = Prefs.Boolean(false, 'help', 'Finished previewing chiplet.')
     end
     methods(Static)
         obj = instance();
@@ -53,7 +54,11 @@ classdef FullChipWidefield < Modules.Experiment
             coordsY = zeros((abs(obj.rangeX)+1)*(abs(obj.rangeY)+1), 1);
             % Since moving along Y axis makes more changes to the altitude (piezo Z axis), we prefer to move along X axis first.
             cnt = 1;
-            for k = 0:sign(obj.rangeY):obj.rangeY
+            step = sign(obj.rangeY);
+            if step == 0
+                step = 1;
+            end
+            for k = 0:step:obj.rangeY
                 if mod(k, 2) == 0
                     startX = 0;
                     inc = sign(obj.rangeX);
@@ -62,6 +67,9 @@ classdef FullChipWidefield < Modules.Experiment
                     startX = obj.rangeX;
                     inc = -sign(obj.rangeX);
                     endX = 0;
+                end
+                if inc == 0
+                    inc = 1;
                 end
                 for l = startX:inc:endX
                     coordsX(cnt) = l;
@@ -78,6 +86,25 @@ classdef FullChipWidefield < Modules.Experiment
         function run(obj,statusH,managers,ax)
             if check_call_stack_func('grabFrame')
                 error('Please stop Video then start the experiment.');
+            end
+            
+            if obj.resonatorReverse
+                resp = questdlg('Are you sure to reverse resonator percentscanning?');
+                if ~strcmp(resp, "Yes")
+                    error("Please cancel `resonatorReverse`.")
+                end 
+            end
+
+
+            if obj.experiment.wavemeter_override
+                try
+                    obj.experiment.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu',obj.experiment.wavemeter_channel,true);
+                    obj.experiment.wavemeter.SetSwitcherSignalState(1);
+                catch err
+                    warning(err.message);
+                    obj.experiment.wavemeter.delete;
+                    obj.experiment.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu',obj.experiment.wavemeter_channel,true);
+                end
             end
             handles = managers.handles;
             set(handles.panel_im,'position',[0 0 0.5 handles.AxesPanelsH],'visible','on')
@@ -116,43 +143,44 @@ classdef FullChipWidefield < Modules.Experiment
             obj.experiment.skip_analysis = true;
 
             if obj.previewChiplets
-                for k = chipletStart:chipletEnd
-                    assert(~obj.abort_request, 'User aborted.');
-                    obj.wl.source_on = true;
-                    obj.wl.intensity = 100;
-                    obj.camera.exposure = 100;
-                    nextX = coordsX(k);
-                    nextY = coordsY(k);
-                    fprintf("Preview: Going to chiplet (%d, %d), %d/%d\n", nextX, nextY, k-chipletStart+1, chipletEnd-chipletStart+1);
-                    if nextX ~= coordX % Move one step at a time, until scanner reaches the starting chiplet. 
-                        while nextX > obj.scanner.x_pos
-                            obj.scanner.x_pos = obj.scanner.x_pos+1;
+                if ~obj.previewDone
+                    for k = chipletStart:chipletEnd
+                        assert(~obj.abort_request, 'User aborted.');
+                        obj.wl.source_on = true;
+                        obj.wl.intensity = 100;
+                        obj.camera.exposure = 100;
+                        nextX = coordsX(k);
+                        nextY = coordsY(k);
+                        fprintf("Preview: Going to chiplet (%d, %d), %d/%d\n", nextX, nextY, k-chipletStart+1, chipletEnd-chipletStart+1);
+                        if nextX ~= coordX % Move one step at a time, until scanner reaches the starting chiplet. 
+                            while nextX > obj.scanner.x_pos
+                                obj.scanner.x_pos = obj.scanner.x_pos+1;
+                            end
+                            while nextX < obj.scanner.x_pos
+                                obj.scanner.x_pos = obj.scanner.x_pos-1;
+                            end
+                        elseif nextY ~= coordY
+                            while nextY > obj.scanner.y_pos
+                                obj.scanner.y_pos = obj.scanner.y_pos + 1;
+                            end
+                            while nextY < obj.scanner.y_pos
+                                obj.scanner.y_pos = obj.scanner.y_pos - 1;
+                            end
+                        else % Is already at the correct position: still need to align chiplet with laser
+                            obj.scanner.x_pos = nextX;
                         end
-                        while nextX < obj.scanner.x_pos
-                            obj.scanner.x_pos = obj.scanner.x_pos-1;
-                        end
-                    elseif nextY ~= coordX
-                        while nextY > obj.scanner.y_pos
-                            obj.scanner.y_pos = obj.scanner.y_pos + 1;
-                        end
-                        while nextY < obj.scanner.y_pos
-                            obj.scanner.y_pos = obj.scanner.y_pos - 1;
-                        end
-                    else % Is already at the correct position: still need to align chiplet with laser
-                        obj.scanner.x_pos = nextX;
+                        coordX = nextX;
+                        coordY = nextY;
+                        mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
+                        wl_img = obj.camera.snapImage;
+                        figH = figure;
+                        axH = axes('Parent', figH);
+                        imH = imagesc(axH, wl_img);
+                        colormap('bone');
+                        saveas(axH, fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)),  sprintf("chiplet%d_wl_preview.png", k)));
                     end
-                    coordX = nextX;
-                    coordY = nextY;
-                    mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
-                    wl_img = obj.camera.snapImage;
-                    figH = figure;
-                    axH = axes('Parent', figH);
-                    imH = imagesc(axH, wl_img);
-                    colormap('bone');
-                    saveas(axH, fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)),  sprintf("chiplet%d_wl_preview.png", k)));
-                    save(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)),  sprintf("chiplet%d_wl_preview.mat", k)), 'wl_img');
-                end
-                    
+                    obj.previewDone = true;
+                end 
                 for k = chipletEnd:-1:chipletStart
                     assert(~obj.abort_request, 'User aborted.');
                     obj.wl.source_on = true;
@@ -183,17 +211,16 @@ classdef FullChipWidefield < Modules.Experiment
                     for l = 1:obj.sweepRounds
                         if ~obj.resonatorReverse % Begin from the `resonatorStart`
                             obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorStart, obj.resonatorEnd, obj.resonatorPoints);
-                            obj.resonatorReverse = true;
                         else
                             obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorEnd, obj.resonatorStart, obj.resonatorPoints);
-                            obj.resonatorReverse = false;
                         end
                         obj.runExperiment(managers, obj.experiment, ax);
                         widefieldData{l} = obj.experiment.processed_data;
                         assert(~obj.abort_request, 'User aborted.');
+                        obj.resonatorReverse = ~obj.resonatorReverse;
                     end
                     data = struct('coordX', coordX, 'coordY', coordY, 'widefieldData', widefieldData, 'wl_img', wl_img);
-                    wait = msgbox('Please Wait, CommandCenter is saving data.');
+                    wait = msgbox('Please wait, CommandCenter is saving data.');
                     stagePos = obj.scanner.current_position_um;
                     save(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)), sprintf("chiplet%d.mat", k)), 'coordX', 'coordY', 'widefieldData', 'wl_img', 'stagePos');
                     try
@@ -214,6 +241,7 @@ classdef FullChipWidefield < Modules.Experiment
                     else
                         obj.scanner.y_pos = nextY;
                     end
+                    assert(~obj.abort_request, 'User aborted.');
                     mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
                     wl_img = obj.camera.snapImage;
                     figH = figure;
@@ -228,17 +256,17 @@ classdef FullChipWidefield < Modules.Experiment
                     obj.wl.source_on = false;
                     obj.experiment.set_ROI_automatic(wl_img);
                     widefieldData = cell(1, obj.sweepRounds);
+                    assert(~obj.abort_request, 'User aborted.');
                     for l = 1:obj.sweepRounds
                         if ~obj.resonatorReverse % Begin from the `resonatorStart`
                             obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorStart, obj.resonatorEnd, obj.resonatorPoints);
-                            obj.resonatorReverse = true;
                         else
                             obj.experiment.percents = sprintf("linspace(%d, %d, %d)", obj.resonatorEnd, obj.resonatorStart, obj.resonatorPoints);
-                            obj.resonatorReverse = false;
                         end
                         obj.runExperiment(managers, obj.experiment, ax);
                         widefieldData{l} = obj.experiment.processed_data;
                         assert(~obj.abort_request, 'User aborted.');
+                        obj.resonatorReverse = ~obj.resonatorReverse;
                     end
                     data = struct('coordX', coordX, 'coordY', coordY, 'widefieldData', widefieldData, 'wl_img', wl_img);
                     wait = msgbox('Please Wait, CommandCenter is saving data.');
@@ -249,6 +277,7 @@ classdef FullChipWidefield < Modules.Experiment
                     end
                 end
             end
+            obj.previewDone = true;
         end
         
         function runExperiment(obj,managers,experiment,ax)

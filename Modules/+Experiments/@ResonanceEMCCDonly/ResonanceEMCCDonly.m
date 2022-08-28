@@ -25,6 +25,8 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         keep_entire_image = Prefs.Boolean(true, 'help', 'Will not trim the whitelight and EMCCD image if selected.');
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
         accelerate = Prefs.Boolean(true, 'help', 'Start snapping data and quiring wavemeter wavelength at the same time to accelerate experiment. May be unstable.');
+        use_powermeter = Prefs.Boolean(false, 'help', 'Will acquire laser power for each frame from PM100.');
+        powermeter = Prefs.ModuleInstance(Drivers.PM100_remote.instance, 'inherits', {'Modules.Driver'});
 
     end
     

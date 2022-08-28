@@ -7,6 +7,15 @@ function run( obj,status,managers,ax )
     if obj.cameraEMCCD.continuous
         obj.cameraEMCCD.stopVideo
     end
+
+    if obj.use_powermeter && (isempty(obj.powermeter) || ~isvalid(obj.powermeter))
+        try
+            obj.powermeter = Drivers.PM100_remote.instance;
+        catch
+            warning("Powermeter is not connected. use_powermeter will be set to false.");
+            obj.use_powermeter = false;
+        end
+    end
     timers = timerfindall;
     for k = 1:length(timers)
         if strcmp(timers(k).tag, 'Video Timer')
@@ -37,6 +46,7 @@ function run( obj,status,managers,ax )
     freqs = zeros(1, Npoints);
     EMCCD_imgs = zeros(rymax-rymin+1, rxmax-rxmin+1, Npoints);
     filtered_imgs = zeros(rymax-rymin+1, rxmax-rxmin+1, Npoints);
+    power_uW = zeros(1, Npoints);
 
     % Stop all video timers
 
@@ -113,6 +123,7 @@ function run( obj,status,managers,ax )
         else
             obj.data.freqMeasured(i) = obj.resLaser.getFrequency;
         end
+        power_uW(i) = obj.powermeter.get_power*1e3; % mW -> uW
         if i < length(obj.scan_points) % Get prepared for the next round
             obj.resLaser.TunePercentFast(obj.scan_points(i+1)); % No response / laser locking to save time.
         end
@@ -138,13 +149,20 @@ function run( obj,status,managers,ax )
     EMCCD_imgs = uint16(EMCCD_imgs);
     filtered_imgs = uint16(filtered_imgs);
     obj.processed_data = struct('freqs', freqs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
+    if obj.use_powermeter
+        obj.processed_data.power_uW = power_uW;
+    end
     if ~isempty(obj.segment)
         obj.processed_data.segment = obj.segment;
     end
     c = fix(clock);
     raw = obj.data.images_EMCCD;
     wait = msgbox('Please Wait, CommandCenter is saving data.');
-    save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+    if obj.use_powermeter
+        save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos', 'power_uW');
+    else
+        save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_processed_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+    end
     save(fullfile(obj.autosave.exp_dir, sprintf("Widefield_raw_data_%d_%d_%d_%d_%d.mat", c(2), c(3), c(4), c(5), c(6))), 'raw');
     try
         delete(wait);
