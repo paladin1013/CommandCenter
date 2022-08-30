@@ -13,6 +13,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         y = Prefs.Integer(0, 'help', 'The current displaying y coordinate.');
         mincount = Prefs.Integer(10000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
         processMincount = Prefs.Integer(10000, 'help', 'Minimum record threshold of EMCCD image. Emitters with intensity larger than this value will be recorded.');
+        emitterMinSize = Prefs.Integer(3, 'unit', 'pixel', 'help', 'To filter out noise, only emitters with size large than this value will be recorded');
         freqBin_GHz = Prefs.Double(0.01, 'unit', 'GHz', 'help', 'Width of frequency binning when loading data.');
         countSelection = Prefs.MultipleChoice('average', 'choices', {'average', 'max', 'average of top 50%'}, 'help', 'Method to select the value for frequencybin');
         draw = Prefs.Button('set', 'set_draw', 'help', 'Update figure of the current coordinate.');
@@ -55,9 +56,10 @@ classdef FullChipDataAnalyzer < Modules.Driver
         regionMap = {'center', 'frame', 'tip', 'bulk'};
 
 
-        allEmitters;
-        allChipletResults;
-        allExperimentResults;
+        allChipletEmitters;
+        allChipletStatistics;
+        allExperimentStatistics;
+        allExperimentEmitters;
     end
     methods(Static)
         obj = instance()
@@ -97,8 +99,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 end
             end
 
-            obj.summarizeAllExperiments(sumDir);
-            obj.plotAllStatistic(obj.allExperimentResults);
+            obj.aggregateAllExperiments(sumDir);
+            obj.plotAllStatistic(obj.allExperimentStatistics);
         end
         function processData(obj)
             assert(~isempty(obj.srcDir), "Source directory is empty. Please assign obj.srcDir before processing data.");
@@ -148,22 +150,26 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
                 [emitters, sumResults]= obj.processChiplet(tempData, false);
             end
-            obj.summarizeData;
+            obj.aggregateData;
         end
-        function summarizeAllExperiments(obj, sumDir)
+        function aggregateAllExperiments(obj, sumDir)
             files = dir(sumDir);
+            obj.allExperimentEmitters = [];
 
-            obj.allExperimentResults = struct;
-            obj.allExperimentResults.absPosXs = [];
-            obj.allExperimentResults.absPosYs = [];
-            obj.allExperimentResults.brightnesses = [];
-            obj.allExperimentResults.resonantFreqs_THz = [];
-            obj.allExperimentResults.regionIdxes = [];
-            obj.allExperimentResults.chipletIdxes = [];
-            obj.allExperimentResults.chipletCoordsX = [];
-            obj.allExperimentResults.chipletCoordsY = [];
-            obj.allExperimentResults.chipletIDs = [];
-            obj.allExperimentResults.experimentName = [];
+            obj.allExperimentStatistics = struct;
+            obj.allExperimentStatistics.absPosXs = [];
+            obj.allExperimentStatistics.absPosYs = [];
+            obj.allExperimentStatistics.brightnesses = [];
+            obj.allExperimentStatistics.resonantFreqs_THz = [];
+            obj.allExperimentStatistics.regionIdxes = [];
+            obj.allExperimentStatistics.chipletIdxes = [];
+            obj.allExperimentStatistics.chipletCoordsX = [];
+            obj.allExperimentStatistics.chipletCoordsY = [];
+            obj.allExperimentStatistics.chipletIDs = [];
+            obj.allExperimentStatistics.experimentName = [];
+            obj.allExperimentStatistics.sizes_pixel = [];
+            obj.allExperimentStatistics.findPeakWidth_THz = [];
+            obj.allExperimentStatistics.findPeakAmplitude = [];
             for k = 1:length(files)
                 file = files(k);
                 [tokens, matches] = regexp(file.name, 'Widefield(.+).mat', 'tokens', 'match');
@@ -171,34 +177,45 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     continue;
                 end
                 experimentName = sprintf("%s", tokens{1}{1});
-                load(fullfile(sumDir, file.name), 'allChipletResults');
-                nEmitters = length(allChipletResults.absPosXs);
-                obj.allExperimentResults.absPosXs(end+1:end+nEmitters) = allChipletResults.absPosXs;
-                obj.allExperimentResults.absPosYs(end+1:end+nEmitters) = allChipletResults.absPosYs;
-                obj.allExperimentResults.brightnesses(end+1:end+nEmitters) = allChipletResults.brightnesses;
-                obj.allExperimentResults.resonantFreqs_THz(end+1:end+nEmitters) = allChipletResults.resonantFreqs_THz;
-                obj.allExperimentResults.regionIdxes(end+1:end+nEmitters) = allChipletResults.regionIdxes;
-                obj.allExperimentResults.chipletIdxes(end+1:end+nEmitters) = allChipletResults.chipletIdxes;
-                obj.allExperimentResults.chipletCoordsX(end+1:end+nEmitters) = allChipletResults.chipletCoordsX;
-                obj.allExperimentResults.chipletCoordsY(end+1:end+nEmitters) = allChipletResults.chipletCoordsY;
-                obj.allExperimentResults.chipletIDs(end+1:end+nEmitters) = allChipletResults.chipletIDs;
-                obj.allExperimentResults.experimentName(end+1:end+nEmitters) = experimentName;
+                load(fullfile(sumDir, file.name), 'allChipletStatistics', 'allChipletEmitters');
+                nEmitters = length(allChipletStatistics.absPosXs);
+                if isempty(obj.allExperimentEmitters)
+                    obj.allExperimentEmitters = allChipletEmitters;
+                else
+                    obj.allExperimentEmitters(end+1:end+nEmitters) = allChipletEmitters;
+                end
+                obj.allExperimentStatistics.absPosXs(end+1:end+nEmitters) = allChipletStatistics.absPosXs;
+                obj.allExperimentStatistics.absPosYs(end+1:end+nEmitters) = allChipletStatistics.absPosYs;
+                obj.allExperimentStatistics.brightnesses(end+1:end+nEmitters) = allChipletStatistics.brightnesses;
+                obj.allExperimentStatistics.resonantFreqs_THz(end+1:end+nEmitters) = allChipletStatistics.resonantFreqs_THz;
+                obj.allExperimentStatistics.regionIdxes(end+1:end+nEmitters) = allChipletStatistics.regionIdxes;
+                obj.allExperimentStatistics.chipletIdxes(end+1:end+nEmitters) = allChipletStatistics.chipletIdxes;
+                obj.allExperimentStatistics.chipletCoordsX(end+1:end+nEmitters) = allChipletStatistics.chipletCoordsX;
+                obj.allExperimentStatistics.chipletCoordsY(end+1:end+nEmitters) = allChipletStatistics.chipletCoordsY;
+                obj.allExperimentStatistics.chipletIDs(end+1:end+nEmitters) = allChipletStatistics.chipletIDs;
+                obj.allExperimentStatistics.sizes_pixel(end+1:end+nEmitters) = allChipletStatistics.sizes_pixel;
+                obj.allExperimentStatistics.experimentName(end+1:end+nEmitters) = experimentName;
+                obj.allExperimentStatistics.findPeakWidth_THz(end+1:end+nEmitters) = allChipletStatistics.findPeakWidth_THz;
+                obj.allExperimentStatistics.findPeakAmplitude(end+1:end+nEmitters) = allChipletStatistics.findPeakAmplitude;
             end
-            allExperimentResults = obj.allExperimentResults;
-            save(fullfile(sumDir, "all_experiments_data.mat"), "allExperimentResults");
+            allExperimentStatistics = obj.allExperimentStatistics;
+            allExperimentEmitters = obj.allExperimentEmitters;
+
+            save(fullfile(sumDir, "all_experiments_data.mat"), "allExperimentStatistics", "allExperimentEmitters");
         end
-        function summarizeData(obj)
-            obj.allEmitters = [];
-            obj.allChipletResults = struct;
-            obj.allChipletResults.absPosXs = [];
-            obj.allChipletResults.absPosYs = [];
-            obj.allChipletResults.brightnesses = [];
-            obj.allChipletResults.resonantFreqs_THz = [];
-            obj.allChipletResults.regionIdxes = [];
-            obj.allChipletResults.chipletIdxes = [];
-            obj.allChipletResults.chipletCoordsX = [];
-            obj.allChipletResults.chipletCoordsY = [];
-            obj.allChipletResults.chipletIDs = [];
+        function aggregateData(obj)
+            obj.allChipletEmitters = [];
+            obj.allChipletStatistics = struct;
+            obj.allChipletStatistics.absPosXs = [];
+            obj.allChipletStatistics.absPosYs = [];
+            obj.allChipletStatistics.brightnesses = [];
+            obj.allChipletStatistics.resonantFreqs_THz = [];
+            obj.allChipletStatistics.regionIdxes = [];
+            obj.allChipletStatistics.chipletIdxes = [];
+            obj.allChipletStatistics.chipletCoordsX = [];
+            obj.allChipletStatistics.chipletCoordsY = [];
+            obj.allChipletStatistics.chipletIDs = [];
+            obj.allChipletStatistics.sizes_pixel = [];
             nChiplets = (obj.xmax-obj.xmin+1)*(obj.ymax-obj.ymin+1);
             
             for idx = 1:nChiplets
@@ -209,29 +226,32 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 end
                 load(fullfile(obj.dstDir, fileName), 'emitters', 'sumResults');
                 nEmitters = length(emitters);
-                if isempty(obj.allEmitters)
-                    obj.allEmitters = emitters;
+                if isempty(obj.allChipletEmitters)
+                    obj.allChipletEmitters = emitters;
                 else
-                    obj.allEmitters(end+1:end+nEmitters) = emitters;
+                    obj.allChipletEmitters(end+1:end+nEmitters) = emitters;
                 end
-                obj.allChipletResults.absPosXs(end+1:end+nEmitters) = sumResults.absPosXs;
-                obj.allChipletResults.absPosYs(end+1:end+nEmitters) = sumResults.absPosYs;
-                obj.allChipletResults.brightnesses(end+1:end+nEmitters) = sumResults.brightnesses;
-                obj.allChipletResults.resonantFreqs_THz(end+1:end+nEmitters) = sumResults.resonantFreqs_THz;
-                obj.allChipletResults.regionIdxes(end+1:end+nEmitters) = sumResults.regionIdxes;
-                obj.allChipletResults.chipletIdxes(end+1:end+nEmitters) = sumResults.chipletIdx;
-                obj.allChipletResults.chipletCoordsX(end+1:end+nEmitters) = sumResults.chipletCoordX;
-                obj.allChipletResults.chipletCoordsY(end+1:end+nEmitters) = sumResults.chipletCoordY;
-                obj.allChipletResults.chipletIDs(end+1:end+nEmitters) = sumResults.chipletID;
+                obj.allChipletStatistics.absPosXs(end+1:end+nEmitters) = sumResults.absPosXs;
+                obj.allChipletStatistics.absPosYs(end+1:end+nEmitters) = sumResults.absPosYs;
+                obj.allChipletStatistics.brightnesses(end+1:end+nEmitters) = sumResults.brightnesses;
+                obj.allChipletStatistics.resonantFreqs_THz(end+1:end+nEmitters) = sumResults.resonantFreqs_THz;
+                obj.allChipletStatistics.regionIdxes(end+1:end+nEmitters) = sumResults.regionIdxes;
+                obj.allChipletStatistics.chipletIdxes(end+1:end+nEmitters) = sumResults.chipletIdx;
+                obj.allChipletStatistics.chipletCoordsX(end+1:end+nEmitters) = sumResults.chipletCoordX;
+                obj.allChipletStatistics.chipletCoordsY(end+1:end+nEmitters) = sumResults.chipletCoordY;
+                obj.allChipletStatistics.chipletIDs(end+1:end+nEmitters) = sumResults.chipletID;
+                obj.allChipletStatistics.sizes_pixel(end+1:end+nEmitters) = sumResults.sizes_pixel;
+                obj.allChipletStatistics.findPeakWidth_THz(end+1:end+nEmitters) = sumResults.findPeakWidth_THz;
+                obj.allChipletStatistics.findPeakAmplitude(end+1:end+nEmitters) = sumResults.findPeakAmplitude;
                 
                 obj.chipletData{idx} = struct('idx', idx, 'chipletCoordX', sumResults.chipletCoordX, 'chipletCoordY', sumResults.chipletCoordY, 'wl_img', sumResults.wl_img, 'emitters', emitters);
                 if sumResults.chipletCoordX >= obj.xmin && sumResults.chipletCoordX <= obj.xmax && sumResults.chipletCoordY >= obj.ymin && sumResults.chipletCoordY <= obj.ymax
                     obj.idxTable(sumResults.chipletCoordX-obj.xmin+1, sumResults.chipletCoordY-obj.ymin+1) = idx;
                 end
             end
-            allChipletResults = obj.allChipletResults;
-            allEmitters = obj.allEmitters;
-            save(fullfile(obj.dstDir, "processed_emitters_data.mat"), "allChipletResults", "allEmitters");
+            allChipletStatistics = obj.allChipletStatistics;
+            allChipletEmitters = obj.allChipletEmitters;
+            save(fullfile(obj.dstDir, "processed_emitters_data.mat"), "allChipletStatistics", "allChipletEmitters");
         end
         function idx = getChipletIdx(obj, x, y)
             idx = obj.idxTable(x-obj.xmin+1, y-obj.ymin+1);
@@ -295,6 +315,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
             % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
             emitterIdx = dbscan([validXs, validYs, peakFreqs*0.5e4], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 1e4 to get a closer order of magnitude with image pixels (usually 512).
+          
+%             [idxCnt, uniqueIdx] = hist(emitterIdx,unique(emitterIdx));
+%             uniqueIdx = uniqueIdx(idxCnt >= obj.emitterMinSize);
+
+
             if exist('drawFig', 'var') && drawFig
                 fig = figure;
                 ax = axes(fig);
@@ -303,6 +328,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
             end
             nEmitters = length(unique(emitterIdx));
+
             emitters = [];
             sumResults = struct();
             sumResults.absPosXs = NaN(1, nEmitters);
@@ -310,6 +336,10 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults.brightnesses = NaN(1, nEmitters);
             sumResults.resonantFreqs_THz = NaN(1, nEmitters);
             sumResults.regionIdxes = NaN(1, nEmitters);
+            sumResults.sizes_pixel = NaN(1, nEmitters);
+            sumResults.findPeakWidth_THz = NaN(1, nEmitters);
+            sumResults.findPeakAmplitude = NaN(1, nEmitters);
+            
             sumResults.nEmitters = nEmitters;
             sumResults.wl_img = chipletData.wl_img;
             sumResults.chipletIdx = chipletData.chipletIdx;
@@ -334,13 +364,19 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 emitters(l).chipletCoordX = chipletData.coordX;
                 emitters(l).chipletCoordY = chipletData.coordY;
                 emitters(l).chipletID = chipletData.chipletID;
+                emitters(l).size_pixel = sum(emitterIdx==l);
 
                 sumResults.absPosXs(l) = tempXs(maxIdx);
                 sumResults.absPosYs(l) = tempYs(maxIdx);
                 sumResults.brightnesses(l) = double(brightness);
                 sumResults.regionIdxes(l) = find(strcmp(emitters(l).region, obj.regionMap));
                 sumResults.resonantFreqs_THz(l) = tempFreqs(maxIdx);
+                sumResults.sizes_pixel(l) = emitters(l).size_pixel;
                 % Get spectrum
+                findPeakIntensity = NaN(nSpectrums, 1);
+                findPeakFreq = NaN(nSpectrums, 1);
+                findPeakWidth_THz = NaN(nSpectrums, 1);
+                findPeakAmplitude = NaN(nSpectrums, 1);
                 for k = 1:nSpectrums
                     nPoints = length(chipletData.widefieldData{k}.freqs);
                     freqs_THz = chipletData.widefieldData{k}.freqs;
@@ -359,9 +395,13 @@ classdef FullChipDataAnalyzer < Modules.Driver
                         [sortedFreqs_THz, sortedIdx] = sort(fitFreqs_THz, 'ascend');
                         fitIntensities = fitIntensities(sortedIdx);
 
-                        [findPeakIntensity, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensities, sortedFreqs_THz);
-                        [maxIntensity, maxFreqIdx] = max(findPeakIntensity);
-                        peakWidth_THz = findPeakWidths(maxFreqIdx);
+                        [findPeakIntensities, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensities, sortedFreqs_THz);
+                        [maxIntensity, maxIdx] = max(findPeakIntensities);
+                        peakWidth_THz = findPeakWidths(maxIdx);
+                        findPeakIntensity(k) = findPeakIntensities(maxIdx);
+                        findPeakFreq(k) = findPeakFreqs(maxIdx);
+                        findPeakWidth_THz(k) = findPeakWidths(maxIdx);
+                        findPeakAmplitude(k) = findPeakAmplitudes(maxIdx);
                     else
                         hasPeak = false;
                         peakFreq_THz = NaN;
@@ -372,6 +412,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz);
                 end
                 emitters(l).spectrums = spectrums;
+                emitters(l).findPeakWidth_THz = mean(findPeakWidth_THz);
+                emitters(l).findPeakAmplitude = mean(findPeakAmplitude);
+                sumResults.findPeakWidth_THz(l) = mean(findPeakWidth_THz);
+                sumResults.findPeakAmplitude(l) = mean(findPeakAmplitude);
+
             end
 
             save(fullfile(obj.dstDir, sprintf("chiplet%d_processed_data.mat", chipletData.chipletIdx)), "emitters", "sumResults");
@@ -382,38 +427,47 @@ classdef FullChipDataAnalyzer < Modules.Driver
             end
 
         end
-        function [emitters, linewidths] = fitPeaks(obj, emitters) % Lorentzian fitting
-            t = tic;
-            fitStartIdx = max(1, peakIdx-40);
-            fitEndIdx = min(nPoints, peakIdx+40);
-            fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
-            fitIntensity = double(intensity(fitStartIdx:fitEndIdx));
+        function [emitters, linewidths] = fitPeaks(obj, emitters, drawFig) % Lorentzian fitting
+            nEmitters = length(emitters);
+            for k = 1:nEmitters
+                emitter = emitters(k);
+                
+                intensities = emitter.spectrums(1).intensities;
+                freqs_THz = emitter.spectrums(1).freqs_THz;
+                nPoints = length(freqs_THz);
+                [peakIntensity, peakIdx] = max(intensities);
+                t = tic;
+                fitStartIdx = max(1, peakIdx-40);
+                fitEndIdx = min(nPoints, peakIdx+40);
+                fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
+                fitIntensities = double(intensities(fitStartIdx:fitEndIdx));
 
-%                             limits.amplitudes = [0, Inf];
-%                             limits.widths = [0, max(fitFreqs_THz)-min(fitFreqs_THz)];
-%                             limits.locations = [min(fitFreqs_THz), max(fitFreqs_THz)];
-%                             limits.background = [0 max(fitIntensity)];
-%                             [~, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensity,fitFreqs_THz);
-%                             [init.amplitudes, findPeakIdx] = max(findPeakAmplitudes);
-%                             init.locations = findPeakFreqs(findPeakIdx);
-%                             init.widths = findPeakWidths(findPeakIdx);
-%                             init.background = median(fitIntensity);
-%                             [f,new_gof,output] = lorentzfit(fitFreqs_THz, fitIntensity, 1, init, limits);
-%                             fittedIntensity = f(fitIntensity);
-%                             figure; plot(fitFreqs_THz, fitIntensity); hold on; plot(fitFreqs_THz, fittedIntensity)
-            [vals,confs,fit_results,gofs,init,stop_condition] = fitpeaks(fitFreqs_THz,fitIntensity,"FitType", "lorentz", "n", 1, "Span", 1);
-            % emitters are not satisfying .....
-            fittedIntensity = fit_results{2}(fitFreqs_THz);
-            if exist('drawFig', 'var') && drawFig
-                fitting_fig = figure;
-                fitting_ax = axes("Parent", fitting_fig);
-                plot(fitting_ax, fitFreqs_THz, fitIntensity);
-                hold(fitting_ax, 'on');
-                plot(fitting_ax, fitFreqs_THz, fittedIntensity);
-                fitting_ax.Title.String = sprintf("Emitter No.%d", l);
+    %                             limits.amplitudes = [0, Inf];
+    %                             limits.widths = [0, max(fitFreqs_THz)-min(fitFreqs_THz)];
+    %                             limits.locations = [min(fitFreqs_THz), max(fitFreqs_THz)];
+    %                             limits.background = [0 max(fitIntensity)];
+    %                             [~, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensity,fitFreqs_THz);
+    %                             [init.amplitudes, findPeakIdx] = max(findPeakAmplitudes);
+    %                             init.locations = findPeakFreqs(findPeakIdx);
+    %                             init.widths = findPeakWidths(findPeakIdx);
+    %                             init.background = median(fitIntensity);
+    %                             [f,new_gof,output] = lorentzfit(fitFreqs_THz, fitIntensity, 1, init, limits);
+    %                             fittedIntensity = f(fitIntensity);
+    %                             figure; plot(fitFreqs_THz, fitIntensity); hold on; plot(fitFreqs_THz, fittedIntensity)
+                [vals,confs,fit_results,gofs,init,stop_condition] = fitpeaks(fitFreqs_THz,fitIntensities,"FitType", "lorentz", "n", 1, "Span", 1);
+                % emitters are not satisfying .....
+                postfitIntensities = fit_results{2}(fitFreqs_THz);
+                if exist('drawFig', 'var') && drawFig
+                    fitting_fig = figure;
+                    fitting_ax = axes("Parent", fitting_fig);
+                    plot(fitting_ax, fitFreqs_THz, fitIntensities);
+                    hold(fitting_ax, 'on');
+                    plot(fitting_ax, fitFreqs_THz, postfitIntensities);
+                    fitting_ax.Title.String = sprintf("Emitter No.%d", k);
+                end
+                
+                toc(t);
             end
-            
-            toc(t);
         end
         function plotHistCurve(obj, sumResults, brCurveAxH, freqCurveAxH)
             % Plot histogram and convert into curve on brightness and frequency.
@@ -520,7 +574,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
         function plotAllStatistic(obj, sumResults)
             if ~exist('sumResults', 'var')
-                sumResults = obj.allChipletResults;
+                sumResults = obj.allChipletStatistics;
             end
             allFigH = figure;
             brCurveAxH = subplot(1, 2, 1);
