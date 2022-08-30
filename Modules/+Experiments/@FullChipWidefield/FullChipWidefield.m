@@ -171,7 +171,10 @@ classdef FullChipWidefield < Modules.Experiment
                         end
                         coordX = nextX;
                         coordY = nextY;
-                        mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
+                        dirName = fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)));
+                        if ~exist(dirName, 'dir')
+                            mkdir(dirName);
+                        end
                         wl_img = obj.camera.snapImage;
                         figH = figure;
                         axH = axes('Parent', figH);

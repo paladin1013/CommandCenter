@@ -1,6 +1,7 @@
 classdef FullChipDataAnalyzer < Modules.Driver
     properties(SetObservable, GetObservable)
-        workingDir = Prefs.String("", 'help', 'Base working directory.');
+        srcDir = Prefs.String("", 'help', 'Source directory.');
+        dstDir = Prefs.String("", 'help', 'Destination directory. Will save processed data under this directory');
         append = Prefs.Boolean(false, 'help', 'Append to the current data when loading new data.');
         loadData = Prefs.Button('set', 'set_loadData', 'help', 'Load data from workind directory to Matlab.');
         xmin = Prefs.Integer(0, 'help', 'The minimum x chiplet coordinate');
@@ -19,10 +20,10 @@ classdef FullChipDataAnalyzer < Modules.Driver
     end
 
     properties
-        prefs = {'workingDir', 'append', 'loadData', 'xmin', 'xmax', 'ymin', 'ymax', 'x', 'y', 'mincount', 'draw'};
+        prefs = {'srcDir', 'dstDir', 'append', 'loadData', 'xmin', 'xmax', 'ymin', 'ymax', 'x', 'y', 'mincount', 'draw'};
         data;
         chipletData;
-        idTable;
+        idxTable;
         figH;
         sumAxH;
         sumImH;
@@ -68,63 +69,127 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
     methods
         function processData(obj)
-            % Take in the recorded result `Chiplet_xxx.mat` and return & save emitter data (`emitters_chiplet_xxx.mat`)
-            files = dir(obj.workingDir);
+            assert(~isempty(obj.srcDir), "Source directory is empty. Please assign obj.srcDir before processing data.");
+            assert(~isempty(obj.dstDir), "Destination directory is empty. Please assign obj.dstDir before processing data.");
+            if ~exist(obj.dstDir, 'dir')
+                mkdir(obj.dstDir);
+            end
+            % Take in the recorded result `Chipletxxx.mat` and return & save emitter data (`emitters_chiplet_xxx.mat`)
+            files = dir(obj.srcDir);
             nValid = 0;
             validFileNames = {};
             for k = 1:length(files)
                 file = files(k);
                 % fprintf('Checking file %s (%d/%d)\n', file.name, k, length(files));
-                [tokens,matches] = regexp(file.name,'Chiplet_(\d+).mat','tokens','match');
+                [tokens,matches] = regexp(file.name,'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
                 if ~isempty(tokens)
                     nValid = nValid + 1;
                     fprintf("Find widefield data file '%s'\n", file.name);
                     validFileNames{end+1} = file.name;
+                    if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
+                        [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_idx(\d+)', 'tokens', 'match');
+                        chipletCoordX = str2num(subTokens{1}{1});
+                        chipletCoordY = str2num(subTokens{1}{2});
+                        chipletID = str2num(subTokens{1}{3});
+                        load(fullfile(obj.srcDir, file.name), 'coordX', 'coordY');
+                        assert(chipletCoordX == coordX && chipletCoordY == coordY, 'Chiplet coordinate inside data does not match with the file name.');
+                    end
                 end
+
             end
             obj.chipletData = cell(1, nValid);
-            obj.idTable = zeros(obj.xmax-obj.xmin+1, obj.ymax-obj.ymin+1);
+            obj.idxTable = zeros(obj.xmax-obj.xmin+1, obj.ymax-obj.ymin+1);
             obj.allEmitters = [];
             obj.allChipletResults = struct;
             obj.allChipletResults.absPosXs = [];
             obj.allChipletResults.absPosYs = [];
             obj.allChipletResults.brightnesses = [];
-            obj.allChipletResults.fesonantFreqs_THz = [];
-            obj.allChipletResults.regionIdxs = [];
-            obj.allChipletResults.chipletID = [];
+            obj.allChipletResults.resonantFreqs_THz = [];
+            obj.allChipletResults.regionIdxes = [];
+            obj.allChipletResults.chipletIdxes = [];
+            obj.allChipletResults.chipletCoordsX = [];
+            obj.allChipletResults.chipletCoordsY = [];
+            obj.allChipletResults.chipletIDs = [];
             for k = 1:nValid
-                [tokens,matches] = regexp(validFileNames{k},'[cC]hiplet_?(\d+).mat','tokens','match');
-                id = str2num(tokens{1}{1});
-                fprintf("Loading file '%s' (%d/%d), id: %d.\n", validFileNames{k}, k, nValid, id);
-                tempData = load(fullfile(obj.workingDir, validFileNames{k}));
+                [tokens,matches] = regexp(validFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                idx = str2num(tokens{1}{1});
+                fprintf("Loading file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
+                tempData = load(fullfile(obj.srcDir, validFileNames{k}));
                 if isfield(tempData, 'data')
                     tempData = tempData.data;
                 end
+                if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
+                    [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_idx(\d+)', 'tokens', 'match');
+                    chipletCoordX = str2num(subTokens{1}{1});
+                    chipletCoordY = str2num(subTokens{1}{2});
+                    chipletID = str2num(subTokens{1}{3});
+                end
+                tempData.chipletID = chipletID;
+                tempData.chipletIdx = idx;
+                fprintf("Start processing data\n");
+                [emitters, sumResults]= obj.processChiplet(tempData, false);
                 nEmitters = sumResults.nEmitters;
-                [emitters, sumResults]= obj.processChiplet(tempData, id, true);
-                obj.allEmitters(end+1:end+nEmitters) = emitters;
+
+                if isempty(obj.allEmitters)
+                    obj.allEmitters = emitters;
+                else
+                    obj.allEmitters(end+1:end+nEmitters) = emitters;
+                end
                 obj.allChipletResults.absPosXs(end+1:end+nEmitters) = sumResults.absPosXs;
                 obj.allChipletResults.absPosYs(end+1:end+nEmitters) = sumResults.absPosYs;
                 obj.allChipletResults.brightnesses(end+1:end+nEmitters) = sumResults.brightnesses;
-                obj.allChipletResults.fesonantFreqs_THz(end+1:end+nEmitters) = sumResults.fesonantFreqs_THz;
-                obj.allChipletResults.regionIdxs(end+1:end+nEmitters) = sumResults.regionIdxs;
-                obj.allChipletResults.chipletID(end+1:end+nEmitters) = id;
+                obj.allChipletResults.resonantFreqs_THz(end+1:end+nEmitters) = sumResults.resonantFreqs_THz;
+                obj.allChipletResults.regionIdxes(end+1:end+nEmitters) = sumResults.regionIdxes;
+                obj.allChipletResults.chipletIdxes(end+1:end+nEmitters) = idx;
+                obj.allChipletResults.chipletCoordsX(end+1:end+nEmitters) = chipletCoordX;
+                obj.allChipletResults.chipletCoordsY(end+1:end+nEmitters) = chipletCoordX;
+                obj.allChipletResults.chipletIDs(end+1:end+nEmitters) = chipletID;
+                
+
 
                 
-                obj.chipletData{id} = struct('id', id, 'coordX', tempData.coordX, 'coordY', tempData.coordY, 'wl', tempData.wl, 'emitters', emitters);
+                obj.chipletData{idx} = struct('idx', idx, 'coordX', tempData.coordX, 'coordY', tempData.coordY, 'wl_img', tempData.wl_img, 'emitters', emitters);
                 if tempData.coordX >= obj.xmin && tempData.coordX <= obj.xmax && tempData.coordY >= obj.ymin && tempData.coordY <= obj.ymax
-                    obj.idTable(tempData.coordX-obj.xmin+1, tempData.coordY-obj.ymin+1) = id;
+                    obj.idxTable(tempData.coordX-obj.xmin+1, tempData.coordY-obj.ymin+1) = idx;
                 end
             end
             allChipletResults = obj.allChipletResults;
             allEmitters = obj.allEmitters;
-            save(fullfile(obj.workingDir, "processed_emitters_data.mat"), "allChipletResults", "allEmitters");
+            save(fullfile(obj.srcDir, "processed_emitters_data.mat"), "allChipletResults", "allEmitters");
         end
-        function id = getChipletID(obj, x, y)
-            id = obj.idTable(x-obj.xmin+1, y-obj.ymin+1);
+        function idx = getChipletIdx(obj, x, y)
+            idx = obj.idxTable(x-obj.xmin+1, y-obj.ymin+1);
         end
-
-        function [emitters, sumResults] = processChiplet(obj, chipletData, chipletID, drawFig)
+        function cleanData(obj, srcDir, srcIDs, targetDir, targetIDs, targetCoordsX, targetCoordsY, numbers)
+            files = dir(srcDir);
+            for k = 1:length(files)
+                file = files(k);
+                % fprintf('Checking file %s (%d/%d)\n', file.name, k, length(files));
+                [tokens,matches] = regexp(file.name,'[cC]hiplet_?(\d+).mat','tokens','match');
+                if isempty(tokens)
+                    continue;
+                end
+                id = str2num(tokens{1}{1});
+                if ~any(id == srcIDs)
+                    continue;
+                end
+                idx = find(id==srcIDs);
+                targetID = targetIDs(idx);
+                coordX = targetCoordsX(idx);
+                coordY = targetCoordsY(idx);
+                if exist('tempData', 'var')
+                    clear('tempData');
+                end
+                fprintf("Loading %s\n", file.name);
+                tempData = load(fullfile(srcDir, file.name));
+                stagePos = tempData.stagePos;
+                widefieldData = tempData.widefieldData;
+                wl_img = tempData.wl_img;
+                fprintf("Saving chiplet%d_x%d_y%d_idx%d.mat\n", targetID, coordX, coordY, numbers(idx));
+                save(fullfile(targetDir, sprintf("chiplet%d_x%d_y%d_idx%d.mat", targetID, coordX, coordY, numbers(idx))), 'coordX', 'coordY', 'stagePos', 'widefieldData', 'wl_img');
+            end
+        end
+        function [emitters, sumResults] = processChiplet(obj, chipletData, drawFig)
             % Output data structure: cell array, each cell contain fields:
             %       absPosX, absPosY (absolute in the image), relPosX, relPosY (relative to the center of the chiplet), region ('center', 'frame', 'tip', 'bulk');
             %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
@@ -167,7 +232,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults.absPosYs = NaN(1, nEmitters);
             sumResults.brightnesses = NaN(1, nEmitters);
             sumResults.resonantFreqs_THz = NaN(1, nEmitters);
-            sumResults.regionIdxs = NaN(1, nEmitters);
+            sumResults.regionIdxes = NaN(1, nEmitters);
             sumResults.nEmitters = nEmitters;
             for l = 1:nEmitters
                 tempIdx = find(emitterIdx==l);
@@ -183,11 +248,15 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 emitters(l).brightness = double(brightness);
                 emitters(l).region = obj.getRegion(emitters(l).absPosX, emitters(l).absPosY, chipletData.widefieldData{1}.segment);
                 emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
-                emitters(l).chipletID = chipletID;
+                emitters(l).chipletIdx = chipletData.chipletIdx;
+                emitters(l).chipletCoordX = chipletData.coordX;
+                emitters(l).chipletCoordY = chipletData.coordY;
+                emitters(l).chipletID = chipletData.chipletID;
+
                 sumResults.absPosXs(l) = tempXs(maxIdx);
                 sumResults.absPosYs(l) = tempYs(maxIdx);
                 sumResults.brightnesses(l) = double(brightness);
-                sumResults.regionIdxs(l) = find(strcmp(emitters(l).region, obj.regionMap));
+                sumResults.regionIdxes(l) = find(strcmp(emitters(l).region, obj.regionMap));
                 sumResults.resonantFreqs_THz(l) = tempFreqs(maxIdx);
                 sumResults.wl_img = chipletData.wl_img;
                 % Get spectrum
@@ -224,7 +293,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 emitters(l).spectrums = spectrums;
             end
 
-
+            save(fullfile(obj.dstDir, sprintf("chiplet%d_processed_data.mat", chipletData.chipletIdx)), "emitters", "sumResults");
 
             % Plot figure
             if drawFig
@@ -276,7 +345,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             cmapName = 'lines';
             cmap = lines(4);
             % if strcmp(obj.colorMode, 'region')
-            scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, sumResults.regionIdxs);
+            scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, sumResults.regionIdxes);
             colormap(emitterAxH, cmapName);
             % elseif strcmp(obj.colorMode, 'frequency')
             %     scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, [1:sumResults.nEmitters]);
@@ -294,7 +363,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             emitterAxH.FontSize = 16;
             linkaxes([wlAxH,emitterAxH]);
             freqAxH = axes(sumFigH);
-            scatter(freqAxH, sumResults.resonantFreqs_THz, sumResults.brightnesses/65536, 10, sumResults.regionIdxs, 'filled');
+            scatter(freqAxH, sumResults.resonantFreqs_THz, sumResults.brightnesses/65536, 10, sumResults.regionIdxes, 'filled');
             colormap(freqAxH, cmapName);
             freqAxH.Position = [0.55, 0.55, 0.35, 0.35];
             freqAxH.FontSize = 16;
@@ -310,7 +379,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             brHistoY = cell(1, 4);
             brHistoX = cell(1, 4);
             for k = 1:4
-                brHistHs{k} = histogram(brHistAxH, normBr(sumResults.regionIdxs == k));
+                brHistHs{k} = histogram(brHistAxH, normBr(sumResults.regionIdxes == k));
                 brHistHs{k}.Normalization = 'probability';
                 brHistHs{k}.BinWidth = 0.05;
                 brHistHs{k}.DisplayStyle = 'stairs';
@@ -327,7 +396,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             brCurveAxH.FontSize = 16;
             legends = cell(1, 4);
             for k = 1:4
-                legends{k} = sprintf('%s\t\tN=%d', obj.regionMap{k}, sum(sumResults.regionIdxs == k));
+                legends{k} = sprintf('%s\t\tN=%d', obj.regionMap{k}, sum(sumResults.regionIdxes == k));
             end
             legend(brCurveAxH, legends);
 
@@ -341,7 +410,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             freqHistoX = cell(1, 4);
             freqHistoY = cell(1, 4);
             for k = 1:4
-                freqHistHs{k} = histogram(freqHistAxH, sumResults.resonantFreqs_THz(sumResults.regionIdxs == k));
+                freqHistHs{k} = histogram(freqHistAxH, sumResults.resonantFreqs_THz(sumResults.regionIdxes == k));
                 freqHistHs{k}.Normalization = 'probability';
                 freqHistHs{k}.BinWidth = 0.0015;
                 freqHistHs{k}.DisplayStyle = 'stairs';
@@ -383,14 +452,14 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 region = 'bulk';
             end
         end
-        function updateData(obj, append, workingDir)
+        function updateData(obj, append, srcDir)
             if ~exist('append', 'var')
                 append = obj.append;
             end
-            if ~exist('workingDir', 'var')
-                workingDir = obj.workingDir;
+            if ~exist('srcDir', 'var')
+                srcDir = obj.srcDir;
             end
-            files = dir(workingDir);
+            files = dir(srcDir);
             if ~append
                 obj.data = cell(obj.xmax-obj.xmin+1, obj.ymax-obj.ymin+1);
                 obj.coords = zeros(0, 2);
@@ -400,7 +469,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 fprintf('Checking file %s (%d/%d)\n', file.name, k, length(files));
                 if endsWith(file.name, '.mat')
                     fprintf('Loading Matlab data\n');
-                    newData = load(fullfile(workingDir, file.name));
+                    newData = load(fullfile(srcDir, file.name));
                     newX = newData.data.coordX;
                     newY = newData.data.coordY;
                     if append && isfield(obj.data{newX-obj.xmin+1, newY-obj.ymin+1}, 'widefieldData')
@@ -836,12 +905,12 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
 
             % Draw gds file figure
-            files = dir(obj.workingDir);
+            files = dir(obj.srcDir);
             obj.gdsData = [];
             for k = 1:length(files)
                 file = files(k);
                 if endsWith(file.name, '.png') && contains(lower(file.name), 'gds')
-                    obj.gdsData = imread(fullfile(obj.workingDir, file.name));
+                    obj.gdsData = imread(fullfile(obj.srcDir, file.name));
                     break
                 end
             end
@@ -1038,7 +1107,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             % scatter()
         end
 
-            
+
     end
 end
 
