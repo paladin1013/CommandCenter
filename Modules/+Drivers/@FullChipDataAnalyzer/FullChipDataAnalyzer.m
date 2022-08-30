@@ -56,6 +56,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
         allEmitters;
         allChipletResults;
+        allExperimentResults;
     end
     methods(Static)
         obj = instance()
@@ -118,6 +119,43 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 [emitters, sumResults]= obj.processChiplet(tempData, false);
             end
             obj.summarizeData;
+        end
+        function summarizeAllExperiments(obj, sumDir)
+            files = dir(sumDir);
+
+            obj.allExperimentResults = struct;
+            obj.allExperimentResults.absPosXs = [];
+            obj.allExperimentResults.absPosYs = [];
+            obj.allExperimentResults.brightnesses = [];
+            obj.allExperimentResults.resonantFreqs_THz = [];
+            obj.allExperimentResults.regionIdxes = [];
+            obj.allExperimentResults.chipletIdxes = [];
+            obj.allExperimentResults.chipletCoordsX = [];
+            obj.allExperimentResults.chipletCoordsY = [];
+            obj.allExperimentResults.chipletIDs = [];
+            obj.allExperimentResults.experimentName = [];
+            for k = 1:length(files)
+                file = files(k);
+                [tokens, matches] = regexp(file.name, 'Widefield(.+).mat', 'tokens', 'match');
+                if isempty(tokens)
+                    continue;
+                end
+                experimentName = sprintf("%s", tokens{1}{1});
+                load(fullfile(sumDir, file.name), 'allChipletResults');
+                nEmitters = length(allChipletResults.absPosXs);
+                obj.allExperimentResults.absPosXs(end+1:end+nEmitters) = allChipletResults.absPosXs;
+                obj.allExperimentResults.absPosYs(end+1:end+nEmitters) = allChipletResults.absPosYs;
+                obj.allExperimentResults.brightnesses(end+1:end+nEmitters) = allChipletResults.brightnesses;
+                obj.allExperimentResults.resonantFreqs_THz(end+1:end+nEmitters) = allChipletResults.resonantFreqs_THz;
+                obj.allExperimentResults.regionIdxes(end+1:end+nEmitters) = allChipletResults.regionIdxes;
+                obj.allExperimentResults.chipletIdxes(end+1:end+nEmitters) = allChipletResults.chipletIdxes;
+                obj.allExperimentResults.chipletCoordsX(end+1:end+nEmitters) = allChipletResults.chipletCoordsX;
+                obj.allExperimentResults.chipletCoordsY(end+1:end+nEmitters) = allChipletResults.chipletCoordsY;
+                obj.allExperimentResults.chipletIDs(end+1:end+nEmitters) = allChipletResults.chipletIDs;
+                obj.allExperimentResults.experimentName(end+1:end+nEmitters) = experimentName;
+            end
+            allExperimentResults = obj.allExperimentResults;
+            save(fullfile(sumDir, "all_experiments_data.mat"), "allExperimentResults");
         end
         function summarizeData(obj)
             obj.allEmitters = [];
@@ -459,7 +497,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             freqCurveAxH = subplot(1, 2, 2);
             obj.plotHistCurve(sumResults, brCurveAxH, freqCurveAxH);
         end
-        
+
         function region = getRegion(obj, absPosX, absPosY, segment)
             cornerAbsPos_yx = segment.cornerPos+[segment.ymin, segment.xmin];
             line1 = cornerAbsPos_yx(1:2, :);
