@@ -17,10 +17,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
         draw = Prefs.Button('set', 'set_draw', 'help', 'Update figure of the current coordinate.');
         colorMode = Prefs.MultipleChoice('frequency', 'choices', {'frequency', 'region'}, 'help', 'The way to assign emitter color when drawing widefield results.');
         frameWidth = Prefs.Double(10, 'unit', 'pixel', 'help', 'If the distance between an emitter and the chiplet frame is lower than this value, the emitter will be regarded on the frame.');
+        cmapName = Prefs.String('lines', 'help', 'Name of the colormap');
     end
 
     properties
-        prefs = {'srcDir', 'dstDir', 'append', 'loadData', 'xmin', 'xmax', 'ymin', 'ymax', 'x', 'y', 'mincount', 'draw'};
+        prefs = {'srcDir', 'dstDir', 'append', 'loadData', 'xmin', 'xmax', 'ymin', 'ymax', 'x', 'y', 'mincount', 'draw', 'cmapName'};
         data;
         chipletData;
         idxTable;
@@ -87,10 +88,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     fprintf("Find widefield data file '%s'\n", file.name);
                     validFileNames{end+1} = file.name;
                     if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
-                        [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_idx(\d+)', 'tokens', 'match');
+                        [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
                         chipletCoordX = str2num(subTokens{1}{1});
                         chipletCoordY = str2num(subTokens{1}{2});
-                        chipletID = str2num(subTokens{1}{3});
                         load(fullfile(obj.srcDir, file.name), 'coordX', 'coordY');
                         assert(chipletCoordX == coordX && chipletCoordY == coordY, 'Chiplet coordinate inside data does not match with the file name.');
                     end
@@ -99,6 +99,27 @@ classdef FullChipDataAnalyzer < Modules.Driver
             end
             obj.chipletData = cell(1, nValid);
             obj.idxTable = zeros(obj.xmax-obj.xmin+1, obj.ymax-obj.ymin+1);
+
+            for k = 1:nValid
+                [tokens,matches] = regexp(validFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                idx = str2num(tokens{1}{1});
+                fprintf("Loading file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
+                tempData = load(fullfile(obj.srcDir, validFileNames{k}));
+                if isfield(tempData, 'data')
+                    tempData = tempData.data;
+                end
+                if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
+                    [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
+                    chipletID = str2num(subTokens{1}{3});   
+                end
+                tempData.chipletID = chipletID;
+                tempData.chipletIdx = idx;
+                fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
+                [emitters, sumResults]= obj.processChiplet(tempData, false);
+            end
+            obj.summarizeData;
+        end
+        function summarizeData(obj)
             obj.allEmitters = [];
             obj.allChipletResults = struct;
             obj.allChipletResults.absPosXs = [];
@@ -110,26 +131,16 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.allChipletResults.chipletCoordsX = [];
             obj.allChipletResults.chipletCoordsY = [];
             obj.allChipletResults.chipletIDs = [];
-            for k = 1:nValid
-                [tokens,matches] = regexp(validFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
-                idx = str2num(tokens{1}{1});
-                fprintf("Loading file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
-                tempData = load(fullfile(obj.srcDir, validFileNames{k}));
-                if isfield(tempData, 'data')
-                    tempData = tempData.data;
+            nChiplets = (obj.xmax-obj.xmin+1)*(obj.ymax-obj.ymin+1);
+            
+            for idx = 1:nChiplets
+                fileName = sprintf("chiplet%d_processed_data.mat", idx);
+                if ~isfile(fullfile(obj.dstDir, fileName))
+                    fprintf("File %s does not exist. Please call obj.processData first.\n", fileName);
+                    continue
                 end
-                if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
-                    [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_idx(\d+)', 'tokens', 'match');
-                    chipletCoordX = str2num(subTokens{1}{1});
-                    chipletCoordY = str2num(subTokens{1}{2});
-                    chipletID = str2num(subTokens{1}{3});
-                end
-                tempData.chipletID = chipletID;
-                tempData.chipletIdx = idx;
-                fprintf("Start processing data\n");
-                [emitters, sumResults]= obj.processChiplet(tempData, false);
-                nEmitters = sumResults.nEmitters;
-
+                load(fullfile(obj.dstDir, fileName), 'emitters', 'sumResults');
+                nEmitters = length(emitters);
                 if isempty(obj.allEmitters)
                     obj.allEmitters = emitters;
                 else
@@ -140,22 +151,19 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 obj.allChipletResults.brightnesses(end+1:end+nEmitters) = sumResults.brightnesses;
                 obj.allChipletResults.resonantFreqs_THz(end+1:end+nEmitters) = sumResults.resonantFreqs_THz;
                 obj.allChipletResults.regionIdxes(end+1:end+nEmitters) = sumResults.regionIdxes;
-                obj.allChipletResults.chipletIdxes(end+1:end+nEmitters) = idx;
-                obj.allChipletResults.chipletCoordsX(end+1:end+nEmitters) = chipletCoordX;
-                obj.allChipletResults.chipletCoordsY(end+1:end+nEmitters) = chipletCoordX;
-                obj.allChipletResults.chipletIDs(end+1:end+nEmitters) = chipletID;
+                obj.allChipletResults.chipletIdxes(end+1:end+nEmitters) = sumResults.chipletIdx;
+                obj.allChipletResults.chipletCoordsX(end+1:end+nEmitters) = sumResults.chipletCoordX;
+                obj.allChipletResults.chipletCoordsY(end+1:end+nEmitters) = sumResults.chipletCoordY;
+                obj.allChipletResults.chipletIDs(end+1:end+nEmitters) = sumResults.chipletID;
                 
-
-
-                
-                obj.chipletData{idx} = struct('idx', idx, 'coordX', tempData.coordX, 'coordY', tempData.coordY, 'wl_img', tempData.wl_img, 'emitters', emitters);
-                if tempData.coordX >= obj.xmin && tempData.coordX <= obj.xmax && tempData.coordY >= obj.ymin && tempData.coordY <= obj.ymax
-                    obj.idxTable(tempData.coordX-obj.xmin+1, tempData.coordY-obj.ymin+1) = idx;
+                obj.chipletData{idx} = struct('idx', idx, 'chipletCoordX', sumResults.chipletCoordX, 'chipletCoordY', sumResults.chipletCoordY, 'wl_img', sumResults.wl_img, 'emitters', emitters);
+                if sumResults.chipletCoordX >= obj.xmin && sumResults.chipletCoordX <= obj.xmax && sumResults.chipletCoordY >= obj.ymin && sumResults.chipletCoordY <= obj.ymax
+                    obj.idxTable(sumResults.chipletCoordX-obj.xmin+1, sumResults.chipletCoordY-obj.ymin+1) = idx;
                 end
             end
             allChipletResults = obj.allChipletResults;
             allEmitters = obj.allEmitters;
-            save(fullfile(obj.srcDir, "processed_emitters_data.mat"), "allChipletResults", "allEmitters");
+            save(fullfile(obj.dstDir, "processed_emitters_data.mat"), "allChipletResults", "allEmitters");
         end
         function idx = getChipletIdx(obj, x, y)
             idx = obj.idxTable(x-obj.xmin+1, y-obj.ymin+1);
@@ -185,8 +193,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 stagePos = tempData.stagePos;
                 widefieldData = tempData.widefieldData;
                 wl_img = tempData.wl_img;
-                fprintf("Saving chiplet%d_x%d_y%d_idx%d.mat\n", targetID, coordX, coordY, numbers(idx));
-                save(fullfile(targetDir, sprintf("chiplet%d_x%d_y%d_idx%d.mat", targetID, coordX, coordY, numbers(idx))), 'coordX', 'coordY', 'stagePos', 'widefieldData', 'wl_img');
+                fprintf("Saving chiplet%d_x%d_y%d_ID%d.mat\n", targetID, coordX, coordY, numbers(idx));
+                save(fullfile(targetDir, sprintf("chiplet%d_x%d_y%d_ID%d.mat", targetID, coordX, coordY, numbers(idx))), 'coordX', 'coordY', 'stagePos', 'widefieldData', 'wl_img');
             end
         end
         function [emitters, sumResults] = processChiplet(obj, chipletData, drawFig)
@@ -195,8 +203,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
             %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
             %       spectrums (struct array, contains `nSpectrums` spectrums)
             %           hasPeak (boolean), intensity (N*1 array), freqs_THz (N*1 array), fitStartIdx, fitEndIdx, fittedIntensity ((fitEndIdx-fitStartIdx+1)*1 array), peakFreq_THz (double), linewidth (double)
-            nSpectrums = length(chipletData);
-            
+            nSpectrums = length(chipletData.widefieldData);
+            assert(isfield(chipletData, 'chipletIdx'), "Please manually assign chipletData.chipletIdx (the n-th scanned chiplet).");
+            assert(isfield(chipletData, 'chipletID'), "Please manually assign chipletData.chipletID (the ID number on the sample that represents this chiplet, can be seen on whitelight image).");
 
             allFilteredImgs = [];
             allFreqs = [];
@@ -234,6 +243,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults.resonantFreqs_THz = NaN(1, nEmitters);
             sumResults.regionIdxes = NaN(1, nEmitters);
             sumResults.nEmitters = nEmitters;
+            sumResults.wl_img = chipletData.wl_img;
+            sumResults.chipletIdx = chipletData.chipletIdx;
+            sumResults.chipletCoordX = chipletData.coordX;
+            sumResults.chipletCoordY = chipletData.coordY;
+            sumResults.chipletID = chipletData.chipletID;
             for l = 1:nEmitters
                 tempIdx = find(emitterIdx==l);
                 tempXs = validXs(tempIdx);
@@ -258,7 +272,6 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 sumResults.brightnesses(l) = double(brightness);
                 sumResults.regionIdxes(l) = find(strcmp(emitters(l).region, obj.regionMap));
                 sumResults.resonantFreqs_THz(l) = tempFreqs(maxIdx);
-                sumResults.wl_img = chipletData.wl_img;
                 % Get spectrum
                 for k = 1:nSpectrums
                     nPoints = length(chipletData.widefieldData{k}.freqs);
@@ -297,7 +310,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
             % Plot figure
             if drawFig
-                obj.plotChiplet(chipletData.wl_img, sumResults);
+                obj.plotChiplet(sumResults);
             end
 
         end
@@ -334,46 +347,15 @@ classdef FullChipDataAnalyzer < Modules.Driver
             
             toc(t);
         end
-        function plotChiplet(obj, wl, sumResults)
-            sumFigH = figure;
-            sumFigH.Position = [100, 100, 1200, 1200];
-            wlAxH = axes(sumFigH);
-            wlImH = imagesc(wlAxH, wl);
-            colormap(wlAxH, 'bone');
-            emitterAxH = axes(sumFigH);
+        function plotHistCurve(obj, sumResults, brCurveAxH, freqCurveAxH)
+            % Plot histogram and convert into curve on brightness and frequency.
 
-            cmapName = 'lines';
-            cmap = lines(4);
-            % if strcmp(obj.colorMode, 'region')
-            scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, sumResults.regionIdxes);
-            colormap(emitterAxH, cmapName);
-            % elseif strcmp(obj.colorMode, 'frequency')
-            %     scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, [1:sumResults.nEmitters]);
-            %     colormap(emitterAxH, cmapName);
-            % end
-            wlAxH.YDir = 'normal';
-            wlAxH.YLim = [0.5, 512.5];
-            wlAxH.XLim = [0.5, 512.5];
-            emitterAxH.YLim = [0.5, 512.5];
-            emitterAxH.XLim = [0.5, 512.5];
-            emitterAxH.Visible = false;
-            wlAxH.Position = [0.1, 0.55, 0.35, 0.35];
-            wlAxH.FontSize = 16;
-            emitterAxH.Position = [0.1, 0.55, 0.35, 0.35];
-            emitterAxH.FontSize = 16;
-            linkaxes([wlAxH,emitterAxH]);
-            freqAxH = axes(sumFigH);
-            scatter(freqAxH, sumResults.resonantFreqs_THz, sumResults.brightnesses/65536, 10, sumResults.regionIdxes, 'filled');
-            colormap(freqAxH, cmapName);
-            freqAxH.Position = [0.55, 0.55, 0.35, 0.35];
-            freqAxH.FontSize = 16;
-            freqAxH.XLabel.String = "Frequency (THz)";
-            freqAxH.YLabel.String = "Intensity";
 
+            cmap = eval(sprintf("%s(4)", obj.cmapName));
             % plot brightness histogram
             normBr = sumResults.brightnesses/65536;
-            brHistAxH = axes(sumFigH);
-            brCurveAxH = axes(sumFigH);
+            histFigH = figure;
+            brHistAxH = axes(histFigH);
             brHistHs = cell(1, 4);
             brCurveHs = cell(1, 4);
             brHistoY = cell(1, 4);
@@ -392,7 +374,6 @@ classdef FullChipDataAnalyzer < Modules.Driver
             delete(brHistAxH);
             brCurveAxH.XLabel.String = "Normalized brightness";
             brCurveAxH.YLabel.String = "Probability";
-            brCurveAxH.Position = [0.1, 0.1, 0.35, 0.35];
             brCurveAxH.FontSize = 16;
             legends = cell(1, 4);
             for k = 1:4
@@ -402,9 +383,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
 
             % plot brightness histogram
-            
-            freqHistAxH = axes(sumFigH);
-            freqCurveAxH = axes(sumFigH);
+
+            freqHistAxH = axes(histFigH);
             freqHistHs = cell(1, 4);
             freqCurveHs = cell(1, 4);
             freqHistoX = cell(1, 4);
@@ -423,9 +403,63 @@ classdef FullChipDataAnalyzer < Modules.Driver
             delete(freqHistAxH);
             freqCurveAxH.XLabel.String = "Frequency (THz)";
             freqCurveAxH.YLabel.String = "Probability";
-            freqCurveAxH.Position = [0.55, 0.1, 0.35, 0.35];
             freqCurveAxH.FontSize = 16;
+            delete(histFigH);
         end
+
+        function plotChiplet(obj, sumResults)
+            sumFigH = figure;
+            sumFigH.Position = [100, 100, 1200, 1200];
+            wlAxH = axes(sumFigH);
+            wlImH = imagesc(wlAxH, sumResults.wl_img);
+            colormap(wlAxH, 'bone');
+            emitterAxH = axes(sumFigH);
+            cmap = eval(sprintf("%s(4)", obj.cmapName));
+            % if strcmp(obj.colorMode, 'region')
+            scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, sumResults.regionIdxes);
+            colormap(emitterAxH, obj.cmapName);
+
+            % elseif strcmp(obj.colorMode, 'frequency')
+            %     scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, [1:sumResults.nEmitters]);
+            %     colormap(emitterAxH, obj.cmapName);
+            % end
+
+            wlAxH.YDir = 'normal';
+            wlAxH.YLim = [0.5, 512.5];
+            wlAxH.XLim = [0.5, 512.5];
+            emitterAxH.YLim = [0.5, 512.5];
+            emitterAxH.XLim = [0.5, 512.5];
+            emitterAxH.Visible = false;
+            wlAxH.Position = [0.1, 0.55, 0.35, 0.35];
+            wlAxH.FontSize = 16;
+            emitterAxH.Position = [0.1, 0.55, 0.35, 0.35];
+            emitterAxH.FontSize = 16;
+            linkaxes([wlAxH,emitterAxH]);
+            freqAxH = axes(sumFigH);
+            scatter(freqAxH, sumResults.resonantFreqs_THz, sumResults.brightnesses/65536, 10, sumResults.regionIdxes, 'filled');
+            colormap(freqAxH, obj.cmapName);
+            freqAxH.Position = [0.55, 0.55, 0.35, 0.35];
+            freqAxH.FontSize = 16;
+            freqAxH.XLabel.String = "Frequency (THz)";
+            freqAxH.YLabel.String = "Intensity";
+
+            brCurveAxH = axes(sumFigH);
+            freqCurveAxH = axes(sumFigH);
+            obj.plotHistCurve(sumResults, brCurveAxH, freqCurveAxH);
+            brCurveAxH.Position = [0.1, 0.1, 0.35, 0.35];
+            freqCurveAxH.Position = [0.55, 0.1, 0.35, 0.35];
+        end
+
+        function plotAllStatistic(obj, sumResults)
+            if ~exist('sumResults', 'var')
+                sumResults = obj.allChipletResults;
+            end
+            allFigH = figure;
+            brCurveAxH = subplot(1, 2, 1);
+            freqCurveAxH = subplot(1, 2, 2);
+            obj.plotHistCurve(sumResults, brCurveAxH, freqCurveAxH);
+        end
+        
         function region = getRegion(obj, absPosX, absPosY, segment)
             cornerAbsPos_yx = segment.cornerPos+[segment.ymin, segment.xmin];
             line1 = cornerAbsPos_yx(1:2, :);
