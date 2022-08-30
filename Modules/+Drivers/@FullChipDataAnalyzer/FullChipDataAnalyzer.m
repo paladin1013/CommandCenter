@@ -2,6 +2,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
     properties(SetObservable, GetObservable)
         srcDir = Prefs.String("", 'help', 'Source directory.');
         dstDir = Prefs.String("", 'help', 'Destination directory. Will save processed data under this directory');
+        dataRootDir = Prefs.String("", 'help', 'Root directory of all experiment data. Will be used in `processAllExperiments');
         append = Prefs.Boolean(false, 'help', 'Append to the current data when loading new data.');
         loadData = Prefs.Button('set', 'set_loadData', 'help', 'Load data from workind directory to Matlab.');
         xmin = Prefs.Integer(0, 'help', 'The minimum x chiplet coordinate');
@@ -70,6 +71,35 @@ classdef FullChipDataAnalyzer < Modules.Driver
     end
 
     methods
+        function processAllExperiments(obj, dataRootDir)
+            if ~exist('dataRootDir', 'var')
+                dataRootDir = obj.dataRootDir;
+            end
+            assert(isfolder(fullfile(dataRootDir, 'CleanedData')), '`dataRootDir` should contain folder `CleanedData`');
+            if ~isfolder(fullfile(dataRootDir, 'ProcessedData'))
+                mkdir(fullfile(dataRootDir, 'ProcessedData'));
+            end
+            sumDir = fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData');
+            if ~isfolder(sumDir)
+                mkdir(sumDir);
+            end
+            files = dir(fullfile(dataRootDir, 'CleanedData'));
+            for k = 1:length(files)
+                file = files(k);
+                obj.srcDir = fullfile(dataRootDir, 'CleanedData', file.name);
+                obj.dstDir = fullfile(dataRootDir, 'ProcessedData', file.name);
+                if isfolder(obj.srcDir) && ~contains(file.name, '.')
+                    if ~isfolder(obj.dstDir)
+                        mkdir(obj.dstDir);
+                    end
+                    obj.processData;
+                    copyfile(fullfile(obj.dstDir, "processed_emitters_data.mat"), fullfile(sumDir, sprintf("%s.mat", file.name)));
+                end
+            end
+
+            obj.summarizeAllExperiments(sumDir);
+            obj.plotAllStatistic(obj.allExperimentResults);
+        end
         function processData(obj)
             assert(~isempty(obj.srcDir), "Source directory is empty. Please assign obj.srcDir before processing data.");
             assert(~isempty(obj.dstDir), "Destination directory is empty. Please assign obj.dstDir before processing data.");
