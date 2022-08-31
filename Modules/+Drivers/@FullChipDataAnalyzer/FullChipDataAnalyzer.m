@@ -424,10 +424,10 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 tempIntensities = peakIntensities(tempIdx);
                 tempFreqs = peakFreqs(tempIdx);
                 [brightness, maxIdx] = max(tempIntensities);
-                emitters(l).absPosX = tempXs(maxIdx);
-                emitters(l).absPosY = tempYs(maxIdx);
                 emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
                 emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
+                emitters(l).absPosX = tempXs(maxIdx);
+                emitters(l).absPosY = tempYs(maxIdx);
                 emitters(l).brightness = double(brightness);
                 emitters(l).region = obj.getRegion(emitters(l).absPosX, emitters(l).absPosY, chipletData.widefieldData{1}.segment);
                 emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
@@ -542,6 +542,15 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     sumResults = allSumResults{k};
                     save(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, sprintf("fitted_%s", validFiles{k, 2})), 'emitters', 'sumResults');
                 end
+
+                emitters = cell2mat(vertcat(allEmitters{:}));
+                linewidths = vertcat(allLinewidths{:});
+                if ~isfolder(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData'))
+                    mkdir(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData'));
+                end
+                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_emitters.mat'), "emitters");
+                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_linewidths.mat'), "linewidths");
+
             else
                 
                 if ~exist('batchSize', 'var')
@@ -561,13 +570,35 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     allEmitters{k} = batchEmitters;
                     allLinewidths{k} = batchLinewidths;
                 end
+
+                emitters = cell2mat(vertcat(allEmitters{:}));
+                linewidths = vertcat(allLinewidths{:});
             end
-            emitters = cell2mat(vertcat(allEmitters{:}));
-            linewidths = vertcat(allLinewidths{:});
 
         end
+        function sumResults = extractSumResults(obj, emitters)
+            sumResults = struct;            
+            sumResults.absPosXs = extractfield(emitters, "absPosX");
+            sumResults.absPosYs = extractfield(emitters, "absPosY");
+            sumResults.brightnesses = extractfield(emitters, "brightness");
+            sumResults.regions = extractfield(emitters, "region");
+            sumResults.regionIdxes = NaN(1, length(sumResults.regions));
+            for k = 1:4
+                sumResults.regionIdxes(strcmp(sumResults.regions, obj.regionMap{k})) = k;
+            end
+            sumResults.resonantFreqs_THz = extractfield(emitters, "resonantFreq_THz");
+            sumResults.chipletIdxes = extractfield(emitters, "chipletIdx");
+            sumResults.chipletCoordsX = extractfield(emitters, "chipletCoordX");
+            sumResults.chipletCoordsY = extractfield(emitters, "chipletCoordY");
+            sumResults.chipletIDs = extractfield(emitters, "chipletID");
+%             sumResults.sizes_pixel = extractfield(emitters, "size_pixel");
+            sumResults.fittedLinewidth_THz = extractfield(emitters, "fittedLinewidth_THz");
+            if ~isempty(obj.dataRootDir)
+                save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'fittedSumResults.mat'), "sumResults");
+            end
+        end
         
-        function plotHistCurve(obj, sumResults, brCurveAxH, freqCurveAxH)
+        function plotHistCurve(obj, sumResults, brCurveAxH, freqCurveAxH, linewidthCurveAxH)
             % Plot histogram and convert into curve on brightness and frequency.
 
 
@@ -578,17 +609,17 @@ classdef FullChipDataAnalyzer < Modules.Driver
             brHistAxH = axes(histFigH);
             brHistHs = cell(1, 4);
             brCurveHs = cell(1, 4);
-            brHistoY = cell(1, 4);
-            brHistoX = cell(1, 4);
+            brHistY = cell(1, 4);
+            brHistX = cell(1, 4);
             for k = 1:4
                 brHistHs{k} = histogram(brHistAxH, normBr(sumResults.regionIdxes == k));
                 brHistHs{k}.Normalization = 'probability';
-                brHistHs{k}.BinWidth = 0.05;
+                brHistHs{k}.BinWidth = 0.01;
                 brHistHs{k}.DisplayStyle = 'stairs';
                 hold(brHistAxH, 'on');
-                brHistoY{k} = brHistHs{k}.Values;
-                brHistoX{k} = (brHistHs{k}.BinEdges(2:end)+brHistHs{k}.BinEdges(1:end-1))/2;
-                brCurveHs{k} = plot(brCurveAxH, brHistoX{k}, brHistoY{k}, 'Color', cmap(k, :));
+                brHistY{k} = brHistHs{k}.Values;
+                brHistX{k} = (brHistHs{k}.BinEdges(2:end)+brHistHs{k}.BinEdges(1:end-1))/2;
+                brCurveHs{k} = plot(brCurveAxH, brHistX{k}, brHistY{k}, 'Color', cmap(k, :));
                 hold(brCurveAxH, 'on');
             end
             delete(brHistAxH);
@@ -607,23 +638,48 @@ classdef FullChipDataAnalyzer < Modules.Driver
             freqHistAxH = axes(histFigH);
             freqHistHs = cell(1, 4);
             freqCurveHs = cell(1, 4);
-            freqHistoX = cell(1, 4);
-            freqHistoY = cell(1, 4);
+            freqHistX = cell(1, 4);
+            freqHistY = cell(1, 4);
             for k = 1:4
                 freqHistHs{k} = histogram(freqHistAxH, sumResults.resonantFreqs_THz(sumResults.regionIdxes == k));
                 freqHistHs{k}.Normalization = 'probability';
-                freqHistHs{k}.BinWidth = 0.0015;
+                freqHistHs{k}.BinWidth = 0.001;
                 freqHistHs{k}.DisplayStyle = 'stairs';
                 hold(freqHistAxH, 'on');
-                freqHistoX{k} = (freqHistHs{k}.BinEdges(2:end)+freqHistHs{k}.BinEdges(1:end-1))/2;
-                freqHistoY{k} = freqHistHs{k}.Values;
-                freqCurveHs{k} = plot(freqCurveAxH, freqHistoX{k}, freqHistoY{k}, 'Color', cmap(k, :));
+                freqHistX{k} = (freqHistHs{k}.BinEdges(2:end)+freqHistHs{k}.BinEdges(1:end-1))/2;
+                freqHistY{k} = freqHistHs{k}.Values;
+                freqCurveHs{k} = plot(freqCurveAxH, freqHistX{k}, freqHistY{k}, 'Color', cmap(k, :));
                 hold(freqCurveAxH, 'on');
             end
             delete(freqHistAxH);
             freqCurveAxH.XLabel.String = "Frequency (THz)";
             freqCurveAxH.YLabel.String = "Probability";
             freqCurveAxH.FontSize = 16;
+
+
+            % plot linewidth histogram
+
+            linewidthHistAxH = axes(histFigH);
+            linewidthHistHs = cell(1, 4);
+            linewidthCurveHs = cell(1, 4);
+            linewidthHistX = cell(1, 4);
+            linewidthHistY = cell(1, 4);
+            for k = 1:4
+                linewidthHistHs{k} = histogram(linewidthHistAxH, sumResults.fittedLinewidth_THz(sumResults.regionIdxes == k));
+                linewidthHistHs{k}.Normalization = 'probability';
+                linewidthHistHs{k}.BinWidth = 0.00001;
+                linewidthHistHs{k}.DisplayStyle = 'stairs';
+                hold(linewidthHistAxH, 'on');
+                linewidthHistX{k} = (linewidthHistHs{k}.BinEdges(2:end)+linewidthHistHs{k}.BinEdges(1:end-1))/2;
+                linewidthHistY{k} = linewidthHistHs{k}.Values;
+                linewidthCurveHs{k} = plot(linewidthCurveAxH, linewidthHistX{k}, linewidthHistY{k}, 'Color', cmap(k, :));
+                hold(linewidthCurveAxH, 'on');
+            end
+            delete(linewidthHistAxH);
+            linewidthCurveAxH.XLabel.String = "linewidth (THz)";
+            linewidthCurveAxH.YLabel.String = "Probability";
+            linewidthCurveAxH.FontSize = 16;
+            linewidthCurveAxH.XLim = [0, 0.001];
             delete(histFigH);
         end
 
@@ -675,9 +731,10 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 sumResults = obj.allChipletStatistics;
             end
             allFigH = figure;
-            brCurveAxH = subplot(1, 2, 1);
-            freqCurveAxH = subplot(1, 2, 2);
-            obj.plotHistCurve(sumResults, brCurveAxH, freqCurveAxH);
+            brCurveAxH = subplot(1, 3, 1);
+            freqCurveAxH = subplot(1, 3, 2);
+            linewidthCurveAxH = subplot(1, 3, 3);
+            obj.plotHistCurve(sumResults, brCurveAxH, freqCurveAxH, linewidthCurveAxH);
         end
 
         function region = getRegion(obj, absPosX, absPosY, segment)
