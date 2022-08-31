@@ -66,7 +66,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         function [updatedEmitters, linewidths] = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
             nEmitters = length(emitters);
             linewidths = NaN(nEmitters, 1);
-            updatedEmitters = cell(nEmitters);
+            updatedEmitters = cell(nEmitters, 1);
             t = tic;
             prevT = t;
             for k = 1:nEmitters
@@ -124,7 +124,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 linewidths(k) = mean(fittedLinewidth_THz);
                 newT = toc(t);
                 if exist('batchIdx', 'var')
-                    fprintf("Worker %d: Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", batchIdx, k, nEmitters, newT-prevT, newT);
+                    fprintf("Batch %d: Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", batchIdx, k, nEmitters, newT-prevT, newT);
                 else
                     fprintf("Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", k, nEmitters, newT-prevT, newT);
                 end
@@ -499,7 +499,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
         end
 
-        function [emitters, linewidths] = fitAllPeaks(obj, emitters, batchSize)
+        function [emitters, linewidths] = parallelFitPeaks(obj, emitters, batchSize)
             if ~exist('emitters', 'var')
                 if isempty(obj.dataRootDir)
                     error("obj.dataRootDir is empty. Please assign the data directory.");
@@ -512,7 +512,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                         files = dir(fullfile(obj.dataRootDir, 'ProcessedData', folderName));
                         for l = 1:length(files)
                             fileName = files(l).name;
-                            if contains(fileName, "chiplet") && contains(fileName, '_processed_data.mat')
+                            if contains(fileName, "chiplet") && contains(fileName, '_processed_data.mat') && ~contains(fileName, 'fitted')
                                 filePath = fullfile(folderName, fileName);
                                 validFiles{end+1, 1} = folderName;
                                 validFiles{end, 2} = fileName;
@@ -542,24 +542,29 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     sumResults = allSumResults{k};
                     save(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, sprintf("fitted_%s", validFiles{k, 2})), 'emitters', 'sumResults');
                 end
-                emitters = allEmitters{:};
-                linewidths = allLinewidths{:};
             else
-                newEmitters = cell(nEmitters, 1);
-                linewidths = NaN(nEmitters, 1);
+                
                 if ~exist('batchSize', 'var')
                     batchSize = 500;
                 end
+
                 nEmitters = length(emitters);
                 nBatches = ceil(nEmitters/batchSize);
-                parfor k = 1:nBatches
-                    batchEmitters = emitters((k-1)*batchSize+1:min(k*batchSize, nEmitters));
-                    [batchEmitters, batchLinewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(batchEmitters, false, k);
-                    newEmitters((k-1)*batchSize+1:min(k*batchSize, nEmitters)) = struct2cell(batchEmitters);
-                    linewidths((k-1)*batchSize+1:min(k*batchSize, nEmitters)) = batchLinewidths;
+                batchedEmitters = cell(nBatches, 1);
+                for k = 1:nBatches
+                    batchedEmitters{k} = emitters((k-1)*batchSize+1:min(k*batchSize, nEmitters));
                 end
-                emitters = cell2struct(newEmitters);
+                allEmitters = cell(nBatches, 1);
+                allLinewidths = cell(nBatches, 1);
+                parfor k = 1:nBatches
+                    [batchEmitters, batchLinewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(batchedEmitters{k}, false, k);
+                    allEmitters{k} = batchEmitters;
+                    allLinewidths{k} = batchLinewidths;
+                end
             end
+            emitters = cell2mat(vertcat(allEmitters{:}));
+            linewidths = vertcat(allLinewidths{:});
+
         end
         
         function plotHistCurve(obj, sumResults, brCurveAxH, freqCurveAxH)
