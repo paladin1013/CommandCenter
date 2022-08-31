@@ -63,7 +63,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
     end
     methods(Static)
         obj = instance()
-        function [updatedEmitters, linewidths] = fitPeaks(emitters, drawFig) % Lorentzian fitting
+        function [updatedEmitters, linewidths] = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
             nEmitters = length(emitters);
             linewidths = NaN(nEmitters, 1);
             updatedEmitters = cell(nEmitters);
@@ -123,7 +123,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 updatedEmitters{k} = emitter;
                 linewidths(k) = mean(fittedLinewidth_THz);
                 newT = toc(t);
-                fprintf("Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", k, nEmitters, newT-prevT, newT);
+                if exist('batchIdx', 'var')
+                    fprintf("Worker %d: Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", batchIdx, k, nEmitters, newT-prevT, newT);
+                else
+                    fprintf("Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", k, nEmitters, newT-prevT, newT);
+                end
                 prevT = newT;
             end
         end
@@ -495,36 +499,66 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
         end
 
-        function fitAllPeaks(obj)
-            if isempty(obj.dataRootDir)
-                error("obj.dataRootDir is empty. Please assign the data directory.");
-            end
-            dirs = dir(fullfile(obj.dataRootDir, 'CleanedData'));
-            validFiles = cell(0, 2);
-            for k = 1:length(dirs)
-                folderName = dirs(k).name;
-                if contains(folderName, "Widefield")
-                    files = dir(fullfile(obj.dataRootDir, 'ProcessedData', folderName));
-                    for l = 1:length(files)
-                        fileName = files(l).name;
-                        if contains(fileName, "chiplet") && contains(fileName, '_processed_data.mat')
-                            filePath = fullfile(folderName, fileName);
-                            validFiles{end+1, 1} = folderName;
-                            validFiles{end, 2} = fileName;
-                            fprintf("Find valid processed data file %s (%d)\n", filePath, length(validFiles));
+        function [emitters, linewidths] = fitAllPeaks(obj, emitters, batchSize)
+            if ~exist('emitters', 'var')
+                if isempty(obj.dataRootDir)
+                    error("obj.dataRootDir is empty. Please assign the data directory.");
+                end
+                dirs = dir(fullfile(obj.dataRootDir, 'CleanedData'));
+                validFiles = cell(0, 2);
+                for k = 1:length(dirs)
+                    folderName = dirs(k).name;
+                    if contains(folderName, "Widefield")
+                        files = dir(fullfile(obj.dataRootDir, 'ProcessedData', folderName));
+                        for l = 1:length(files)
+                            fileName = files(l).name;
+                            if contains(fileName, "chiplet") && contains(fileName, '_processed_data.mat')
+                                filePath = fullfile(folderName, fileName);
+                                validFiles{end+1, 1} = folderName;
+                                validFiles{end, 2} = fileName;
+                                fprintf("Find valid processed data file %s (%d)\n", filePath, length(validFiles));
+                            end
                         end
                     end
                 end
-            end
-            dataRootDir = obj.dataRootDir;
-            parfor k = 1:size(validFiles, 1)
-                fprintf("Processing file %s\n", fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}));
-                newData = load(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}));
-                emitters = newData.emitters;
-                sumResults = newData.sumResults;
-                [emitters, linewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(emitters, false);
-                sumResults.linewidths = linewidths;
-                save(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, sprintf("fitted_%s", validFiles{k, 2})), 'emitters', 'sumResults');
+                dataRootDir = obj.dataRootDir;
+                nValidFiles = size(validFiles, 1);
+                allEmitters = cell(nValidFiles, 1);
+                allSumResults = cell(nValidFiles, 1);
+                allLinewidths = cell(nValidFiles, 1);
+                parfor k = 1:nValidFiles
+                    fprintf("Processing file %s\n", fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}));
+                    newData = load(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}));
+                    emitters = newData.emitters;
+                    sumResults = newData.sumResults;
+                    [emitters, linewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(emitters, false, k);
+                    sumResults.linewidths = linewidths;
+                    allLinewidths{k} = linewidths
+                    allEmitters{k} = emitters;
+                    allSumResults{k} = sumResults;
+                end
+                for k = 1:nValidFiles
+                    emitters = allEmitters{k};
+                    sumResults = allSumResults{k};
+                    save(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, sprintf("fitted_%s", validFiles{k, 2})), 'emitters', 'sumResults');
+                end
+                emitters = allEmitters{:};
+                linewidths = allLinewidths{:};
+            else
+                newEmitters = cell(nEmitters, 1);
+                linewidths = NaN(nEmitters, 1);
+                if ~exist('batchSize', 'var')
+                    batchSize = 500;
+                end
+                nEmitters = length(emitters);
+                nBatches = ceil(nEmitters/batchSize);
+                parfor k = 1:nBatches
+                    batchEmitters = emitters((k-1)*batchSize+1:min(k*batchSize, nEmitters));
+                    [batchEmitters, batchLinewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(batchEmitters, false, k);
+                    newEmitters((k-1)*batchSize+1:min(k*batchSize, nEmitters)) = struct2cell(batchEmitters);
+                    linewidths((k-1)*batchSize+1:min(k*batchSize, nEmitters)) = batchLinewidths;
+                end
+                emitters = cell2struct(newEmitters);
             end
         end
         
