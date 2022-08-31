@@ -143,9 +143,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 end
                 if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
                     [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
-                    chipletID = str2num(subTokens{1}{3});   
+                    chipletID = str2num(subTokens{1}{3});
+                    tempData.chipletID = chipletID;   
                 end
-                tempData.chipletID = chipletID;
                 tempData.chipletIdx = idx;
                 fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
                 [emitters, sumResults]= obj.processChiplet(tempData, false);
@@ -216,6 +216,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.allChipletStatistics.chipletCoordsY = [];
             obj.allChipletStatistics.chipletIDs = [];
             obj.allChipletStatistics.sizes_pixel = [];
+            obj.allChipletStatistics.findPeakWidth_THz = [];
+            obj.allChipletStatistics.findPeakAmplitude = [];
             nChiplets = (obj.xmax-obj.xmin+1)*(obj.ymax-obj.ymin+1);
             
             for idx = 1:nChiplets
@@ -427,46 +429,94 @@ classdef FullChipDataAnalyzer < Modules.Driver
             end
 
         end
-        function [emitters, linewidths] = fitPeaks(obj, emitters, drawFig) % Lorentzian fitting
+        function fitAllPeaks(obj)
+            if isempty(obj.dataRootDir)
+                error("obj.dataRootDir is empty. Please assign the data directory.");
+            end
+            dirs = dir(fullfile(obj.dataRootDir, 'CleanedData'));
+            validFiles = cell(0, 2);
+            for k = 1:length(dirs)
+                folderName = dirs(k).name;
+                if contains(folderName, "Widefield")
+                    files = dir(fullfile(obj.dataRootDir, 'ProcessedData', folderName));
+                    for l = 1:length(files)
+                        fileName = files(l).name;
+                        if contains(fileName, "chiplet") && contains(fileName, '_processed_data.mat')
+                            filePath = fullfile(folderName, fileName);
+                            validFiles{end+1, 1} = folderName;
+                            validFiles{end, 1} = fileName;
+                            fprintf("Find valid processed data file %s (%d)\n", filePath, length(validFiles));
+                        end
+                    end
+                end
+            end
+            parfor k = 1:size(validFiles, 1)
+                emitters = load(fullfile(obj.dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}), "emitters");
+                sumResults = load(fullfile(obj.dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}), "sumResults");
+                [emitters, linewidths] = obj.fitPeaks(emitters, false);
+                sumResults.linewidths = linewidths;
+                save(fullfile(obj.dataRootDir, 'ProcessedData', validFiles{k, 1}, sprintf("fitted_%s", validFiles{k, 2})), 'emitters', 'sumResults');
+            end
+        end
+        function [updatedEmitters, linewidths] = fitPeaks(obj, emitters, drawFig) % Lorentzian fitting
             nEmitters = length(emitters);
+            linewidths = NaN(nEmitters, 1);
+            updatedEmitters = cell(nEmitters);
             for k = 1:nEmitters
                 emitter = emitters(k);
-                
-                intensities = emitter.spectrums(1).intensities;
-                freqs_THz = emitter.spectrums(1).freqs_THz;
-                nPoints = length(freqs_THz);
-                [peakIntensity, peakIdx] = max(intensities);
-                t = tic;
-                fitStartIdx = max(1, peakIdx-40);
-                fitEndIdx = min(nPoints, peakIdx+40);
-                fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
-                fitIntensities = double(intensities(fitStartIdx:fitEndIdx));
+                nSpectrums = length(emitter.spectrums);
+                fittedLinewidth_THz = NaN(nSpectrums, 1);
+                fittedPeakIntensity = NaN(nSpectrums, 1);
+                fittedBackground = NaN(nSpectrums, 1);
+                for l = 1:nSpectrums
+                    intensities = emitter.spectrums(l).intensities;
+                    freqs_THz = emitter.spectrums(l).freqs_THz;
+                    nPoints = length(freqs_THz);
+                    [peakIntensity, peakIdx] = max(intensities);
+                    t = tic;
+                    fitStartIdx = max(1, peakIdx-40);
+                    fitEndIdx = min(nPoints, peakIdx+40);
+                    fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
+                    prefitIntensities = double(intensities(fitStartIdx:fitEndIdx));
 
-    %                             limits.amplitudes = [0, Inf];
-    %                             limits.widths = [0, max(fitFreqs_THz)-min(fitFreqs_THz)];
-    %                             limits.locations = [min(fitFreqs_THz), max(fitFreqs_THz)];
-    %                             limits.background = [0 max(fitIntensity)];
-    %                             [~, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensity,fitFreqs_THz);
-    %                             [init.amplitudes, findPeakIdx] = max(findPeakAmplitudes);
-    %                             init.locations = findPeakFreqs(findPeakIdx);
-    %                             init.widths = findPeakWidths(findPeakIdx);
-    %                             init.background = median(fitIntensity);
-    %                             [f,new_gof,output] = lorentzfit(fitFreqs_THz, fitIntensity, 1, init, limits);
-    %                             fittedIntensity = f(fitIntensity);
-    %                             figure; plot(fitFreqs_THz, fitIntensity); hold on; plot(fitFreqs_THz, fittedIntensity)
-                [vals,confs,fit_results,gofs,init,stop_condition] = fitpeaks(fitFreqs_THz,fitIntensities,"FitType", "lorentz", "n", 1, "Span", 1);
-                % emitters are not satisfying .....
-                postfitIntensities = fit_results{2}(fitFreqs_THz);
-                if exist('drawFig', 'var') && drawFig
-                    fitting_fig = figure;
-                    fitting_ax = axes("Parent", fitting_fig);
-                    plot(fitting_ax, fitFreqs_THz, fitIntensities);
-                    hold(fitting_ax, 'on');
-                    plot(fitting_ax, fitFreqs_THz, postfitIntensities);
-                    fitting_ax.Title.String = sprintf("Emitter No.%d", k);
+        %                             limits.amplitudes = [0, Inf];
+        %                             limits.widths = [0, max(fitFreqs_THz)-min(fitFreqs_THz)];
+        %                             limits.locations = [min(fitFreqs_THz), max(fitFreqs_THz)];
+        %                             limits.background = [0 max(fitIntensity)];
+        %                             [~, findPeakFreqs, ffindPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensity,fitFreqs_THz);
+        %                             [init.amplitudes, findPeakIdx] = max(findPeakAmplitudes);
+        %                             init.locations = findPeakFreqs(findPeakIdx);
+        %                             init.widths = findPeakWidths(findPeakIdx);
+        %                             init.background = median(fitIntensity);
+        %                             [f,new_gof,output] = lorentzfit(fitFreqs_THz, fitIntensity, 1, init, limits);
+        %                             fittedIntensity = f(fitIntensity);
+        %                             figure; plot(fitFreqs_THz, fitIntensity); hold on; plot(fitFreqs_THz, fittedIntensity)
+                    [vals,confs,fit_results,gofs,init,stop_condition] = fitpeaks(fitFreqs_THz,prefitIntensities,"FitType", "lorentz", "n", 1, "Span", 1);
+                    % emitters are not satisfying .....
+                    postfitIntensities = fit_results{2}(fitFreqs_THz);
+                    if exist('drawFig', 'var') && drawFig
+                        fitting_fig = figure;
+                        fitting_ax = axes("Parent", fitting_fig);
+                        plot(fitting_ax, fitFreqs_THz, prefitIntensities);
+                        hold(fitting_ax, 'on');
+                        plot(fitting_ax, fitFreqs_THz, postfitIntensities);
+                        fitting_ax.Title.String = sprintf("Emitter No.%d", k);
+                    end
+                    emitter.spectrum(l).postfitIntensities = postfitIntensities;
+                    emitter.spectrum(l).fittedLinewidth_THz = vals.widths*2;
+                    emitter.spectrum(l).fittedPeakIntensity = vals.amplitudes/vals.widths*2;
+                    emitter.spectrum(l).fittedBackground = fit_results{2}.d;
+                    fittedLinewidth_THz(l) = emitter.spectrum(l).fittedLinewidth_THz;
+                    fittedPeakIntensity(l) = emitter.spectrum(l).fittedPeakIntensity;
+                    fittedBackground(l) = emitter.spectrum(l).fittedBackground;
+                    toc(t);
                 end
-                
-                toc(t);
+                emitter.postfitIntensities = mean(postfitIntensities);
+                emitter.fittedLinewidth_THz = mean(fittedLinewidth_THz);
+                emitter.fittedPeakIntensity = mean(fittedPeakIntensity);
+                emitter.fittedBackground = mean(fittedBackground);
+                updatedEmitters{k} = emitter;
+                linewidths(k) = mean(fittedLinewidth_THz);
             end
         end
         function plotHistCurve(obj, sumResults, brCurveAxH, freqCurveAxH)
