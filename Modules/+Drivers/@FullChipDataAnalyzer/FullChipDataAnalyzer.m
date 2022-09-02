@@ -12,14 +12,18 @@ classdef FullChipDataAnalyzer < Modules.Driver
         x = Prefs.Integer(0, 'help', 'The current displaying x coordinate.');
         y = Prefs.Integer(0, 'help', 'The current displaying y coordinate.');
         mincount = Prefs.Integer(10000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
-        processMincount = Prefs.Integer(10000, 'help', 'Minimum record threshold of EMCCD image. Emitters with intensity larger than this value will be recorded.');
+        
         emitterMinSize = Prefs.Integer(3, 'unit', 'pixel', 'help', 'To filter out noise, only emitters with size large than this value will be recorded');
         freqBin_GHz = Prefs.Double(0.01, 'unit', 'GHz', 'help', 'Width of frequency binning when loading data.');
         countSelection = Prefs.MultipleChoice('average', 'choices', {'average', 'max', 'average of top 50%'}, 'help', 'Method to select the value for frequencybin');
         draw = Prefs.Button('set', 'set_draw', 'help', 'Update figure of the current coordinate.');
         colorMode = Prefs.MultipleChoice('frequency', 'choices', {'frequency', 'region'}, 'help', 'The way to assign emitter color when drawing widefield results.');
-        frameWidth = Prefs.Double(10, 'unit', 'pixel', 'help', 'If the distance between an emitter and the chiplet frame is lower than this value, the emitter will be regarded on the frame.');
         cmapName = Prefs.String('lines', 'help', 'Name of the colormap');
+    end
+    properties(Constant)
+        processMincount = 10000;
+        frameWidth = 10;
+        regionMap = {'center', 'frame', 'tip', 'bulk'};
     end
 
     properties
@@ -53,7 +57,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         gdsData;
         chipletWiseAxH;
         locationWiseAxH;
-        regionMap = {'center', 'frame', 'tip', 'bulk'};
+        
 
 
         allChipletEmitters;
@@ -62,10 +66,10 @@ classdef FullChipDataAnalyzer < Modules.Driver
         allExperimentEmitters;
     end
     methods(Static)
+        % Methods have to be static to process in parallel
         obj = instance()
-        function [updatedEmitters, linewidths] = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
+        function emitters = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
             nEmitters = length(emitters);
-            linewidths = NaN(nEmitters, 1);
             updatedEmitters = cell(nEmitters, 1);
             t = tic;
             prevT = t;
@@ -108,20 +112,21 @@ classdef FullChipDataAnalyzer < Modules.Driver
                         plot(fitting_ax, fitFreqs_THz, postfitIntensities);
                         fitting_ax.Title.String = sprintf("Emitter No.%d", k);
                     end
-                    emitter.spectrum(l).postfitIntensities = postfitIntensities;
-                    emitter.spectrum(l).fittedLinewidth_THz = vals.widths*2;
-                    emitter.spectrum(l).fittedPeakIntensity = vals.amplitudes/vals.widths*2;
-                    emitter.spectrum(l).fittedBackground = fit_results{2}.d;
-                    fittedLinewidth_THz(l) = emitter.spectrum(l).fittedLinewidth_THz;
-                    fittedPeakIntensity(l) = emitter.spectrum(l).fittedPeakIntensity;
-                    fittedBackground(l) = emitter.spectrum(l).fittedBackground;
+                    emitter.spectrums(l).postfitIntensities = postfitIntensities;
+                    emitter.spectrums(l).fittedLinewidth_THz = vals.widths*2;
+                    emitter.spectrums(l).fittedPeakIntensity = vals.amplitudes/vals.widths*2;
+                    emitter.spectrums(l).fittedBackground = fit_results{2}.d;
+                    emitter.spectrums(l).fitStartIdx = fitStartIdx;
+                    emitter.spectrums(l).fitEndIdx = fitEndIdx;
+                    fittedLinewidth_THz(l) = emitter.spectrums(l).fittedLinewidth_THz;
+                    fittedPeakIntensity(l) = emitter.spectrums(l).fittedPeakIntensity;
+                    fittedBackground(l) = emitter.spectrums(l).fittedBackground;
                 end
                 emitter.postfitIntensities = mean(postfitIntensities);
                 emitter.fittedLinewidth_THz = mean(fittedLinewidth_THz);
                 emitter.fittedPeakIntensity = mean(fittedPeakIntensity);
                 emitter.fittedBackground = mean(fittedBackground);
                 updatedEmitters{k} = emitter;
-                linewidths(k) = mean(fittedLinewidth_THz);
                 newT = toc(t);
                 if exist('batchIdx', 'var')
                     fprintf("Batch %d: Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", batchIdx, k, nEmitters, newT-prevT, newT);
@@ -129,6 +134,172 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     fprintf("Finish fitting emitters %d/%d, last time: %.3f, total time: %.3f\n", k, nEmitters, newT-prevT, newT);
                 end
                 prevT = newT;
+            end
+            emitters = cell2mat(updatedEmitters);
+        end
+        function [emitters, sumResults] = processChiplet(chipletData, drawFig)
+            % Parallel can be used if more data is required
+            if isstruct(chipletData) && isfield(chipletData, 'path') && ~isfield(chipletData, 'widefieldData')
+                chipletIdx = chipletData.chipletIdx;
+                chipletID = chipletData.chipletID;
+                fprintf("Loading file %s, chipletIdx: %d, chipletID: %d\n", chipletData.path, chipletData.chipletIdx, chipletData.chipletID);
+                % Take the data path as input
+                chipletData = load(chipletData.path);
+                chipletData.chipletIdx = chipletIdx;
+                chipletData.chipletID = chipletID;
+            end
+            % Output data structure: cell array, each cell contain fields:
+            %       absPosX, absPosY (absolute in the image), relPosX, relPosY (relative to the center of the chiplet), region ('center', 'frame', 'tip', 'bulk');
+            %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
+            %       spectrums (struct array, contains `nSpectrums` spectrums)
+            %           hasPeak (boolean), intensity (N*1 array), freqs_THz (N*1 array), fitStartIdx, fitEndIdx, fittedIntensity ((fitEndIdx-fitStartIdx+1)*1 array), peakFreq_THz (double), linewidth (double)
+            nSpectrums = length(chipletData.widefieldData);
+            assert(isfield(chipletData, 'chipletIdx'), "Please manually assign chipletData.chipletIdx (the n-th scanned chiplet).");
+            assert(isfield(chipletData, 'chipletID'), "Please manually assign chipletData.chipletID (the ID number on the sample that represents this chiplet, can be seen on whitelight image).");
+
+            allFilteredImgs = [];
+            allFreqs = [];
+            % Find all positions whose maximum intensity exceeds mincount (record x, y, freq, maxcount)
+            for k = 1:nSpectrums
+                tempData = chipletData.widefieldData{k};
+                allFilteredImgs = cat(3, allFilteredImgs, tempData.filtered_imgs);
+                allFreqs = [allFreqs, tempData.freqs];
+            end
+
+            [maxIntensity, maxIdx] = max(allFilteredImgs, [], 3);
+            [validYs, validXs] = find(maxIntensity > Drivers.FullChipDataAnalyzer.processMincount); % Note that the image has different coordinate system than regular plots.
+            validInds = sub2ind(size(allFilteredImgs(:, :, 1)), validYs, validXs);
+
+            peakIntensities = maxIntensity(validInds);
+            peakIdx = maxIdx(validInds);
+            peakFreqs = transpose(allFreqs(peakIdx));
+            
+
+            % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
+            emitterIdx = dbscan([validXs, validYs, peakFreqs*0.5e4], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 1e4 to get a closer order of magnitude with image pixels (usually 512).
+          
+            if exist('drawFig', 'var') && drawFig
+                fig = figure;
+                ax = axes(fig);
+                scatter3(ax, validXs, validYs, peakFreqs, (peakIntensities-Drivers.FullChipDataAnalyzer.processMincount+40)/40, emitterIdx);
+                colormap(ax, 'lines');
+
+            end
+            nEmitters = length(unique(emitterIdx));
+
+            emitters = [];
+            sumResults = struct();
+            sumResults.absPosXs = NaN(1, nEmitters);
+            sumResults.absPosYs = NaN(1, nEmitters);
+            sumResults.brightnesses = NaN(1, nEmitters);
+            sumResults.resonantFreqs_THz = NaN(1, nEmitters);
+            sumResults.regionIdxes = NaN(1, nEmitters);
+            sumResults.sizes_pixel = NaN(1, nEmitters);
+            sumResults.findPeakWidth_THz = NaN(1, nEmitters);
+            sumResults.findPeakAmplitude = NaN(1, nEmitters);
+            
+            sumResults.nEmitters = nEmitters;
+            sumResults.wl_img = chipletData.wl_img;
+            sumResults.chipletIdx = chipletData.chipletIdx;
+            sumResults.chipletCoordX = chipletData.coordX;
+            sumResults.chipletCoordY = chipletData.coordY;
+            sumResults.chipletID = chipletData.chipletID;
+            for l = 1:nEmitters
+                tempIdx = find(emitterIdx==l);
+                tempXs = validXs(tempIdx);
+                tempYs = validYs(tempIdx);
+                tempIntensities = peakIntensities(tempIdx);
+                tempFreqs = peakFreqs(tempIdx);
+                [brightness, maxIdx] = max(tempIntensities);
+                emitters(l).absPosX = tempXs(maxIdx);
+                emitters(l).absPosY = tempYs(maxIdx);
+                emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
+                emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
+                emitters(l).brightness = double(brightness);
+                emitters(l).region = Drivers.FullChipDataAnalyzer.getRegion(emitters(l).absPosX, emitters(l).absPosY, chipletData.widefieldData{1}.segment);
+                emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
+                emitters(l).chipletIdx = chipletData.chipletIdx;
+                emitters(l).chipletCoordX = chipletData.coordX;
+                emitters(l).chipletCoordY = chipletData.coordY;
+                emitters(l).chipletID = chipletData.chipletID;
+                emitters(l).size_pixel = sum(emitterIdx==l);
+
+                sumResults.absPosXs(l) = tempXs(maxIdx);
+                sumResults.absPosYs(l) = tempYs(maxIdx);
+                sumResults.brightnesses(l) = double(brightness);
+                sumResults.regionIdxes(l) = find(strcmp(emitters(l).region, Drivers.FullChipDataAnalyzer.regionMap));
+                sumResults.resonantFreqs_THz(l) = tempFreqs(maxIdx);
+                sumResults.sizes_pixel(l) = emitters(l).size_pixel;
+                % Get spectrum
+                findPeakIntensity = NaN(nSpectrums, 1);
+                findPeakFreq = NaN(nSpectrums, 1);
+                findPeakWidth_THz = NaN(nSpectrums, 1);
+                findPeakAmplitude = NaN(nSpectrums, 1);
+                for k = 1:nSpectrums
+                    nPoints = length(chipletData.widefieldData{k}.freqs);
+                    freqs_THz = chipletData.widefieldData{k}.freqs;
+                    freqs_THz = reshape(freqs_THz, nPoints, 1);
+                    intensities = chipletData.widefieldData{k}.filtered_imgs(emitters(l).absPosY, emitters(l).absPosX, :);
+                    intensities = reshape(intensities, nPoints, 1);
+                    if max(intensities) > Drivers.FullChipDataAnalyzer.processMincount
+                        hasPeak = true;
+                        [peakIntensity, peakIdx] = max(intensities);
+                        peakFreq_THz = freqs_THz(peakIdx);
+                        % Use findpeaks to briefly get the linewidth and peak frequency (Usually incorrect);
+                        fitStartIdx = max(1, peakIdx-40);
+                        fitEndIdx = min(nPoints, peakIdx+40);
+                        fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
+                        fitIntensities = double(intensities(fitStartIdx:fitEndIdx));    
+                        [sortedFreqs_THz, sortedIdx] = sort(fitFreqs_THz, 'ascend');
+                        fitIntensities = fitIntensities(sortedIdx);
+
+                        [findPeakIntensities, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensities, sortedFreqs_THz);
+                        [maxIntensity, maxIdx] = max(findPeakIntensities);
+                        peakWidth_THz = findPeakWidths(maxIdx);
+                        findPeakIntensity(k) = findPeakIntensities(maxIdx);
+                        findPeakFreq(k) = findPeakFreqs(maxIdx);
+                        findPeakWidth_THz(k) = findPeakWidths(maxIdx);
+                        findPeakAmplitude(k) = findPeakAmplitudes(maxIdx);
+                    else
+                        hasPeak = false;
+                        peakFreq_THz = NaN;
+                        peakIntensity = NaN;
+                        peakWidth_THz = NaN;
+                    end
+                    spectrums(k) = struct('hasPeak', hasPeak, 'intensities', intensities, 'freqs_THz', freqs_THz, ...
+                    'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz);
+                end
+                emitters(l).spectrums = spectrums;
+                emitters(l).findPeakWidth_THz = mean(findPeakWidth_THz);
+                emitters(l).findPeakAmplitude = mean(findPeakAmplitude);
+                sumResults.findPeakWidth_THz(l) = mean(findPeakWidth_THz);
+                sumResults.findPeakAmplitude(l) = mean(findPeakAmplitude);
+            end
+        end
+        function region = getRegion(absPosX, absPosY, segment)
+            cornerAbsPos_yx = segment.cornerPos+[segment.ymin, segment.xmin];
+            line1 = cornerAbsPos_yx(1:2, :);
+            line2 = cornerAbsPos_yx(2:3, :);
+            line3 = cornerAbsPos_yx(3:4, :);
+            line4 = cornerAbsPos_yx([4, 1], :);
+            onFrame1 = getPointLineDistance(absPosX, absPosY, line1(1, 2), line1(1, 1), line1(2, 2), line1(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
+            onFrame2 = getPointLineDistance(absPosX, absPosY, line2(1, 2), line2(1, 1), line2(2, 2), line2(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
+            onFrame3 = getPointLineDistance(absPosX, absPosY, line3(1, 2), line3(1, 1), line3(2, 2), line3(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
+            onFrame4 = getPointLineDistance(absPosX, absPosY, line4(1, 2), line4(1, 1), line4(2, 2), line4(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
+            onFrame= onFrame1 || onFrame2 || onFrame3 || onFrame4;
+            leftTipPolygon_yx = [cornerAbsPos_yx(1:2, :); cornerAbsPos_yx([2, 1], :)-[0, 75]] + [10, 0; -10, 0; -10, 0; 10, 0];
+            rightTipPolygon_yx = [cornerAbsPos_yx([4, 3], :); cornerAbsPos_yx([3, 4], :)+[0, 75]] + [10, 0; -10, 0; -10, 0; 10, 0];
+
+            
+
+            if inpolygon(absPosY, absPosX, cornerAbsPos_yx(:, 1), cornerAbsPos_yx(:, 2)) && ~onFrame
+                region = 'center';
+            elseif onFrame
+                region = 'frame';
+            elseif inpolygon(absPosY, absPosX, leftTipPolygon_yx(:, 1), leftTipPolygon_yx(:, 2)) || inpolygon(absPosY, absPosX, rightTipPolygon_yx(:, 1), rightTipPolygon_yx(:, 2))
+                region = 'tip';
+            else
+                region = 'bulk';
             end
         end
     end
@@ -163,15 +334,16 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     if ~isfolder(obj.dstDir)
                         mkdir(obj.dstDir);
                     end
-                    obj.processData;
+                    obj.processExperiment;
                     copyfile(fullfile(obj.dstDir, "processed_emitters_data.mat"), fullfile(sumDir, sprintf("%s.mat", file.name)));
                 end
             end
 
+            [emitters, sumResults] = obj.parallelFitPeaks;
             obj.aggregateAllExperiments(sumDir);
-            obj.plotAllStatistic(obj.allExperimentStatistics);
+            obj.plotAllStatistic(sumResults);
         end
-        function processData(obj)
+        function processExperiment(obj)
             assert(~isempty(obj.srcDir), "Source directory is empty. Please assign obj.srcDir before processing data.");
             assert(~isempty(obj.dstDir), "Destination directory is empty. Please assign obj.dstDir before processing data.");
             if ~exist(obj.dstDir, 'dir')
@@ -203,6 +375,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.idxTable = zeros(obj.xmax-obj.xmin+1, obj.ymax-obj.ymin+1);
 
             for k = 1:nValid
+                % Parallel can be used if more data is required (though more memory is required)
                 [tokens,matches] = regexp(validFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
                 idx = str2num(tokens{1}{1});
                 fprintf("Loading file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
@@ -218,6 +391,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 tempData.chipletIdx = idx;
                 fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", validFileNames{k}, k, nValid, idx);
                 [emitters, sumResults]= obj.processChiplet(tempData, false);
+                save(fullfile(obj.dstDir, sprintf("chiplet%d_processed_data.mat", idx)), "emitters", "sumResults");
             end
             obj.aggregateData;
         end
@@ -356,150 +530,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 save(fullfile(targetDir, sprintf("chiplet%d_x%d_y%d_ID%d.mat", targetID, coordX, coordY, numbers(idx))), 'coordX', 'coordY', 'stagePos', 'widefieldData', 'wl_img');
             end
         end
-        function [emitters, sumResults] = processChiplet(obj, chipletData, drawFig)
-            % Output data structure: cell array, each cell contain fields:
-            %       absPosX, absPosY (absolute in the image), relPosX, relPosY (relative to the center of the chiplet), region ('center', 'frame', 'tip', 'bulk');
-            %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
-            %       spectrums (struct array, contains `nSpectrums` spectrums)
-            %           hasPeak (boolean), intensity (N*1 array), freqs_THz (N*1 array), fitStartIdx, fitEndIdx, fittedIntensity ((fitEndIdx-fitStartIdx+1)*1 array), peakFreq_THz (double), linewidth (double)
-            nSpectrums = length(chipletData.widefieldData);
-            assert(isfield(chipletData, 'chipletIdx'), "Please manually assign chipletData.chipletIdx (the n-th scanned chiplet).");
-            assert(isfield(chipletData, 'chipletID'), "Please manually assign chipletData.chipletID (the ID number on the sample that represents this chiplet, can be seen on whitelight image).");
+        
 
-            allFilteredImgs = [];
-            allFreqs = [];
-            % Find all positions whose maximum intensity exceeds mincount (record x, y, freq, maxcount)
-            for k = 1:nSpectrums
-                tempData = chipletData.widefieldData{k};
-                allFilteredImgs = cat(3, allFilteredImgs, tempData.filtered_imgs);
-                allFreqs = [allFreqs, tempData.freqs];
-            end
-
-            [maxIntensity, maxIdx] = max(allFilteredImgs, [], 3);
-            [validYs, validXs] = find(maxIntensity > obj.processMincount); % Note that the image has different coordinate system than regular plots.
-            validInds = sub2ind(size(allFilteredImgs(:, :, 1)), validYs, validXs);
-
-            peakIntensities = maxIntensity(validInds);
-            peakIdx = maxIdx(validInds);
-            peakFreqs = transpose(allFreqs(peakIdx));
-            
-
-            % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
-            emitterIdx = dbscan([validXs, validYs, peakFreqs*0.5e4], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 1e4 to get a closer order of magnitude with image pixels (usually 512).
-          
-%             [idxCnt, uniqueIdx] = hist(emitterIdx,unique(emitterIdx));
-%             uniqueIdx = uniqueIdx(idxCnt >= obj.emitterMinSize);
-
-
-            if exist('drawFig', 'var') && drawFig
-                fig = figure;
-                ax = axes(fig);
-                scatter3(ax, validXs, validYs, peakFreqs, (peakIntensities-obj.processMincount+40)/40, emitterIdx);
-                colormap(ax, 'lines');
-
-            end
-            nEmitters = length(unique(emitterIdx));
-
-            emitters = [];
-            sumResults = struct();
-            sumResults.absPosXs = NaN(1, nEmitters);
-            sumResults.absPosYs = NaN(1, nEmitters);
-            sumResults.brightnesses = NaN(1, nEmitters);
-            sumResults.resonantFreqs_THz = NaN(1, nEmitters);
-            sumResults.regionIdxes = NaN(1, nEmitters);
-            sumResults.sizes_pixel = NaN(1, nEmitters);
-            sumResults.findPeakWidth_THz = NaN(1, nEmitters);
-            sumResults.findPeakAmplitude = NaN(1, nEmitters);
-            
-            sumResults.nEmitters = nEmitters;
-            sumResults.wl_img = chipletData.wl_img;
-            sumResults.chipletIdx = chipletData.chipletIdx;
-            sumResults.chipletCoordX = chipletData.coordX;
-            sumResults.chipletCoordY = chipletData.coordY;
-            sumResults.chipletID = chipletData.chipletID;
-            for l = 1:nEmitters
-                tempIdx = find(emitterIdx==l);
-                tempXs = validXs(tempIdx);
-                tempYs = validYs(tempIdx);
-                tempIntensities = peakIntensities(tempIdx);
-                tempFreqs = peakFreqs(tempIdx);
-                [brightness, maxIdx] = max(tempIntensities);
-                emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
-                emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
-                emitters(l).absPosX = tempXs(maxIdx);
-                emitters(l).absPosY = tempYs(maxIdx);
-                emitters(l).brightness = double(brightness);
-                emitters(l).region = obj.getRegion(emitters(l).absPosX, emitters(l).absPosY, chipletData.widefieldData{1}.segment);
-                emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
-                emitters(l).chipletIdx = chipletData.chipletIdx;
-                emitters(l).chipletCoordX = chipletData.coordX;
-                emitters(l).chipletCoordY = chipletData.coordY;
-                emitters(l).chipletID = chipletData.chipletID;
-                emitters(l).size_pixel = sum(emitterIdx==l);
-
-                sumResults.absPosXs(l) = tempXs(maxIdx);
-                sumResults.absPosYs(l) = tempYs(maxIdx);
-                sumResults.brightnesses(l) = double(brightness);
-                sumResults.regionIdxes(l) = find(strcmp(emitters(l).region, obj.regionMap));
-                sumResults.resonantFreqs_THz(l) = tempFreqs(maxIdx);
-                sumResults.sizes_pixel(l) = emitters(l).size_pixel;
-                % Get spectrum
-                findPeakIntensity = NaN(nSpectrums, 1);
-                findPeakFreq = NaN(nSpectrums, 1);
-                findPeakWidth_THz = NaN(nSpectrums, 1);
-                findPeakAmplitude = NaN(nSpectrums, 1);
-                for k = 1:nSpectrums
-                    nPoints = length(chipletData.widefieldData{k}.freqs);
-                    freqs_THz = chipletData.widefieldData{k}.freqs;
-                    freqs_THz = reshape(freqs_THz, nPoints, 1);
-                    intensities = chipletData.widefieldData{k}.filtered_imgs(emitters(l).absPosY, emitters(l).absPosX, :);
-                    intensities = reshape(intensities, nPoints, 1);
-                    if max(intensities) > obj.processMincount
-                        hasPeak = true;
-                        [peakIntensity, peakIdx] = max(intensities);
-                        peakFreq_THz = freqs_THz(peakIdx);
-                        % Use findpeaks to briefly get the linewidth and peak frequency (Usually incorrect);
-                        fitStartIdx = max(1, peakIdx-40);
-                        fitEndIdx = min(nPoints, peakIdx+40);
-                        fitFreqs_THz = freqs_THz(fitStartIdx:fitEndIdx);
-                        fitIntensities = double(intensities(fitStartIdx:fitEndIdx));    
-                        [sortedFreqs_THz, sortedIdx] = sort(fitFreqs_THz, 'ascend');
-                        fitIntensities = fitIntensities(sortedIdx);
-
-                        [findPeakIntensities, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(fitIntensities, sortedFreqs_THz);
-                        [maxIntensity, maxIdx] = max(findPeakIntensities);
-                        peakWidth_THz = findPeakWidths(maxIdx);
-                        findPeakIntensity(k) = findPeakIntensities(maxIdx);
-                        findPeakFreq(k) = findPeakFreqs(maxIdx);
-                        findPeakWidth_THz(k) = findPeakWidths(maxIdx);
-                        findPeakAmplitude(k) = findPeakAmplitudes(maxIdx);
-                    else
-                        hasPeak = false;
-                        peakFreq_THz = NaN;
-                        peakIntensity = NaN;
-                        peakWidth_THz = NaN;
-                    end
-                    spectrums(k) = struct('hasPeak', hasPeak, 'intensities', intensities, 'freqs_THz', freqs_THz, ...
-                    'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz);
-                end
-                emitters(l).spectrums = spectrums;
-                emitters(l).findPeakWidth_THz = mean(findPeakWidth_THz);
-                emitters(l).findPeakAmplitude = mean(findPeakAmplitude);
-                sumResults.findPeakWidth_THz(l) = mean(findPeakWidth_THz);
-                sumResults.findPeakAmplitude(l) = mean(findPeakAmplitude);
-
-            end
-
-            save(fullfile(obj.dstDir, sprintf("chiplet%d_processed_data.mat", chipletData.chipletIdx)), "emitters", "sumResults");
-
-            % Plot figure
-            if drawFig
-                obj.plotChiplet(sumResults);
-            end
-
-        end
-
-        function [emitters, linewidths] = parallelFitPeaks(obj, emitters, batchSize)
+        function [emitters, sumResults] = parallelFitPeaks(obj, emitters, batchSize)
             if ~exist('emitters', 'var')
                 if isempty(obj.dataRootDir)
                     error("obj.dataRootDir is empty. Please assign the data directory.");
@@ -525,15 +558,13 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 nValidFiles = size(validFiles, 1);
                 allEmitters = cell(nValidFiles, 1);
                 allSumResults = cell(nValidFiles, 1);
-                allLinewidths = cell(nValidFiles, 1);
                 parfor k = 1:nValidFiles
                     fprintf("Processing file %s\n", fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}));
                     newData = load(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2}));
                     emitters = newData.emitters;
                     sumResults = newData.sumResults;
-                    [emitters, linewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(emitters, false, k);
-                    sumResults.linewidths = linewidths;
-                    allLinewidths{k} = linewidths
+                    emitters = Drivers.FullChipDataAnalyzer.fitPeaks(emitters, false, k);
+                    sumResults.fittedLinewidth_THz = extractfield(emitters, "fittedLinewidth_THz");
                     allEmitters{k} = emitters;
                     allSumResults{k} = sumResults;
                 end
@@ -543,13 +574,13 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     save(fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, sprintf("fitted_%s", validFiles{k, 2})), 'emitters', 'sumResults');
                 end
 
-                emitters = cell2mat(vertcat(allEmitters{:}));
-                linewidths = vertcat(allLinewidths{:});
+                emitters = vertcat(allEmitters{:});
                 if ~isfolder(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData'))
                     mkdir(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData'));
                 end
                 save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_emitters.mat'), "emitters");
-                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_linewidths.mat'), "linewidths");
+                sumResults = obj.extractSumResults(emitters);
+                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_sumResults.mat'), "sumResults");
 
             else
                 
@@ -564,15 +595,13 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     batchedEmitters{k} = emitters((k-1)*batchSize+1:min(k*batchSize, nEmitters));
                 end
                 allEmitters = cell(nBatches, 1);
-                allLinewidths = cell(nBatches, 1);
                 parfor k = 1:nBatches
-                    [batchEmitters, batchLinewidths] = Drivers.FullChipDataAnalyzer.fitPeaks(batchedEmitters{k}, false, k);
+                    batchEmitters = Drivers.FullChipDataAnalyzer.fitPeaks(batchedEmitters{k}, false, k);
                     allEmitters{k} = batchEmitters;
-                    allLinewidths{k} = batchLinewidths;
                 end
 
                 emitters = cell2mat(vertcat(allEmitters{:}));
-                linewidths = vertcat(allLinewidths{:});
+                sumResults = obj.extractSumResults(emitters);
             end
 
         end
@@ -591,7 +620,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults.chipletCoordsX = extractfield(emitters, "chipletCoordX");
             sumResults.chipletCoordsY = extractfield(emitters, "chipletCoordY");
             sumResults.chipletIDs = extractfield(emitters, "chipletID");
-%             sumResults.sizes_pixel = extractfield(emitters, "size_pixel");
+            sumResults.sizes_pixel = extractfield(emitters, "size_pixel");
             sumResults.fittedLinewidth_THz = extractfield(emitters, "fittedLinewidth_THz");
             if ~isempty(obj.dataRootDir)
                 save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'fittedSumResults.mat'), "sumResults");
@@ -737,32 +766,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.plotHistCurve(sumResults, brCurveAxH, freqCurveAxH, linewidthCurveAxH);
         end
 
-        function region = getRegion(obj, absPosX, absPosY, segment)
-            cornerAbsPos_yx = segment.cornerPos+[segment.ymin, segment.xmin];
-            line1 = cornerAbsPos_yx(1:2, :);
-            line2 = cornerAbsPos_yx(2:3, :);
-            line3 = cornerAbsPos_yx(3:4, :);
-            line4 = cornerAbsPos_yx([4, 1], :);
-            onFrame1 = getPointLineDistance(absPosX, absPosY, line1(1, 2), line1(1, 1), line1(2, 2), line1(2, 1)) < obj.frameWidth;
-            onFrame2 = getPointLineDistance(absPosX, absPosY, line2(1, 2), line2(1, 1), line2(2, 2), line2(2, 1)) < obj.frameWidth;
-            onFrame3 = getPointLineDistance(absPosX, absPosY, line3(1, 2), line3(1, 1), line3(2, 2), line3(2, 1)) < obj.frameWidth;
-            onFrame4 = getPointLineDistance(absPosX, absPosY, line4(1, 2), line4(1, 1), line4(2, 2), line4(2, 1)) < obj.frameWidth;
-            onFrame= onFrame1 || onFrame2 || onFrame3 || onFrame4;
-            leftTipPolygon_yx = [cornerAbsPos_yx(1:2, :); cornerAbsPos_yx([2, 1], :)-[0, 75]] + [10, 0; -10, 0; -10, 0; 10, 0];
-            rightTipPolygon_yx = [cornerAbsPos_yx([4, 3], :); cornerAbsPos_yx([3, 4], :)+[0, 75]] + [10, 0; -10, 0; -10, 0; 10, 0];
-
-            
-    
-            if inpolygon(absPosY, absPosX, cornerAbsPos_yx(:, 1), cornerAbsPos_yx(:, 2)) && ~onFrame
-                region = 'center';
-            elseif onFrame
-                region = 'frame';
-            elseif inpolygon(absPosY, absPosX, leftTipPolygon_yx(:, 1), leftTipPolygon_yx(:, 2)) || inpolygon(absPosY, absPosX, rightTipPolygon_yx(:, 1), rightTipPolygon_yx(:, 2))
-                region = 'tip';
-            else
-                region = 'bulk';
-            end
-        end
+        
         function updateData(obj, append, srcDir)
             if ~exist('append', 'var')
                 append = obj.append;

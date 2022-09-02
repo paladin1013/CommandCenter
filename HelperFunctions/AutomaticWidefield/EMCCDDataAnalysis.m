@@ -87,7 +87,9 @@ function EMCCDDataAnalysis(load_processed_data, working_dir, processed_data_file
             poly_pos = processed_data_file.poly_pos;
             clear('processed_data_file'); % To save memory
         else % Load data from .mat file
-            load(fullfile(working_dir, processed_data_file), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+            
+                load(fullfile(working_dir, processed_data_file), 'freqs', 'EMCCD_imgs', 'filtered_imgs', 'wl_img', 'poly_pos');
+            
         end
         try close(11); end
         result_fig = figure(11);
