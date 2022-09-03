@@ -11,7 +11,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         ymax = Prefs.Integer(3, 'help', 'The maximum y chiplet coordinate');
         x = Prefs.Integer(0, 'help', 'The current displaying x coordinate.');
         y = Prefs.Integer(0, 'help', 'The current displaying y coordinate.');
-        mincount = Prefs.Integer(10000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
+        mincount = Prefs.Integer(2000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
         
         emitterMinSize = Prefs.Integer(3, 'unit', 'pixel', 'help', 'To filter out noise, only emitters with size large than this value will be recorded');
         freqBin_GHz = Prefs.Double(0.01, 'unit', 'GHz', 'help', 'Width of frequency binning when loading data.');
@@ -21,7 +21,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         cmapName = Prefs.String('lines', 'help', 'Name of the colormap');
     end
     properties(Constant)
-        processMincount = 10000;
+        processMincount = 2000;
         frameWidth = 10;
         regionMap = {'center', 'frame', 'tip', 'bulk'};
     end
@@ -68,7 +68,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
     methods(Static)
         % Methods have to be static to process in parallel
         obj = instance()
-        function emitters = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
+        function emitters  = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
             nEmitters = length(emitters);
             updatedEmitters = cell(nEmitters, 1);
             t = tic;
@@ -77,7 +77,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 emitter = emitters(k);
                 nSpectrums = length(emitter.spectrums);
                 fittedLinewidth_THz = NaN(nSpectrums, 1);
-                fittedPeakIntensity = NaN(nSpectrums, 1);
+                fittedPeakAmplitude = NaN(nSpectrums, 1);
                 fittedBackground = NaN(nSpectrums, 1);
                 for l = 1:nSpectrums
                     intensities = emitter.spectrums(l).intensities;
@@ -114,17 +114,17 @@ classdef FullChipDataAnalyzer < Modules.Driver
                     end
                     emitter.spectrums(l).postfitIntensities = postfitIntensities;
                     emitter.spectrums(l).fittedLinewidth_THz = vals.widths*2;
-                    emitter.spectrums(l).fittedPeakIntensity = vals.amplitudes/vals.widths*2;
+                    emitter.spectrums(l).fittedPeakAmplitude = vals.amplitudes/vals.widths*2;
                     emitter.spectrums(l).fittedBackground = fit_results{2}.d;
                     emitter.spectrums(l).fitStartIdx = fitStartIdx;
                     emitter.spectrums(l).fitEndIdx = fitEndIdx;
+                    
                     fittedLinewidth_THz(l) = emitter.spectrums(l).fittedLinewidth_THz;
-                    fittedPeakIntensity(l) = emitter.spectrums(l).fittedPeakIntensity;
+                    fittedPeakAmplitude(l) = emitter.spectrums(l).fittedPeakAmplitude;
                     fittedBackground(l) = emitter.spectrums(l).fittedBackground;
                 end
-                emitter.postfitIntensities = mean(postfitIntensities);
                 emitter.fittedLinewidth_THz = mean(fittedLinewidth_THz);
-                emitter.fittedPeakIntensity = mean(fittedPeakIntensity);
+                emitter.fittedPeakAmplitude = mean(fittedPeakAmplitude);
                 emitter.fittedBackground = mean(fittedBackground);
                 updatedEmitters{k} = emitter;
                 newT = toc(t);
@@ -191,12 +191,14 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults = struct();
             sumResults.absPosXs = NaN(1, nEmitters);
             sumResults.absPosYs = NaN(1, nEmitters);
-            sumResults.brightnesses = NaN(1, nEmitters);
+            sumResults.maxIntensities = NaN(1, nEmitters);
             sumResults.resonantFreqs_THz = NaN(1, nEmitters);
             sumResults.regionIdxes = NaN(1, nEmitters);
             sumResults.sizes_pixel = NaN(1, nEmitters);
             sumResults.findPeakWidth_THz = NaN(1, nEmitters);
             sumResults.findPeakAmplitude = NaN(1, nEmitters);
+            sumResults.findPeakIntensity = NaN(1, nEmitters);
+            sumResults.emitterValid = NaN(1, nEmitters);
             
             sumResults.nEmitters = nEmitters;
             sumResults.wl_img = chipletData.wl_img;
@@ -210,12 +212,12 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 tempYs = validYs(tempIdx);
                 tempIntensities = peakIntensities(tempIdx);
                 tempFreqs = peakFreqs(tempIdx);
-                [brightness, maxIdx] = max(tempIntensities);
+                [maxIntensity, maxIdx] = max(tempIntensities);
                 emitters(l).absPosX = tempXs(maxIdx);
                 emitters(l).absPosY = tempYs(maxIdx);
                 emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
                 emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
-                emitters(l).brightness = double(brightness);
+                emitters(l).maxIntensity = double(maxIntensity);
                 emitters(l).region = Drivers.FullChipDataAnalyzer.getRegion(emitters(l).absPosX, emitters(l).absPosY, chipletData.widefieldData{1}.segment);
                 emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
                 emitters(l).chipletIdx = chipletData.chipletIdx;
@@ -226,7 +228,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
                 sumResults.absPosXs(l) = tempXs(maxIdx);
                 sumResults.absPosYs(l) = tempYs(maxIdx);
-                sumResults.brightnesses(l) = double(brightness);
+                sumResults.maxIntensities(l) = double(maxIntensity);
                 sumResults.regionIdxes(l) = find(strcmp(emitters(l).region, Drivers.FullChipDataAnalyzer.regionMap));
                 sumResults.resonantFreqs_THz(l) = tempFreqs(maxIdx);
                 sumResults.sizes_pixel(l) = emitters(l).size_pixel;
@@ -235,6 +237,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 findPeakFreq = NaN(nSpectrums, 1);
                 findPeakWidth_THz = NaN(nSpectrums, 1);
                 findPeakAmplitude = NaN(nSpectrums, 1);
+
+                spectrumValid = NaN(nSpectrums, 1);
                 for k = 1:nSpectrums
                     nPoints = length(chipletData.widefieldData{k}.freqs);
                     freqs_THz = chipletData.widefieldData{k}.freqs;
@@ -260,20 +264,31 @@ classdef FullChipDataAnalyzer < Modules.Driver
                         findPeakFreq(k) = findPeakFreqs(maxIdx);
                         findPeakWidth_THz(k) = findPeakWidths(maxIdx);
                         findPeakAmplitude(k) = findPeakAmplitudes(maxIdx);
+                        if sum(intensities >= maxIntensity/2) < 2
+                            % No other frequency points have intensitiy larger than half of the maximum intensity
+                            spectrumValid(k) = false;
+                        else
+                            spectrumValid(k) = true;
+                        end
                     else
                         hasPeak = false;
                         peakFreq_THz = NaN;
                         peakIntensity = NaN;
                         peakWidth_THz = NaN;
+                        spectrumValid(k) = false;
                     end
-                    spectrums(k) = struct('hasPeak', hasPeak, 'intensities', intensities, 'freqs_THz', freqs_THz, ...
+                    spectrums(k) = struct('spectrumValid', spectrumValid(k), 'hasPeak', hasPeak, 'intensities', intensities, 'freqs_THz', freqs_THz, ...
                     'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz);
                 end
                 emitters(l).spectrums = spectrums;
                 emitters(l).findPeakWidth_THz = mean(findPeakWidth_THz);
                 emitters(l).findPeakAmplitude = mean(findPeakAmplitude);
+                emitters(l).findPeakIntensity = mean(findPeakIntensity);
+                emitters(l).emitterValid = any(spectrumValid);
                 sumResults.findPeakWidth_THz(l) = mean(findPeakWidth_THz);
                 sumResults.findPeakAmplitude(l) = mean(findPeakAmplitude);
+                sumResults.findPeakIntensity(l) = mean(findPeakIntensity);
+                sumResults.emitterValid(l) = emitters(l).emitterValid;
             end
         end
         function region = getRegion(absPosX, absPosY, segment)
@@ -306,7 +321,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
     methods(Access=private)
         function obj = FullChipDataAnalyzer()
-            obj.loadPrefs;
+            try
+                obj.loadPrefs;
+            catch
+                warning("Error loading prefs");
+            end
             obj.initialized = true;
         end
     end
@@ -402,7 +421,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.allExperimentStatistics = struct;
             obj.allExperimentStatistics.absPosXs = [];
             obj.allExperimentStatistics.absPosYs = [];
-            obj.allExperimentStatistics.brightnesses = [];
+            obj.allExperimentStatistics.maxIntensities = [];
             obj.allExperimentStatistics.resonantFreqs_THz = [];
             obj.allExperimentStatistics.regionIdxes = [];
             obj.allExperimentStatistics.chipletIdxes = [];
@@ -413,6 +432,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.allExperimentStatistics.sizes_pixel = [];
             obj.allExperimentStatistics.findPeakWidth_THz = [];
             obj.allExperimentStatistics.findPeakAmplitude = [];
+            obj.allExperimentStatistics.findPeakIntensity = [];
+            obj.allExperimentStatistics.emitterValid = [];
             for k = 1:length(files)
                 file = files(k);
                 [tokens, matches] = regexp(file.name, 'Widefield(.+).mat', 'tokens', 'match');
@@ -429,7 +450,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 end
                 obj.allExperimentStatistics.absPosXs(end+1:end+nEmitters) = allChipletStatistics.absPosXs;
                 obj.allExperimentStatistics.absPosYs(end+1:end+nEmitters) = allChipletStatistics.absPosYs;
-                obj.allExperimentStatistics.brightnesses(end+1:end+nEmitters) = allChipletStatistics.brightnesses;
+                obj.allExperimentStatistics.maxIntensities(end+1:end+nEmitters) = allChipletStatistics.maxIntensities;
                 obj.allExperimentStatistics.resonantFreqs_THz(end+1:end+nEmitters) = allChipletStatistics.resonantFreqs_THz;
                 obj.allExperimentStatistics.regionIdxes(end+1:end+nEmitters) = allChipletStatistics.regionIdxes;
                 obj.allExperimentStatistics.chipletIdxes(end+1:end+nEmitters) = allChipletStatistics.chipletIdxes;
@@ -440,6 +461,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 obj.allExperimentStatistics.experimentName(end+1:end+nEmitters) = experimentName;
                 obj.allExperimentStatistics.findPeakWidth_THz(end+1:end+nEmitters) = allChipletStatistics.findPeakWidth_THz;
                 obj.allExperimentStatistics.findPeakAmplitude(end+1:end+nEmitters) = allChipletStatistics.findPeakAmplitude;
+                obj.allExperimentStatistics.findPeakIntensity(end+1:end+nEmitters) = allChipletStatistics.findPeakIntensity;
+                obj.allExperimentStatistics.emitterValid(end+1:end+nEmitters) = allChipletStatistics.emitterValid;
             end
             allExperimentStatistics = obj.allExperimentStatistics;
             allExperimentEmitters = obj.allExperimentEmitters;
@@ -451,7 +474,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.allChipletStatistics = struct;
             obj.allChipletStatistics.absPosXs = [];
             obj.allChipletStatistics.absPosYs = [];
-            obj.allChipletStatistics.brightnesses = [];
+            obj.allChipletStatistics.maxIntensities = [];
             obj.allChipletStatistics.resonantFreqs_THz = [];
             obj.allChipletStatistics.regionIdxes = [];
             obj.allChipletStatistics.chipletIdxes = [];
@@ -461,6 +484,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
             obj.allChipletStatistics.sizes_pixel = [];
             obj.allChipletStatistics.findPeakWidth_THz = [];
             obj.allChipletStatistics.findPeakAmplitude = [];
+            obj.allChipletStatistics.findPeakIntensity = [];
+            obj.allChipletStatistics.emitterValid = [];
             nChiplets = (obj.xmax-obj.xmin+1)*(obj.ymax-obj.ymin+1);
             
             for idx = 1:nChiplets
@@ -478,7 +503,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 end
                 obj.allChipletStatistics.absPosXs(end+1:end+nEmitters) = sumResults.absPosXs;
                 obj.allChipletStatistics.absPosYs(end+1:end+nEmitters) = sumResults.absPosYs;
-                obj.allChipletStatistics.brightnesses(end+1:end+nEmitters) = sumResults.brightnesses;
+                obj.allChipletStatistics.maxIntensities(end+1:end+nEmitters) = sumResults.maxIntensities;
                 obj.allChipletStatistics.resonantFreqs_THz(end+1:end+nEmitters) = sumResults.resonantFreqs_THz;
                 obj.allChipletStatistics.regionIdxes(end+1:end+nEmitters) = sumResults.regionIdxes;
                 obj.allChipletStatistics.chipletIdxes(end+1:end+nEmitters) = sumResults.chipletIdx;
@@ -488,6 +513,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 obj.allChipletStatistics.sizes_pixel(end+1:end+nEmitters) = sumResults.sizes_pixel;
                 obj.allChipletStatistics.findPeakWidth_THz(end+1:end+nEmitters) = sumResults.findPeakWidth_THz;
                 obj.allChipletStatistics.findPeakAmplitude(end+1:end+nEmitters) = sumResults.findPeakAmplitude;
+                obj.allChipletStatistics.findPeakIntensity(end+1:end+nEmitters) = sumResults.findPeakIntensity;
+                obj.allChipletStatistics.emitterValid(end+1:end+nEmitters) = sumResults.emitterValid;
                 
                 obj.chipletData{idx} = struct('idx', idx, 'chipletCoordX', sumResults.chipletCoordX, 'chipletCoordY', sumResults.chipletCoordY, 'wl_img', sumResults.wl_img, 'emitters', emitters);
                 if sumResults.chipletCoordX >= obj.xmin && sumResults.chipletCoordX <= obj.xmax && sumResults.chipletCoordY >= obj.ymin && sumResults.chipletCoordY <= obj.ymax
@@ -554,7 +581,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
                         end
                     end
                 end
-                dataRootDir = obj.dataRootDir;
+                if ~exist('dataRootDir', 'var')
+                    dataRootDir = obj.dataRootDir;
+                end
                 nValidFiles = size(validFiles, 1);
                 allEmitters = cell(nValidFiles, 1);
                 allSumResults = cell(nValidFiles, 1);
@@ -578,9 +607,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
                 if ~isfolder(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData'))
                     mkdir(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData'));
                 end
-                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_emitters.mat'), "emitters");
+                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_emitters.mat'), "emitters", '-v7.3');
                 sumResults = obj.extractSumResults(emitters);
-                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_sumResults.mat'), "sumResults");
+                save(fullfile(dataRootDir, 'ProcessedData', 'AllChipletsData', 'fitted_sumResults.mat'), "sumResults", '-v7.3');
 
             else
                 
@@ -605,11 +634,46 @@ classdef FullChipDataAnalyzer < Modules.Driver
             end
 
         end
+
+        function emitters = loadAllEmitters(obj, dataRootDir)
+            if ~exist('dataRootDir', 'var')
+                if isempty(obj.dataRootDir)
+                    error("obj.dataRootDir is empty. Please assign the data directory.");
+                end
+                dataRootDir = obj.dataRootDir;
+            end
+            dirs = dir(fullfile(obj.dataRootDir, 'CleanedData'));
+            validFiles = cell(0, 2);
+            for k = 1:length(dirs)
+                folderName = dirs(k).name;
+                if contains(folderName, "Widefield")
+                    files = dir(fullfile(obj.dataRootDir, 'ProcessedData', folderName));
+                    for l = 1:length(files)
+                        fileName = files(l).name;
+                        if contains(fileName, "chiplet") && contains(fileName, '_processed_data.mat') && contains(fileName, 'fitted')
+                            filePath = fullfile(folderName, fileName);
+                            validFiles{end+1, 1} = folderName;
+                            validFiles{end, 2} = fileName;
+                            fprintf("Find valid processed data file %s (%d)\n", filePath, length(validFiles));
+                        end
+                    end
+                end
+            end
+            nValidFiles = size(validFiles, 1);
+            allEmitters = cell(nValidFiles, 1);
+            for k = 1:nValidFiles
+                filePath = fullfile(dataRootDir, 'ProcessedData', validFiles{k, 1}, validFiles{k, 2});
+                fprintf("Loading file %s, (%d/%d)\n", filePath, k, nValidFiles);
+                load(filePath, 'emitters')
+                allEmitters{k} = emitters;
+            end
+            emitters = vertcat(allEmitters{:});
+        end
         function sumResults = extractSumResults(obj, emitters)
             sumResults = struct;            
             sumResults.absPosXs = extractfield(emitters, "absPosX");
             sumResults.absPosYs = extractfield(emitters, "absPosY");
-            sumResults.brightnesses = extractfield(emitters, "brightness");
+            sumResults.maxIntensities = extractfield(emitters, "maxIntensity");
             sumResults.regions = extractfield(emitters, "region");
             sumResults.regionIdxes = NaN(1, length(sumResults.regions));
             for k = 1:4
@@ -623,7 +687,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults.sizes_pixel = extractfield(emitters, "size_pixel");
             sumResults.fittedLinewidth_THz = extractfield(emitters, "fittedLinewidth_THz");
             if ~isempty(obj.dataRootDir)
-                save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'fittedSumResults.mat'), "sumResults");
+                save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'extractedSumResults.mat'), "sumResults");
             end
         end
         
@@ -633,7 +697,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
             cmap = eval(sprintf("%s(4)", obj.cmapName));
             % plot brightness histogram
-            normBr = sumResults.brightnesses/65536;
+            normBr = sumResults.maxIntensities/65536;
             histFigH = figure;
             brHistAxH = axes(histFigH);
             brHistHs = cell(1, 4);
@@ -721,11 +785,11 @@ classdef FullChipDataAnalyzer < Modules.Driver
             emitterAxH = axes(sumFigH);
             cmap = eval(sprintf("%s(4)", obj.cmapName));
             % if strcmp(obj.colorMode, 'region')
-            scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, sumResults.regionIdxes);
+            scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.maxIntensities/1e3, sumResults.regionIdxes);
             colormap(emitterAxH, obj.cmapName);
 
             % elseif strcmp(obj.colorMode, 'frequency')
-            %     scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.brightnesses/1e3, [1:sumResults.nEmitters]);
+            %     scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.maxIntensities/1e3, [1:sumResults.nEmitters]);
             %     colormap(emitterAxH, obj.cmapName);
             % end
 
@@ -741,7 +805,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
             emitterAxH.FontSize = 16;
             linkaxes([wlAxH,emitterAxH]);
             freqAxH = axes(sumFigH);
-            scatter(freqAxH, sumResults.resonantFreqs_THz, sumResults.brightnesses/65536, 10, sumResults.regionIdxes, 'filled');
+            scatter(freqAxH, sumResults.resonantFreqs_THz, sumResults.maxIntensities/65536, 10, sumResults.regionIdxes, 'filled');
             colormap(freqAxH, obj.cmapName);
             freqAxH.Position = [0.55, 0.55, 0.35, 0.35];
             freqAxH.FontSize = 16;
