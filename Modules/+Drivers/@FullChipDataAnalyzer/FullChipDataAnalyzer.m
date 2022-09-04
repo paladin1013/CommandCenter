@@ -11,7 +11,7 @@ classdef FullChipDataAnalyzer < Modules.Driver
         ymax = Prefs.Integer(3, 'help', 'The maximum y chiplet coordinate');
         x = Prefs.Integer(0, 'help', 'The current displaying x coordinate.');
         y = Prefs.Integer(0, 'help', 'The current displaying y coordinate.');
-        mincount = Prefs.Integer(2000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
+        mincount = Prefs.Integer(3000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
         
         emitterMinSize = Prefs.Integer(3, 'unit', 'pixel', 'help', 'To filter out noise, only emitters with size large than this value will be recorded');
         freqBin_GHz = Prefs.Double(0.01, 'unit', 'GHz', 'help', 'Width of frequency binning when loading data.');
@@ -21,8 +21,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
         cmapName = Prefs.String('lines', 'help', 'Name of the colormap');
     end
     properties(Constant)
-        processMincount = 2000;
-        frameWidth = 10;
+        processMincount = 3000;
+        frameWidth = 5;
         regionMap = {'center', 'frame', 'tip', 'bulk'};
     end
 
@@ -160,10 +160,12 @@ classdef FullChipDataAnalyzer < Modules.Driver
             allFilteredImgs = [];
             allFreqs = [];
             % Find all positions whose maximum intensity exceeds mincount (record x, y, freq, maxcount)
+            maxFreqDiff = 0;
             for k = 1:nSpectrums
                 tempData = chipletData.widefieldData{k};
                 allFilteredImgs = cat(3, allFilteredImgs, tempData.filtered_imgs);
                 allFreqs = [allFreqs, tempData.freqs];
+                maxFreqDiff = max(maxFreqDiff, max(diff(tempData.freqs)));
             end
 
             [maxIntensity, maxIdx] = max(allFilteredImgs, [], 3);
@@ -176,12 +178,12 @@ classdef FullChipDataAnalyzer < Modules.Driver
             
 
             % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
-            emitterIdx = dbscan([validXs, validYs, peakFreqs*0.5e4], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 1e4 to get a closer order of magnitude with image pixels (usually 512).
+            emitterIdx = dbscan([validXs, validYs, peakFreqs*max(min(2e4, 1/maxFreqDiff), 1e4)], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 2e4 to get a closer order of magnitude with image pixels (usually 512).
           
             if exist('drawFig', 'var') && drawFig
                 fig = figure;
                 ax = axes(fig);
-                scatter3(ax, validXs, validYs, peakFreqs, (peakIntensities-Drivers.FullChipDataAnalyzer.processMincount+40)/40, emitterIdx);
+                scatter3(ax, validXs, validYs, peakFreqs, (peakIntensities-Drivers.FullChipDataAnalyzer.processMincount+500)/500, emitterIdx, 'filled');
                 colormap(ax, 'lines');
 
             end
@@ -297,13 +299,14 @@ classdef FullChipDataAnalyzer < Modules.Driver
             line2 = cornerAbsPos_yx(2:3, :);
             line3 = cornerAbsPos_yx(3:4, :);
             line4 = cornerAbsPos_yx([4, 1], :);
-            onFrame1 = getPointLineDistance(absPosX, absPosY, line1(1, 2), line1(1, 1), line1(2, 2), line1(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
-            onFrame2 = getPointLineDistance(absPosX, absPosY, line2(1, 2), line2(1, 1), line2(2, 2), line2(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
-            onFrame3 = getPointLineDistance(absPosX, absPosY, line3(1, 2), line3(1, 1), line3(2, 2), line3(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
-            onFrame4 = getPointLineDistance(absPosX, absPosY, line4(1, 2), line4(1, 1), line4(2, 2), line4(2, 1)) < Drivers.FullChipDataAnalyzer.frameWidth;
+            frameWidth = Drivers.FullChipDataAnalyzer.frameWidth;
+            onFrame1 = getPointLineDistance(absPosX, absPosY, line1(1, 2), line1(1, 1), line1(2, 2), line1(2, 1)) < frameWidth;
+            onFrame2 = getPointLineDistance(absPosX, absPosY, line2(1, 2), line2(1, 1), line2(2, 2), line2(2, 1)) < frameWidth;
+            onFrame3 = getPointLineDistance(absPosX, absPosY, line3(1, 2), line3(1, 1), line3(2, 2), line3(2, 1)) < frameWidth;
+            onFrame4 = getPointLineDistance(absPosX, absPosY, line4(1, 2), line4(1, 1), line4(2, 2), line4(2, 1)) < frameWidth;
             onFrame= onFrame1 || onFrame2 || onFrame3 || onFrame4;
-            leftTipPolygon_yx = [cornerAbsPos_yx(1:2, :); cornerAbsPos_yx([2, 1], :)-[0, 75]] + [10, 0; -10, 0; -10, 0; 10, 0];
-            rightTipPolygon_yx = [cornerAbsPos_yx([4, 3], :); cornerAbsPos_yx([3, 4], :)+[0, 75]] + [10, 0; -10, 0; -10, 0; 10, 0];
+            leftTipPolygon_yx = [cornerAbsPos_yx(1:2, :); cornerAbsPos_yx([2, 1], :)-[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
+            rightTipPolygon_yx = [cornerAbsPos_yx([4, 3], :); cornerAbsPos_yx([3, 4], :)+[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
 
             
 
@@ -686,6 +689,8 @@ classdef FullChipDataAnalyzer < Modules.Driver
             sumResults.chipletIDs = extractfield(emitters, "chipletID");
             sumResults.sizes_pixel = extractfield(emitters, "size_pixel");
             sumResults.fittedLinewidth_THz = extractfield(emitters, "fittedLinewidth_THz");
+            sumResults.fittedPeakAmplitude = extractfield(emitters, "fittedPeakAmplitude");
+            sumResults.fittedBackground = extractfield(emitters, "fittedBackground");
             if ~isempty(obj.dataRootDir)
                 save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'extractedSumResults.mat'), "sumResults");
             end

@@ -356,20 +356,67 @@ classdef ImageProcessor < Modules.Driver
             angle = angles(idx);
             obj.angle_deg = angle;
             if showPlots && nSegments >= 1
-                fig = figure(7);
-                fig.Position = [100, 100, 900, 250*(nSegments)];
-                for k = 1:nSegments
-                    s1 = subplot(nSegments, 3, 1+3*(k-1));
-                    imshow(segments{k}.image);
-                    s2 = subplot(nSegments, 3, 2+3*(k-1));
-                    imshow(imrotate(segments{k}.image, -angle, 'crop'));
+                try
+                    close(7);
                 end
-                s = subplot(nSegments, 3, 3);
-                s.Position = [0.7, 0.1, 0.25, 0.8];
-                plot(s, angles, meanVars);
-                xlim(s, [-90, 90]);
-                set(get(gca, 'XLabel'), 'String', 'Offset angle (deg)');
-                set(get(gca, 'YLabel'), 'String', 'Variance');
+                fig = figure(7);
+                if nSegments == 1
+                    fig.Position = [100, 100, 700, 500];
+                    s1 = subplot(2, 2, 1);
+                    imshow(segments{k}.image);
+                    s4 = subplot(2, 2, 4);
+                    imshow(imrotate(segments{k}.image, -angle, 'crop'));
+                    s2 = subplot(2, 2, 2);
+                    segIm = segments{k}.image;
+                    segY = size(segIm, 1);
+                    segX = size(segIm, 2);
+                    line_im = ones(obj.waveguideWidth_pixel, segX);
+                    cmap = lines(3);
+
+                    hold(s2, 'on');
+                    plot(s2, conv2(imrotate(segIm, -angle, 'crop'), line_im, 'valid'), 'Color', cmap(1, :), 'LineWidth', 2);
+                    plot(s2, conv2(imrotate(segIm, -angle+45, 'crop'), line_im, 'valid'), 'Color', cmap(2, :), 'LineWidth', 2);
+                    plot(s2, conv2(imrotate(segIm, -angle+90, 'crop'), line_im, 'valid'), 'Color', cmap(3, :), 'LineWidth', 2);
+                    s2.FontSize = 16;
+                    s2.LineWidth = 2;
+                    s2.XLabel.String = 'y';
+                    s2.YLabel.String = 'Convolution value';
+                    box(s2, 'on');
+
+                    
+                    s3 = subplot(2, 2, 3);
+                    hold(s3, 'on');
+                    
+                    plot(s3, angle, maxVar, '.', 'Color', cmap(1, :), 'MarkerSize', 30);
+                    plot(s3, angle-45, meanVars(idx-int16(45/resolution_deg)+1), '.', 'Color', cmap(2, :), 'MarkerSize', 30);
+                    plot(s3, angle-90, meanVars(idx-int16(90/resolution_deg)+1), '.', 'Color', cmap(3, :), 'MarkerSize', 30);
+                    box(s3, 'on');
+                    plot(s3, angles, meanVars, 'Color', 'k', 'LineWidth', 2);
+                    xlim(s3, [-90, 90]);
+                    s3.FontSize = 16;
+                    s3.LineWidth = 2;
+                    set(get(s3, 'XLabel'), 'String', 'Offset angle (deg)');
+                    set(get(s3, 'YLabel'), 'String', 'Variance');
+
+
+                else
+                    fig.Position = [100, 100, 900, 250*(nSegments)];
+                    for k = 1:nSegments
+                        s1 = subplot(nSegments, 3, 1+3*(k-1));
+                        imshow(segments{k}.image);
+                        s2 = subplot(nSegments, 3, 3*k);
+                        imshow(imrotate(segments{k}.image, -angle, 'crop'));
+                    end
+                    s = subplot(nSegments, 3, 2);
+                    plot(s, angles, meanVars, 'Color', 'k', 'LineWidth', 2);
+                    xlim(s, [-90, 90]);
+                    s.FontSize = 16;
+                    box(s, 'on');
+                    s.LineWidth = 2;
+                    set(get(s, 'XLabel'), 'String', 'Offset angle (deg)');
+                    set(get(s, 'YLabel'), 'String', 'Variance');
+                end
+                
             end 
             obj.angleCalibrated = true;
         end
