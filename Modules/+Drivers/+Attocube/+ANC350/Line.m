@@ -171,10 +171,22 @@ classdef Line < Modules.Driver
             if abs(val) > Drivers.Attocube.ANC350.maxSteps
                 error("Error moving ANC350: steps (%d) out of range (%d)!\n", val, Drivers.Attocube.ANC350.maxSteps);
             end
-            if val > obj.steps_moved_prev
-                obj.stepu(val-obj.steps_moved_prev);
-            elseif val < obj.steps_moved_prev
-                obj.stepd(obj.steps_moved_prev-val);
+            try
+                if val > obj.steps_moved_prev
+                    obj.stepu(val-obj.steps_moved_prev);
+                elseif val < obj.steps_moved_prev
+                    obj.stepd(obj.steps_moved_prev-val);
+                end
+            catch error
+                warning('%s\n\nError in %s (%s) (line %d)\n', ...
+                    error.message, error.stack(1).('name'), error.stack(1).('file'), ...
+                    error.stack(1).('line'));
+                obj.parent.connection.reload("Attocube");
+                if val > obj.steps_moved_prev
+                    obj.stepu(val-obj.steps_moved_prev);
+                elseif val < obj.steps_moved_prev
+                    obj.stepd(obj.steps_moved_prev-val);
+                end
             end
             obj.steps_moved_prev = val;
         end

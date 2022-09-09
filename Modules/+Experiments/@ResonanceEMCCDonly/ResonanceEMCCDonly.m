@@ -21,11 +21,12 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         wavemeter_channel = Prefs.Integer(false);
         wightlight_file = Prefs.File('filter_spec','*.mat','help','Snapped whightlight image.', 'custom_validate','validate_wl_file');
         discard_raw_data = Prefs.Boolean(false, 'help', 'Skip saving raw data to speed up experiment.');
-        skip_analysis = Prefs.Boolean(false, 'help', 'Skip the analisys program.');
+        skip_analysis = Prefs.Boolean(true, 'help', 'Skip the analisys program.');
         keep_entire_image = Prefs.Boolean(true, 'help', 'Will not trim the whitelight and EMCCD image if selected.');
         processor = Prefs.ModuleInstance(Drivers.ImageProcessor.instance, 'inherits', {'Modules.Driver'});
+        filter_image = Prefs.Boolean(false, 'help', 'Will do gaussian filtering for each frame while doing the experiment.');
         accelerate = Prefs.Boolean(true, 'help', 'Start snapping data and quiring wavemeter wavelength at the same time to accelerate experiment. May be unstable.');
-        use_powermeter = Prefs.Boolean(false, 'help', 'Will acquire laser power for each frame from PM100.');
+        use_powermeter = Prefs.Boolean(true, 'help', 'Will acquire laser power for each frame from PM100.');
         powermeter = Prefs.ModuleInstance(Drivers.PM100_remote.instance, 'inherits', {'Modules.Driver'});
 
     end
@@ -36,7 +37,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
     
     properties
         prefs = {'percents', 'tune_coarse', 'set_wavelength', 'wavemeter_override','wavemeter_channel','resLaser', 'repumpLaser', 'cameraEMCCD', 'whiteLight',...
-            'EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'ROI_automatic', 'wightlight_file', 'discard_raw_data', 'accelerate'};  % String representation of desired prefs
+            'EMCCD_binning', 'EMCCD_exposure', 'EMCCD_gain', 'ROI_automatic', 'wightlight_file', 'discard_raw_data', 'accelerate', 'use_powermeter'};  % String representation of desired prefs
         %show_prefs = {};   % Use for ordering and/or selecting which prefs to show in GUI
         %readonly_prefs = {}; % CC will leave these as disabled in GUI (if in prefs/show_prefs)
     end
@@ -129,6 +130,17 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             obj.percents = val;
         end
 
+        function test_powermeter(obj)
+            try
+                t = tic;
+                power = obj.powermeter.get_power
+                fprintf("Powermeter Test: readout %d, elapesd time %.3f\n", power, toc(t));
+            catch error
+                fprintf("Powermeter Test failed. Please check powermeter/hwserver connection.\n");
+                rethrow(error);
+            end
+
+        end
         function validate_wl_file(obj, val, ~)
             % try
                 flag = exist(val,'file');

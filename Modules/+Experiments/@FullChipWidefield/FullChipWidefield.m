@@ -27,6 +27,7 @@ classdef FullChipWidefield < Modules.Experiment
         sweepRounds = Prefs.Integer(1, 'min', 1, 'help', 'Sweep how many rounds on a single chiplet.');
         sweepStart = Prefs.Integer(1, 'min', 1, 'help', 'Start sweep from this chiplet.')
         sweepEnd = Prefs.Integer(16, 'help', 'Sweep until this chiplet. This value should be no more than (abs(rangeX)+1)*(abs(rangeY)+1)');
+        disableAlignment = Prefs.Boolean(false, 'help', 'Will disable the recognizing and alignment step and only keep the measurement');
         useScannerOrigin = Prefs.Boolean(true, 'help', 'Use the origin of FullChipScanner as the (0, 0) of the experiment. If set to false, will use the current scanner position as the origion.');
         previewChiplets = Prefs.Boolean(true, 'help', 'Will go through all chiplets to make sure `FullChipScanner` is functioning well.');
         previewDone = Prefs.Boolean(false, 'help', 'Finished previewing chiplet.')
@@ -95,6 +96,16 @@ classdef FullChipWidefield < Modules.Experiment
                 end 
             end
 
+            if ~obj.experiment.use_powermeter
+                resp = questdlg('Are you sure not to read powermeter data?');
+                if ~strcmp(resp, "Yes")
+                    error("Please set `use_powermeter` in `ResonanceEMCCDonly` to true.")
+                end 
+            end
+
+            if obj.experiment.use_powermeter
+                obj.experiment.test_powermeter;
+            end
 
             if obj.experiment.wavemeter_override
                 try
