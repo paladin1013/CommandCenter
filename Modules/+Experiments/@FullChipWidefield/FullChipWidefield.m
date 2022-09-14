@@ -180,6 +180,12 @@ classdef FullChipWidefield < Modules.Experiment
                         else % Is already at the correct position: still need to align chiplet with laser
                             obj.scanner.x_pos = nextX;
                         end
+                        if k ~= chipletStart && obj.scanner.x_pos == coordsX(k-1) && obj.scanner.y_pos == coordsY(k-1) 
+                            obj.abort_request = true;
+                            error("Chiplet Scanner did not move. Abort.");
+                        end
+
+
                         coordX = nextX;
                         coordY = nextY;
                         dirName = fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3)));
@@ -207,6 +213,10 @@ classdef FullChipWidefield < Modules.Experiment
                         obj.scanner.x_pos = nextX;
                     else
                         obj.scanner.y_pos = nextY;
+                    end
+                    if k ~= chipletEnd && obj.scanner.x_pos == coordsX(k+1) && obj.scanner.y_pos == coordsY(k+1) 
+                        obj.abort_request = true;
+                        error("Chiplet Scanner did not move. Abort.");
                     end
                     mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
                     wl_img = obj.camera.snapImage;
@@ -255,6 +265,10 @@ classdef FullChipWidefield < Modules.Experiment
                     else
                         obj.scanner.y_pos = nextY;
                     end
+                    if k ~= chipletStart && obj.scanner.x_pos == coordsX(k-1) && obj.scanner.y_pos == coordsY(k-1) 
+                        obj.abort_request = true;
+                        error("Chiplet Scanner did not move. Abort.");
+                    end
                     assert(~obj.abort_request, 'User aborted.');
                     mkdir(fullfile(obj.autosave.exp_dir, sprintf("Full_chip_widefield_data_%d_%d", c(2), c(3))));
                     wl_img = obj.camera.snapImage;
@@ -291,7 +305,7 @@ classdef FullChipWidefield < Modules.Experiment
                     end
                 end
             end
-            obj.previewDone = true;
+            obj.previewDone = false;
         end
         
         function runExperiment(obj,managers,experiment,ax)

@@ -54,6 +54,7 @@ classdef ImageProcessor < Modules.Driver
         end
         function setTemplate(obj, inputImage, waitUI)
             prevMatchTemplate = obj.enableTemplateMatching;
+            obj.template = [];
             obj.enableTemplateMatching = false;
             [displayImage, segments] = obj.filterImage(inputImage, struct('pixelThresRatio', 1)); % Only keep the largest component
             obj.getAngle(segments, true);

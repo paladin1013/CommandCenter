@@ -91,7 +91,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
             end
             meta.percents = obj.percents;
             
-            if obj.discard_raw_data % Skip uploading image data in order to save time 
+            if obj.discard_raw_data || ~obj.filter_image % Skip uploading image data in order to save time 
                 dat.data = [];
             else
                 dat.data = objdata;

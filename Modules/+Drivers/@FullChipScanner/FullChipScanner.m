@@ -107,11 +107,20 @@ classdef FullChipScanner < Modules.Driver
                 if obj.user_abort
                     break
                 end
-                for k = 1:round(abs(stage_steps(line))/2)
+                if line == 3
+                    nSteps = round(abs(stage_steps(line)));
+                else
+                    nSteps = round(abs(stage_steps(line))/2);
+                end
+                for k = 1:nSteps
                     if obj.user_abort
                         break
                     end
-                    obj.stage.lines(line).steps_moved = obj.stage.lines(line).steps_moved + sign(stage_steps(line))*2;
+                    if line == 3
+                        obj.stage.lines(line).steps_moved = obj.stage.lines(line).steps_moved + sign(stage_steps(line));
+                    else
+                        obj.stage.lines(line).steps_moved = obj.stage.lines(line).steps_moved + sign(stage_steps(line))*2;
+                    end
                     obj.tracker.snap;
                     pause(obj.step_delay_s);
                 end
@@ -208,9 +217,14 @@ classdef FullChipScanner < Modules.Driver
             end
             new_position = obj.stage.get_coordinate_um(5);
             new_steps_moved = obj.stage.get_steps_moved;
+            persistent forward_done;
+            if ~exist('forward_done', 'var') || isempty(forward_done)
+                forward_done = false;
+            end
             if val
                 fprintf("x movement calibration started. Please move the stage until the center of the next chiplet is aligned with the laser center, then press this button again.\n");
                 fprintf("Initial stage steps_moved: (%d, %d, %d)\n", new_steps_moved(1), new_steps_moved(2), new_steps_moved(3));
+                forward_done = false;
             else
                 fprintf("x movement calibration ended. Final stage steps_moved: (%d, %d, %d)\n", new_steps_moved(1), new_steps_moved(2), new_steps_moved(3));
                 movement_um = new_position-prev_position;

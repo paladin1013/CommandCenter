@@ -130,9 +130,18 @@ function run( obj,status,managers,ax )
             pause(1);
         end
         if obj.wavemeter_override
-            
+            try
             %obj.wavemeter = Drivers.Wavemeter.instance('qplab-hwserver.mit.edu', obj.wavemeter_channel, false);
-            freqs(i) = obj.wavemeter.getFrequency;
+                freqs(i) = obj.wavemeter.getFrequency;
+            catch
+                fprintf("Error fetching frequency from wavemeter. Try again.\n");
+                try
+                    freqs(i) = obj.wavemeter.getFrequency;
+                catch
+                    fprintf("Error fetching frequency from wavemeter. Save NaN instead.\n");
+                    freqs(i) = NaN;
+                end
+            end
         else
             freqs(i) = obj.resLaser.getFrequency;
         end
@@ -179,7 +188,7 @@ function run( obj,status,managers,ax )
     if obj.filter_image
         filtered_imgs = uint16(filtered_imgs);
     end
-    obj.processed_data = struct('freqs', freqs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
+    obj.processed_data = struct('freqs', freqs, 'EMCCD_imgs', EMCCD_imgs, 'filtered_imgs', filtered_imgs, 'wl_img', wl_img, 'poly_pos', poly_pos, 'full_wl_img', obj.wl_img);
     if obj.use_powermeter
         obj.processed_data.power_uW = power_uW;
     end
