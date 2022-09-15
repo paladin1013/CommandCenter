@@ -27,8 +27,7 @@ classdef ResonanceEMCCDonly < Modules.Experiment
         filter_image = Prefs.Boolean(false, 'help', 'Will do gaussian filtering for each frame while doing the experiment.');
         accelerate = Prefs.Boolean(true, 'help', 'Start snapping data and quiring wavemeter wavelength at the same time to accelerate experiment. May be unstable.');
         use_powermeter = Prefs.Boolean(true, 'help', 'Will acquire laser power for each frame from PM100.');
-        powermeter = Prefs.ModuleInstance(Drivers.PM100_remote.instance, 'inherits', {'Modules.Driver'});
-
+        powermeter = Drivers.PM100_remote.instance;
     end
     
     properties(Constant)

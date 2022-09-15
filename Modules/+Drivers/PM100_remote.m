@@ -1,11 +1,11 @@
 classdef PM100_remote < Modules.Driver
 
     properties (SetObservable, GetObservable)
-        power = Prefs.Double(NaN, 'get', 'get_power', 'unit', 'mW');
+        power = Prefs.Double(NaN, 'get', 'get_power', 'unit', 'mW', 'readonly', true);
         matlab_host = Prefs.String('No Server', 'set', 'set_host', 'help', 'IP/hostname of computer with hwserver for PM100');
     end
     properties
-        prefs = {'intensity', 'matlab_host'};
+        prefs = {'matlab_host'};
         hwserver; % Handle for target hwserver
     end
     properties (Constant)
@@ -65,6 +65,7 @@ classdef PM100_remote < Modules.Driver
                 try
                     results = obj.send_commands(["pm = Drivers.PM100.instance;", "pm.get_power;"]);
                     val = double(obj.parse_response(results, 2));
+                    obj.power = val;
                 catch err
                 end
                 if ~isempty(err)
