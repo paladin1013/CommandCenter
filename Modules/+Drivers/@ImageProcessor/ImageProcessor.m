@@ -199,7 +199,7 @@ classdef ImageProcessor < Modules.Driver
             closedImage = imclose(openedImage, strel('disk',diskRadius));
 
             % Select valid segments
-            [selectedImage, segments] = obj.selectSegments(closedImage);
+            [selectedImage, segments] = obj.selectSegments(closedImage, pixelThresRatio);
 
             for k = 1:length(segments)
                 segIm = segments{k}.image;

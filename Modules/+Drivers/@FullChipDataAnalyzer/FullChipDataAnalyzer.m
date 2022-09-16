@@ -21,9 +21,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
         cmapName = Prefs.String('lines', 'help', 'Name of the colormap');
     end
     properties(Constant)
-        processMincount = 3000;
+        processMincount = 5000;
         frameWidth = 5;
-        regionMap = {'center', 'frame', 'tip', 'bulk'};
+        regionMap = {'center', 'frame', 'tip', 'bulk', 'out'};
     end
 
     properties
