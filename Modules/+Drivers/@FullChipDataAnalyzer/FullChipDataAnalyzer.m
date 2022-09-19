@@ -1,33 +1,28 @@
-classdef FullChipDataAnalyzer < Modules.Driver
-    properties(SetObservable, GetObservable)
-        srcDir = Prefs.String("", 'help', 'Source directory.');
-        dstDir = Prefs.String("", 'help', 'Destination directory. Will save processed data under this directory');
-        dataRootDir = Prefs.String("", 'help', 'Root directory of all experiment data. Will be used in `processAllExperiments');
-        append = Prefs.Boolean(false, 'help', 'Append to the current data when loading new data.');
-        loadData = Prefs.Button('set', 'set_loadData', 'help', 'Load data from workind directory to Matlab.');
-        xmin = Prefs.Integer(0, 'help', 'The minimum x chiplet coordinate');
-        xmax = Prefs.Integer(3, 'help', 'The maximum x chiplet coordinate');
-        ymin = Prefs.Integer(0, 'help', 'The minimum y chiplet coordinate');
-        ymax = Prefs.Integer(3, 'help', 'The maximum y chiplet coordinate');
-        x = Prefs.Integer(0, 'help', 'The current displaying x coordinate.');
-        y = Prefs.Integer(0, 'help', 'The current displaying y coordinate.');
-        mincount = Prefs.Integer(3000, 'help', 'Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.');
+classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
+    properties
+        srcDir = ""; % Source directory.
+        dstDir = ""; % Destination directory. Will save processed data under this directory
+        dataRootDir = ""; % Root directory of all experiment data. Will be used in `processAllExperiments
+        append = false; % Append to the current data when loading new data.
+        xmin = 0; % The minimum x chiplet coordinate
+        xmax = 3; % The maximum x chiplet coordinate
+        ymin = 0; % The minimum y chiplet coordinate
+        ymax = 3; % The maximum y chiplet coordinate
+        x = 0; % The current displaying x coordinate.
+        y = 0; % The current displaying y coordinate.
+        mincount = 3000; % Minimum display thresold of EMCCD image count. Emitters with intensity larger than this value will be shown in plots.
         
-        emitterMinSize = Prefs.Integer(3, 'unit', 'pixel', 'help', 'To filter out noise, only emitters with size large than this value will be recorded');
-        freqBin_GHz = Prefs.Double(0.01, 'unit', 'GHz', 'help', 'Width of frequency binning when loading data.');
-        countSelection = Prefs.MultipleChoice('average', 'choices', {'average', 'max', 'average of top 50%'}, 'help', 'Method to select the value for frequencybin');
-        draw = Prefs.Button('set', 'set_draw', 'help', 'Update figure of the current coordinate.');
-        colorMode = Prefs.MultipleChoice('frequency', 'choices', {'frequency', 'region'}, 'help', 'The way to assign emitter color when drawing widefield results.');
-        cmapName = Prefs.String('lines', 'help', 'Name of the colormap');
+        emitterMinSize = 3; % To filter out noise, only emitters with size large than this value will be recorded
+        freqBin_GHz = 0.01; % Width of frequency binning when loading data.
+        cmapName = 'lines'; % Name of the colormap
     end
     properties(Constant)
-        processMincount = 5000;
+        processMincount = 10000;
         frameWidth = 5;
         regionMap = {'center', 'frame', 'tip', 'bulk', 'out'};
     end
 
     properties
-        prefs = {'srcDir', 'dstDir', 'append', 'loadData', 'xmin', 'xmax', 'ymin', 'ymax', 'x', 'y', 'mincount', 'draw', 'cmapName'};
         data;
         chipletData;
         idxTable;
@@ -67,6 +62,28 @@ classdef FullChipDataAnalyzer < Modules.Driver
     end
     methods(Static)
         % Methods have to be static to process in parallel
+        function chipletData = loadChipletData(path)
+            lastSlashPos = find(path=='\', 1, 'last');
+            if isempty(lastSlashPos)
+                lastSlashPos = find(path=='/', 1, 'last');
+            end
+            dotPos = find(path=='.', 1, 'last');
+            fileName = extractBetween(path, lastSlashPos+1, dotPos-1);
+            fileName = fileName{1};
+            
+            [tokens,matches] = regexp(fileName,'[cC]hiplet_?(\d+)(.*)','tokens','match'); 
+            chipletData = load(path);
+            if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
+                chipletData.chipletIdx = str2num(tokens{1}{2});
+                [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
+                chipletID = str2num(subTokens{1}{3});
+                chipletData.chipletID = chipletID; 
+            else
+                chipletData.chipletIdx = NaN;
+                chipletData.chipletID = NaN;
+                fprintf("chipletID and chipletIdx is not assigned. Please consider to format the data file similar with `chiplet1_x0_y0_ID16`.\n");
+            end 
+        end
         obj = instance()
         function emitters  = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
             nEmitters = length(emitters);
@@ -324,17 +341,12 @@ classdef FullChipDataAnalyzer < Modules.Driver
 
     methods(Access=private)
         function obj = FullChipDataAnalyzer()
-            try
-                obj.loadPrefs;
-            catch
-                warning("Error loading prefs");
-            end
             obj.initialized = true;
         end
     end
 
     methods
-
+        
         function processAllExperiments(obj, dataRootDir)
             if ~exist('dataRootDir', 'var')
                 dataRootDir = obj.dataRootDir;
@@ -789,14 +801,9 @@ classdef FullChipDataAnalyzer < Modules.Driver
             colormap(wlAxH, 'bone');
             emitterAxH = axes(sumFigH);
             cmap = eval(sprintf("%s(4)", obj.cmapName));
-            % if strcmp(obj.colorMode, 'region')
             scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.maxIntensities/1e3, sumResults.regionIdxes);
             colormap(emitterAxH, obj.cmapName);
 
-            % elseif strcmp(obj.colorMode, 'frequency')
-            %     scatter(emitterAxH, sumResults.absPosXs, sumResults.absPosYs, sumResults.maxIntensities/1e3, [1:sumResults.nEmitters]);
-            %     colormap(emitterAxH, obj.cmapName);
-            % end
 
             wlAxH.YDir = 'normal';
             wlAxH.YLim = [0.5, 512.5];
@@ -1222,20 +1229,6 @@ classdef FullChipDataAnalyzer < Modules.Driver
             set(obj.figH, 'position', [100, 100, 1600, 800])
             fprintf("time5: %f\n", toc(t));
 
-        end
-        function val = set_draw(obj, val, ~)
-
-            if ~obj.initialized
-                return;
-            end
-            obj.updateFig;
-        end
-        function val = set_loadData(obj, val, ~)
-
-            if ~obj.initialized
-                return;
-            end
-            obj.updateData;
         end
         function drawAll(obj)
             if isempty(obj.allFigH) || ~isvalid(obj.allFigH)
