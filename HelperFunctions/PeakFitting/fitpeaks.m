@@ -106,7 +106,7 @@ p.FitType = lower(p.FitType);
 limits.amplitudes = p.Amplitude;
 limits.widths = p.Width;
 limits.locations = p.Location;
-limits.background = [0 max(y)];
+limits.background = [min(y), max(y)];
 % Setup noise model if string specified
 if ~isa(p.NoiseModel,'function_handle')
     switch lower(p.NoiseModel)
