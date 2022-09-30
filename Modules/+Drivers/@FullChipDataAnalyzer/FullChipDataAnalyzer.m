@@ -406,11 +406,80 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 batchEmitters = Drivers.FullChipDataAnalyzer.fitPeaks(batchedEmitters{k}, false, k);
                 allEmitters{k} = batchEmitters;
             end
-            emitters = cell2mat(vertcat(allEmitters{:}));
+            emitters = vertcat(allEmitters{:})';
         end
     end
-    
-    
+    methods
+        function emitters = processAllExperiments(obj)
+            if isempty(obj.dataRootDir)
+                error("obj.dataRootDir is empty. Please assign the data directory.");
+            end
+            assert(isfolder(fullfile(obj.dataRootDir, 'CleanedData')), '`obj.dataRootDir` should contain folder `CleanedData`');
+            dirs = dir(fullfile(obj.dataRootDir, 'CleanedData'));
+            if ~isfolder(fullfile(obj.dataRootDir, 'ProcessedData'))
+                mkdir(fullfile(obj.dataRootDir, 'ProcessedData'));
+            end
+            sumDir = fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData');
+            if ~isfolder(sumDir)
+                mkdir(sumDir);
+            end
+            folders = dir(fullfile(obj.dataRootDir, 'CleanedData'));
+            validFiles = cell(0, 2);
+            allExperimentEmitters = cell(length(folders), 1);
+            for k = 1:length(folders)
+                folder = folders(k);
+                srcDir = fullfile(obj.dataRootDir, 'CleanedData', folder.name);
+                dstDir = fullfile(obj.dataRootDir, 'ProcessedData', folder.name);
+                if isfolder(srcDir) && ~contains(folder.name, '.')
+                    if ~isfolder(dstDir)
+                        mkdir(dstDir);
+                    end
+                    files = dir(srcDir);
+
+                    % Process single experiment (multiple chiplets)
+                    nValid = 0;
+                    validFileNames = {};
+                    for l = 1:length(files)
+                        file = files(l);
+                        % fprintf('Checking file %s (%d/%d)\n', file.name, l, length(files));
+                        [tokens,matches] = regexp(file.name,'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                        if ~isempty(tokens)
+                            nValid = nValid + 1;
+                            fprintf("Find widefield data file '%s'\n", file.name);
+                            validFileNames{end+1} = file.name;
+                            if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
+                                [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
+                                chipletCoordX = str2num(subTokens{1}{1});
+                                chipletCoordY = str2num(subTokens{1}{2});
+                                load(fullfile(srcDir, file.name), 'coordX', 'coordY');
+                                assert(chipletCoordX == coordX && chipletCoordY == coordY, 'Chiplet coordinate inside data does not match with the file name.');
+                            end
+                        end
+                    end
+
+                    allEmitters = cell(nValid, 1);
+
+                    for l = 1:nValid
+                        % Parallel can be used if more data is required (though more memory might be required)
+                        [tokens,matches] = regexp(validFileNames{l},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                        idx = str2num(tokens{1}{1});
+                        fprintf("Loading file '%s' (%d/%d), idx: %d.\n", validFileNames{l}, l, nValid, idx);
+                        chipletData = Drivers.FullChipDataAnalyzer.loadChipletData(fullfile(srcDir, validFileNames{l}));
+                        fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", validFileNames{l}, l, nValid, idx);
+                        emitters = Drivers.FullChipDataAnalyzer.processChiplet(chipletData, false);
+                        allEmitters{l} = emitters;
+                        save(fullfile(dstDir, sprintf("chiplet%d_emitters.mat", idx)), "emitters");
+                    end
+                    emitters = horzcat(allEmitters{:});
+                    allExperimentEmitters{k} = emitters;
+                    save(fullfile(dstDir, "processed_emitters_data.mat"), "emitters");
+                    copyfile(fullfile(dstDir, "processed_emitters_data.mat"), fullfile(sumDir, sprintf("%s.mat", folder.name)));
+                end
+            end
+            emitters = horzcat(allExperimentEmitters{:});
+            save(fullfile(sumDir, "all_emitters_data.mat"), emitters);
+        end
+    end
 end
 
 
