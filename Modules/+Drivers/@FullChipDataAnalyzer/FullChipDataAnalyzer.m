@@ -12,6 +12,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         gdsImg;
         wlImg;
         reshapedGdsImg;
+        reshapedWlImg;
     end
     properties(Constant)
         processMincount = 12000;
@@ -475,24 +476,39 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             rotationAngle = ((atan(wlLine1_yx(1)/wlLine1_yx(2))+atan(wlLine2_yx(1)/wlLine2_yx(2))+atan(wlLine3_yx(1)/wlLine3_yx(2))+atan(wlLine4_yx(1)/wlLine4_yx(2)))-(atan(gdsLine1_yx(1)/gdsLine1_yx(2))+atan(gdsLine2_yx(1)/gdsLine2_yx(2))+atan(gdsLine3_yx(1)/gdsLine3_yx(2))+atan(gdsLine4_yx(1)/gdsLine4_yx(2))))/4;
 
 
-            obj.reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
-            obj.reshapedGdsImg = imrotate(obj.reshapedGdsImg, rotationAngle/pi*180);
+            % obj.reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
+            obj.reshapedWlImg = imresize(obj.wlImg, size(obj.wlImg)./[verticalRatio, horizontalRatio]);
+            obj.reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180);
 
             reshapedGdsImg = obj.reshapedGdsImg;
-            save(fullfile(obj.dataRootDir, "CleanedData", "reshapedGdsImg.mat"), 'reshapedGdsImg');
-            normedWlImg = obj.wlImg - mean(obj.wlImg, 'all');
-            convResult = conv2(normedWlImg, reshapedGdsImg, 'valid');
+            reshapedWlImg = obj.reshapedWlImg;
+            save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
+            normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
+
+            coarseRatio = 10;
+            fineRange = 50;
+            coarseConvResult = conv2(imresize(normedWlImg, size(normedWlImg)/coarseRatio), imresize(reshapedGdsImg, size(reshapedGdsImg)/coarseRatio), 'valid');
+            [maxCorr,idx] = max(coarseConvResult(:));
+            [posY, posX] = ind2sub(size(coarseConvResult),idx);
+            xmin = max(1, posX*coarseRatio-fineRange);
+            xmax = min(posX*coarseRatio+fineRange+size(reshapedGdsImg, 2), size(normedWlImg, 2));
+            ymin = max(1, posY*coarseRatio-fineRange);
+            ymax = min(posY*coarseRatio+fineRange+size(reshapedGdsImg, 1), size(normedWlImg, 1));
+
+            convResult = conv2(normedWlImg(ymin:ymax, xmin:xmax), reshapedGdsImg, 'valid');
+
             convFig = figure(41);
             convFig.Position = [900 50 560 420];
             convAx = axes(convFig);
+            hold(convAx, 'off');
             imagesc(convAx, convResult);
             [maxCorr,idx] = max(convResult(:));
             [posY, posX] = ind2sub(size(convResult),idx);
             gdsSize = size(reshapedGdsImg);
-            gdsRef = imref2d(gdsSize, posX + [0, gdsSize(2)], posY+[0, gdsSize(1)]);
-            wlRef = imref2d(size(obj.wlImg));
+            gdsRef = imref2d(gdsSize, xmin+posX + [0, gdsSize(2)], ymin+posY+[0, gdsSize(1)]);
+            wlRef = imref2d(size(reshapedWlImg));
             fusedFig = figure(42);
-            imshow(imfuse(obj.wlImg, wlRef, reshapedGdsImg, gdsRef));
+            imshow(imfuse(reshapedWlImg, wlRef, reshapedGdsImg, gdsRef));
             fusedFig.Position = [250 1 640 540];
             obj.gdsPosition = struct('verticalRatio', verticalRatio, 'horizontalRatio', horizontalRatio, 'rotationAngle', rotationAngle, 'posX', posX, 'posY', posY);
         end
