@@ -5,6 +5,13 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         cmapName = 'lines'; % Name of the colormap
         gdsCorners = [];
         wlCorners = [];
+        listeners = {};
+        wlPolyH;
+        gdsPolyH;
+        gdsPosition = [];
+        gdsImg;
+        wlImg;
+        reshapedGdsImg;
     end
     properties(Constant)
         processMincount = 12000;
@@ -366,8 +373,8 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
     end
     methods
         function obj = FullChipDataAnalyzer()
-            obj.gdsCorners = fetchPrefData('gdsCorners');
-            obj.wlCorners = fetchPrefData('wlCorners');
+            obj.gdsCorners = obj.fetchPrefData('gdsCorners');
+            obj.wlCorners = obj.fetchPrefData('wlCorners');
         end
         function savePrefData(obj, name, data)
             if ~exist('data', 'var')
@@ -383,8 +390,19 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 warning(sprintf("obj.%s is not properly saved in matlab prefs."), name);
             end
         end
-        function gdsImg = reshapeGds(obj, gdsImg, wlImg)
+
+        function matchGds(obj)
+            gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
+            gdsImg = (gdsImg>0);
+            obj.gdsImg = gdsImg;
+            wlImg = load(fullfile(obj.dataRootDir, "CleanedData", "wl_sample.mat"));
+            if isfield(wlImg, 'wlImg')
+                wlImg = wlImg.wlImg;
+            end
+            wlImg = rot90(wlImg, 2);
+            obj.wlImg = wlImg;
             wlFig = figure;
+            wlFig.Position = [300 600 560 420];
             wlAx = axes(wlFig);
             wlImH = imagesc(wlAx, wlImg);
             colormap(wlAx, 'gray');
@@ -392,22 +410,19 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             wlYmax = size(wlImg, 1);
             hold(wlAx, 'on');
             if ~isempty(obj.wlCorners)
-                wlPolyH = drawpolygon(wlAx, 'Position', obj.wlCorners);
+                obj.wlPolyH = drawpolygon(wlAx, 'Position', obj.wlCorners);
             else
-                wlPolyH = drawpolygon(wlAx, 'Position', [1, 1; 1, wlYmax; wlXmax, wlYmax; wlXmax, 1]);
+                obj.wlPolyH = drawpolygon(wlAx, 'Position', [1, 1; 1, wlYmax; wlXmax, wlYmax; wlXmax, 1]);
             end
             set(get(wlAx, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
-            wlImH.ButtonDownFcn = @ROIConfirm;
-            wlFig.KeyPressFcn = @ROIConfirm;
-            uiwait(wlFig);
-            wlCorners_yx = wlPolyH.Position;
-            obj.wlCorners = wlCorners_yx;
-            wlLine1_yx = wlCorners_yx(1,:) - wlCorners_yx(2,:);
-            wlLine2_yx = wlCorners_yx(2,:) - wlCorners_yx(3,:);
-            wlLine3_yx = wlCorners_yx(3,:) - wlCorners_yx(4,:);
-            wlLine4_yx = wlCorners_yx(4,:) - wlCorners_yx(1,:);
+            % wlImH.ButtonDownFcn = @ROIConfirm;
+            % wlFig.KeyPressFcn = @ROIConfirm;
+            % uiwait(wlFig);
+            obj.listeners{1} = addlistener(obj.wlPolyH, 'ROIMoved', @obj.updateMatching);
+
 
             gdsFig = figure;
+            gdsFig.Position = [900 600 560 420];
             gdsAx = axes(gdsFig);
             gdsImH = imagesc(gdsAx, gdsImg);
             colormap(gdsAx, 'gray');
@@ -415,15 +430,35 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             gdsYmax = size(gdsImg, 1);
             hold(gdsAx, 'on');
             if ~isempty(obj.gdsCorners)
-                gdsPolyH = drawpolygon(gdsAx, 'Position', obj.gdsCorners);
+                obj.gdsPolyH = drawpolygon(gdsAx, 'Position', obj.gdsCorners);
             else
-                gdsPolyH = drawpolygon(gdsAx, 'Position', [1, 1; 1, gdsYmax; gdsXmax, gdsYmax; gdsXmax, 1]);
+                obj.gdsPolyH = drawpolygon(gdsAx, 'Position', [1, 1; 1, gdsYmax; gdsXmax, gdsYmax; gdsXmax, 1]);
             end
             set(get(gdsAx, 'Title'), 'String', sprintf('Press enter or right click the outside image to confirm template corners.'));
+            obj.listeners{2} = addlistener(obj.gdsPolyH, 'ROIMoved', @obj.updateMatching);
+            obj.updateMatching;
             gdsImH.ButtonDownFcn = @ROIConfirm;
             gdsFig.KeyPressFcn = @ROIConfirm;
             uiwait(gdsFig);
-            gdsCorners_yx = gdsPolyH.Position;
+
+
+
+            % gds * ratio = wl
+            
+
+            
+
+        end
+
+        function updateMatching(obj, varargin)
+            wlCorners_yx = obj.wlPolyH.Position;
+            obj.wlCorners = wlCorners_yx;
+            wlLine1_yx = wlCorners_yx(1,:) - wlCorners_yx(2,:);
+            wlLine2_yx = wlCorners_yx(2,:) - wlCorners_yx(3,:);
+            wlLine3_yx = wlCorners_yx(3,:) - wlCorners_yx(4,:);
+            wlLine4_yx = wlCorners_yx(4,:) - wlCorners_yx(1,:);
+
+            gdsCorners_yx = obj.gdsPolyH.Position;
             obj.gdsCorners = gdsCorners_yx;
             gdsLine1_yx = gdsCorners_yx(1, :) - gdsCorners_yx(2, :);
             gdsLine2_yx = gdsCorners_yx(2, :) - gdsCorners_yx(3, :);
@@ -432,41 +467,34 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
 
             obj.savePrefData('gdsCorners', obj.gdsCorners);
             obj.savePrefData('wlCorners', obj.wlCorners);
-            % gds * ratio = wl
+
             verticalRatio = (norm(wlLine1_yx)+norm(wlLine3_yx))/(norm(gdsLine1_yx)+norm(gdsLine3_yx));
             horizontalRatio = (norm(wlLine2_yx)+norm(wlLine4_yx))/(norm(gdsLine2_yx)+norm(gdsLine4_yx));
             
             % rotate(gds, angle) -> wl
             rotationAngle = ((atan(wlLine1_yx(1)/wlLine1_yx(2))+atan(wlLine2_yx(1)/wlLine2_yx(2))+atan(wlLine3_yx(1)/wlLine3_yx(2))+atan(wlLine4_yx(1)/wlLine4_yx(2)))-(atan(gdsLine1_yx(1)/gdsLine1_yx(2))+atan(gdsLine2_yx(1)/gdsLine2_yx(2))+atan(gdsLine3_yx(1)/gdsLine3_yx(2))+atan(gdsLine4_yx(1)/gdsLine4_yx(2))))/4;
 
-            gdsImg = imresize(gdsImg, size(gdsImg).*[verticalRatio, horizontalRatio]);
-            gdsImg = imrotate(gdsImg, rotationAngle/pi*180);
-            
-            
-        end
 
-        function [posY, posX] = matchGds(obj)
-            gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
-            gdsImg = (gdsImg>0);
-            wlImg = load(fullfile(obj.dataRootDir, "CleanedData", "wl_sample.mat"));
-            if isfield(wlImg, 'wlImg')
-                wlImg = wlImg.wlImg;
-            end
-            wlImg = rot90(wlImg, 2);
-            gdsImg = obj.reshapeGds(gdsImg, wlImg);
-            save(fullfile(obj.dataRootDir, "CleanedData", "reshaped_mask.mat"), "gdsImg");
-            normedWlImg = wlImg - mean(wlImg, 'all');
-            convResult = conv2(normedWlImg, gdsImg, 'valid');
-            convFig = figure;
+            obj.reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
+            obj.reshapedGdsImg = imrotate(obj.reshapedGdsImg, rotationAngle/pi*180);
+
+            reshapedGdsImg = obj.reshapedGdsImg;
+            save(fullfile(obj.dataRootDir, "CleanedData", "reshapedGdsImg.mat"), 'reshapedGdsImg');
+            normedWlImg = obj.wlImg - mean(obj.wlImg, 'all');
+            convResult = conv2(normedWlImg, reshapedGdsImg, 'valid');
+            convFig = figure(41);
+            convFig.Position = [900 50 560 420];
             convAx = axes(convFig);
             imagesc(convAx, convResult);
             [maxCorr,idx] = max(convResult(:));
             [posY, posX] = ind2sub(size(convResult),idx);
-            gdsSize = size(gdsImg);
+            gdsSize = size(reshapedGdsImg);
             gdsRef = imref2d(gdsSize, posX + [0, gdsSize(2)], posY+[0, gdsSize(1)]);
-            wlRef = imref2d(size(wlImg));
-            fusedFig = figure;
-            imshow(imfuse(wlImg, wlRef, gdsImg, gdsRef));
+            wlRef = imref2d(size(obj.wlImg));
+            fusedFig = figure(42);
+            imshow(imfuse(obj.wlImg, wlRef, reshapedGdsImg, gdsRef));
+            fusedFig.Position = [250 1 640 540];
+            obj.gdsPosition = struct('verticalRatio', verticalRatio, 'horizontalRatio', horizontalRatio, 'rotationAngle', rotationAngle, 'posX', posX, 'posY', posY);
         end
         function emitters = processAllExperiments(obj)
             if isempty(obj.dataRootDir)
