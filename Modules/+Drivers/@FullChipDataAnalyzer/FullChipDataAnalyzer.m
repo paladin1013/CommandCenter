@@ -442,13 +442,6 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             gdsFig.KeyPressFcn = @ROIConfirm;
             uiwait(gdsFig);
 
-
-
-            % gds * ratio = wl
-            
-
-            
-
         end
 
         function updateMatching(obj, varargin)
@@ -512,6 +505,100 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             fusedFig.Position = [250 1 640 540];
             obj.gdsPosition = struct('verticalRatio', verticalRatio, 'horizontalRatio', horizontalRatio, 'rotationAngle', rotationAngle, 'posX', posX, 'posY', posY);
         end
+        function [allFolders, allFileNames] = getAllDataFiles(obj)
+            allFolders = {};
+            allFileNames = {};
+            folders = dir(fullfile(obj.dataRootDir, 'CleanedData'));
+            for k = 1:length(folders)
+                startNum = length(allFolders);
+                folder = folders(k);
+                srcDir = fullfile(obj.dataRootDir, 'CleanedData', folder.name);
+                if isfolder(srcDir) && ~contains(folder.name, '.')
+                    files = dir(srcDir);
+                    tempIdxes = [];
+                    fprintf("Scanning srcDir: '%s'\n", srcDir);
+                    nValid = 0;
+                    for l = 1:length(files)
+                        file = files(l);
+                        % fprintf('Checking file %s (%d/%d)\n', file.name, l, length(files));
+                        [tokens,matches] = regexp(file.name,'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                        if ~isempty(tokens)
+                            nValid = nValid + 1;
+                            idx = str2num(tokens{1}{1});
+                            fprintf("Find widefield data file '%s'\n", file.name);
+                            allFolders{end+1} = folder.name;
+                            allFileNames{end+1} = file.name;
+                            tempIdxes(end+1) =  idx;
+                            if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
+                                [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
+                                chipletCoordX = str2num(subTokens{1}{1});
+                                chipletCoordY = str2num(subTokens{1}{2});
+                                load(fullfile(srcDir, file.name), 'coordX', 'coordY');
+                                assert(chipletCoordX == coordX && chipletCoordY == coordY, 'Chiplet coordinate inside data does not match with the file name.');
+                            end
+                        end
+                    end
+                    [sortedIdx, sequence] = sort(tempIdxes, 'ascend');
+                    endNum = length(allFolders);
+                    allFileNames(startNum+1:endNum) = allFileNames(startNum+sequence);
+                end
+            end
+        end
+        function sortWlImgs(obj)
+
+        end
+        
+        function gdsMatchAll(obj, plotFig)
+            
+            [allFolders, allFileNames] = obj.getAllDataFiles;
+            for k = 1:length(allFolders)
+                srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
+                dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
+
+                [tokens,matches] = regexp(allFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                idx = str2num(tokens{1}{1});
+                fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
+                load(fullfile(srcDir, allFileNames{k}), 'wl_img');
+                wl_img = rot90(wl_img, 2);
+                reshapedWlImg = imresize(wl_img, size(wl_img)./[obj.gdsPosition.verticalRatio, obj.gdsPosition.horizontalRatio]);
+                if isempty(obj.reshapedGdsImg)
+                    if isempty(obj.gdsImg)
+                        load(fullfile(obj.dataRootDir, 'CleanedData', 'reshapedGdsImg.mat'), 'reshapedGdsImg');
+                    else
+                        reshapedGdsImg = imrotate(obj.gdsImg, obj.gdsPosition.rotationAngle/pi*180);
+                    end
+                    obj.reshapedGdsImg = reshapedGdsImg;
+                else
+                    reshapedGdsImg = obj.reshapedGdsImg;
+                end
+
+                normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
+
+                coarseRatio = 10;
+                fineRange = 50;
+                coarseConvResult = conv2(imresize(normedWlImg, size(normedWlImg)/coarseRatio), imresize(reshapedGdsImg, size(reshapedGdsImg)/coarseRatio), 'valid');
+                [maxCorr,idx] = max(coarseConvResult(:));
+                [posY, posX] = ind2sub(size(coarseConvResult),idx);
+                xmin = max(1, posX*coarseRatio-fineRange);
+                xmax = min(posX*coarseRatio+fineRange+size(reshapedGdsImg, 2), size(normedWlImg, 2));
+                ymin = max(1, posY*coarseRatio-fineRange);
+                ymax = min(posY*coarseRatio+fineRange+size(reshapedGdsImg, 1), size(normedWlImg, 1));
+
+                convResult = conv2(normedWlImg(ymin:ymax, xmin:xmax), reshapedGdsImg, 'valid');
+                
+                [maxCorr,idx] = max(convResult(:));
+                [posY, posX] = ind2sub(size(convResult),idx);
+                gdsSize = size(reshapedGdsImg);
+                gdsRef = imref2d(gdsSize, xmin+posX + [0, gdsSize(2)], ymin+posY+[0, gdsSize(1)]);
+                wlRef = imref2d(size(reshapedWlImg));
+                
+                if exist('plotFig', 'var')
+                    fusedFig = figure;
+                    imshow(imfuse(reshapedWlImg, wlRef, reshapedGdsImg, gdsRef));
+                    fusedFig.Position = [250 1 800 700];
+                end
+            end
+        end
         function emitters = processAllExperiments(obj)
             if isempty(obj.dataRootDir)
                 error("obj.dataRootDir is empty. Please assign the data directory.");
@@ -526,7 +613,6 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 mkdir(sumDir);
             end
             folders = dir(fullfile(obj.dataRootDir, 'CleanedData'));
-            validFiles = cell(0, 2);
             allExperimentEmitters = cell(length(folders), 1);
             for k = 1:length(folders)
                 folder = folders(k);
