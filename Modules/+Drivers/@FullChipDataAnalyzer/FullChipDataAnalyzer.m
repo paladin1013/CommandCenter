@@ -489,7 +489,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
 
-            coarseRatio = 20;
+            coarseRatio = 10;
             fineRange = 50;
             coarseConvResult = conv2(imresize(normedWlImg, size(normedWlImg)/coarseRatio), imresize(reshapedGdsImg, size(reshapedGdsImg)/coarseRatio), 'valid');
             [maxCorr,idx] = max(coarseConvResult(:));
@@ -563,7 +563,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             allSlant = NaN(nImgs, 1); % 4 for slightly, 5 for medium, 6 for significantly
             for k = 1:nImgs
                 load(fullfile(obj.dataRootDir, 'CleanedData', allFolders{k}, allFileNames{k}), 'wl_img');
-                obj.gdsMatch(wl_img, true);
+                obj.gdsMatch(wl_img, obj.gdsPosition, true);
                 
                 pause(0.1);
                 imSize = input("Please input the size of the chiplet (1 for small, 2 for medium, 3 for large)");
@@ -598,8 +598,8 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             sizeDict = {"small", "medium", "large"};
             slantDict = {"slghtly", "medium", "significantly"};
             count = 0;
-            for imSlant = [4, 5, 6]
-                for chipletSize = [1, 2, 3]
+            for chipletSize = [1, 2, 3]
+                for imSlant = [4, 5, 6]
                     count = count + 1;
                     if count < startNum
                         continue;
@@ -636,16 +636,17 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
             end
         end
-        function gdsMatch(obj, wl_img, plotFig)
+        function gdsMatch(obj, wl_img, gdsPosition, plotFig)
             wl_img = rot90(wl_img, 2);
-            reshapedWlImg = imresize(wl_img, size(wl_img)./[obj.gdsPosition.verticalRatio, obj.gdsPosition.horizontalRatio]);
+            reshapedWlImg = imresize(wl_img, size(wl_img)./[gdsPosition.verticalRatio, gdsPosition.horizontalRatio]);
             if isempty(obj.gdsImg)
                 gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
                 gdsImg = (gdsImg>0);
                 obj.gdsImg = gdsImg;
-            else
-                reshapedGdsImg = imrotate(obj.gdsImg, obj.gdsPosition.rotationAngle/pi*180);
             end
+
+
+            reshapedGdsImg = imrotate(obj.gdsImg, gdsPosition.rotationAngle/pi*180);
 
 
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
@@ -674,10 +675,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fusedFig.Position = [250 1 800 700];
             end
         end
-        function gdsMatchAll(obj, plotFig)
+        function gdsMatchAll(obj, startNum)
             
             [allFolders, allFileNames] = obj.getAllDataFiles;
-            for k = 1:length(allFolders)
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
+            if ~exist('startNum')
+                startNum = 1;
+            end
+            for k = startNum:length(allFolders)
                 srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
                 dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
 
@@ -685,7 +690,12 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 idx = str2num(tokens{1}{1});
                 fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
                 load(fullfile(srcDir, allFileNames{k}), 'wl_img');
-                obj.gdsMatch(wl_img, true);
+                chipletSize = allSize(k);
+                imSlant = allSlant(k);
+                fprintf("ChipletSize: %d, ImageSlant: %d\n", chipletSize, imSlant);
+                tempPositionFile = fullfile(obj.dataRootDir, 'CleanedData', 'GdsPositions', sprintf("gdsPosition_%d_%d.mat", chipletSize, imSlant));
+                load(tempPositionFile, 'gdsPosition');
+                obj.gdsMatch(wl_img, gdsPosition, true);
             end
         end
         function emitters = processAllExperiments(obj)
