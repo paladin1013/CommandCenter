@@ -390,7 +390,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
 
-        function getGdsTemplate(obj, wlImg)
+        function getGdsTemplate(obj, wlImg, presetPosition)
             gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
             gdsImg = (gdsImg>0);
             obj.gdsImg = gdsImg;
@@ -411,6 +411,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             wlXmax = size(wlImg, 2);
             wlYmax = size(wlImg, 1);
             hold(wlAx, 'on');
+            if exist('presetPosition', 'var') && isfield(presetPosition, 'wlCorners')
+                obj.wlCorners = presetPosition.wlCorners;
+            end
             if ~isempty(obj.wlCorners)
                 obj.wlPolyH = drawpolygon(wlAx, 'Position', obj.wlCorners);
             else
@@ -431,6 +434,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             gdsXmax = size(gdsImg, 2);
             gdsYmax = size(gdsImg, 1);
             hold(gdsAx, 'on');
+            if exist('presetPosition', 'var') && isfield(presetPosition, 'gdsCorners')
+                obj.gdsCorners = presetPosition.gdsCorners;
+            end
             if ~isempty(obj.gdsCorners)
                 obj.gdsPolyH = drawpolygon(gdsAx, 'Position', obj.gdsCorners);
             else
@@ -467,7 +473,13 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             horizontalRatio = (norm(wlLine2_yx)+norm(wlLine4_yx))/(norm(gdsLine2_yx)+norm(gdsLine4_yx));
             
             % rotate(gds, angle) -> wl
-            rotationAngle = ((atan(wlLine1_yx(1)/wlLine1_yx(2))+atan(wlLine2_yx(1)/wlLine2_yx(2))+atan(wlLine3_yx(1)/wlLine3_yx(2))+atan(wlLine4_yx(1)/wlLine4_yx(2)))-(atan(gdsLine1_yx(1)/gdsLine1_yx(2))+atan(gdsLine2_yx(1)/gdsLine2_yx(2))+atan(gdsLine3_yx(1)/gdsLine3_yx(2))+atan(gdsLine4_yx(1)/gdsLine4_yx(2))))/4;
+            sumAngleDiff = ((atan(wlLine1_yx(1)/wlLine1_yx(2))+atan(wlLine2_yx(1)/wlLine2_yx(2))+atan(wlLine3_yx(1)/wlLine3_yx(2))+atan(wlLine4_yx(1)/wlLine4_yx(2)))-(atan(gdsLine1_yx(1)/gdsLine1_yx(2))+atan(gdsLine2_yx(1)/gdsLine2_yx(2))+atan(gdsLine3_yx(1)/gdsLine3_yx(2))+atan(gdsLine4_yx(1)/gdsLine4_yx(2))));
+            if sumAngleDiff > pi*3/4
+                sumAngleDiff = sumAngleDiff - pi;
+            elseif sumAngleDiff < -pi*3/4
+                sumAngleDiff = sumAngleDiff + pi;
+            end
+            rotationAngle = sumAngleDiff/4;
 
 
             % reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
@@ -477,7 +489,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
 
-            coarseRatio = 10;
+            coarseRatio = 20;
             fineRange = 50;
             coarseConvResult = conv2(imresize(normedWlImg, size(normedWlImg)/coarseRatio), imresize(reshapedGdsImg, size(reshapedGdsImg)/coarseRatio), 'valid');
             [maxCorr,idx] = max(coarseConvResult(:));
@@ -575,8 +587,54 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             save(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant');
         end
 
-        function initAllTemplates(obj)
+        function initAllTemplates(obj, startNum)
+            if ~exist('startNum', 'var')
+                startNum = 1;
+            end
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
+            [allFolders, allFileNames] = obj.getAllDataFiles;
+            nFiles = length(allFileNames);
+            allGdsPositions = [];
+            sizeDict = {"small", "medium", "large"};
+            slantDict = {"slghtly", "medium", "significantly"};
+            count = 0;
+            for imSlant = [4, 5, 6]
+                for chipletSize = [1, 2, 3]
+                    count = count + 1;
+                    if count < startNum
+                        continue;
+                    end
+                    for k = 1:nFiles
+                        if allSize(k) == chipletSize && allSlant(k) == imSlant
+                            fprintf("Setting gds template for size: %d, slant: %d from experiment %s, file %s\n", chipletSize, imSlant, allFolders{k}, allFileNames{k});
+                            load(fullfile(obj.dataRootDir, 'CleanedData', allFolders{k}, allFileNames{k}), "wl_img");
+                            tempPositionFile = fullfile(obj.dataRootDir, 'CleanedData', 'GdsPositions', sprintf("gdsPosition_%d_%d.mat", chipletSize, imSlant));
+                            if isfile(tempPositionFile)
+                                load(tempPositionFile, 'gdsPosition');
+                                obj.getGdsTemplate(wl_img, gdsPosition);
+                            else
+                                obj.getGdsTemplate(wl_img);
+                            end
 
+                            obj.gdsPosition.size = sizeDict{chipletSize};
+                            obj.gdsPosition.slant = slantDict{imSlant-3};
+                            obj.gdsPosition.wlCorners = obj.wlCorners;
+                            obj.gdsPosition.gdsCorners = obj.gdsCorners;
+                            obj.gdsPosition.sampleFolder = allFolders{k};
+                            obj.gdsPosition.sampleFileName = allFileNames{k};
+                            obj.gdsPosition.sampleIdx = k;
+                            if isempty(allGdsPositions)
+                                allGdsPositions = obj.gdsPosition;
+                            else
+                                allGdsPositions(end+1) = obj.gdsPosition;
+                            end
+                            gdsPosition = obj.gdsPosition;
+                            save(tempPositionFile, 'gdsPosition');
+                            break;
+                        end
+                    end
+                end
+            end
         end
         function gdsMatch(obj, wl_img, plotFig)
             wl_img = rot90(wl_img, 2);
