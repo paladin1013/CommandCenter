@@ -11,8 +11,6 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         gdsPosition = [];
         gdsImg;
         wlImg;
-        reshapedGdsImg;
-        reshapedWlImg;
     end
     properties(Constant)
         processMincount = 12000;
@@ -392,11 +390,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
 
-        function matchGds(obj)
+        function getGdsTemplate(obj, wlImg)
             gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
             gdsImg = (gdsImg>0);
             obj.gdsImg = gdsImg;
-            wlImg = load(fullfile(obj.dataRootDir, "CleanedData", "wl_sample.mat"));
+            if ~exist('wlImg', 'var') || isempty(wlImg)
+                wlImg = load(fullfile(obj.dataRootDir, "CleanedData", "wl_sample.mat"));
+            end
+
             if isfield(wlImg, 'wlImg')
                 wlImg = wlImg.wlImg;
             end
@@ -469,12 +470,10 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             rotationAngle = ((atan(wlLine1_yx(1)/wlLine1_yx(2))+atan(wlLine2_yx(1)/wlLine2_yx(2))+atan(wlLine3_yx(1)/wlLine3_yx(2))+atan(wlLine4_yx(1)/wlLine4_yx(2)))-(atan(gdsLine1_yx(1)/gdsLine1_yx(2))+atan(gdsLine2_yx(1)/gdsLine2_yx(2))+atan(gdsLine3_yx(1)/gdsLine3_yx(2))+atan(gdsLine4_yx(1)/gdsLine4_yx(2))))/4;
 
 
-            % obj.reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
-            obj.reshapedWlImg = imresize(obj.wlImg, size(obj.wlImg)./[verticalRatio, horizontalRatio]);
-            obj.reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180);
+            % reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
+            reshapedWlImg = imresize(obj.wlImg, size(obj.wlImg)./[verticalRatio, horizontalRatio]);
+            reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180);
 
-            reshapedGdsImg = obj.reshapedGdsImg;
-            reshapedWlImg = obj.reshapedWlImg;
             save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
 
@@ -544,10 +543,79 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
             end
         end
-        function sortWlImgs(obj)
+        function [allSize, allSlant] = categorizeWlImgs(obj)
+            [allFolders, allFileNames] = obj.getAllDataFiles;
+            fprintf("For the following inputs, press enter if it is the same as the previous one (except for the first image).\n");
+            nImgs = length(allFolders);
+            allSize = NaN(nImgs, 1); % 1 for small, 2 for medium, 3 for large
+            allSlant = NaN(nImgs, 1); % 4 for slightly, 5 for medium, 6 for significantly
+            for k = 1:nImgs
+                load(fullfile(obj.dataRootDir, 'CleanedData', allFolders{k}, allFileNames{k}), 'wl_img');
+                obj.gdsMatch(wl_img, true);
+                
+                pause(0.1);
+                imSize = input("Please input the size of the chiplet (1 for small, 2 for medium, 3 for large)");
+                while ~isempty(imSize) && ~any(imSize == [1, 2, 3]) || k == 1 && isempty(imSize)
+                    imSize = input("Please input the size of the chiplet (1 for small, 2 for medium, 3 for large)");
+                end
+                if isempty(imSize)
+                    imSize = prevSize;
+                    slant = prevSlant;
+                else
+                    slant = input("Please input the slant of the image (4 for slightly, 5 for medium, 6 for significantly)");
+                    while ~any(slant == [4, 5])
+                        slant = input("Please input the slant of the image (4 for slightly, 5 for medium, 6 for significantly)");
+                    end
+                end
+                prevSize = imSize;
+                prevSlant = slant;
+                allSize(k) = imSize;
+                allSlant(k) = slant;
+            end
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant');
+        end
+
+        function initAllTemplates(obj)
 
         end
-        
+        function gdsMatch(obj, wl_img, plotFig)
+            wl_img = rot90(wl_img, 2);
+            reshapedWlImg = imresize(wl_img, size(wl_img)./[obj.gdsPosition.verticalRatio, obj.gdsPosition.horizontalRatio]);
+            if isempty(obj.gdsImg)
+                gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
+                gdsImg = (gdsImg>0);
+                obj.gdsImg = gdsImg;
+            else
+                reshapedGdsImg = imrotate(obj.gdsImg, obj.gdsPosition.rotationAngle/pi*180);
+            end
+
+
+            normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
+
+            coarseRatio = 10;
+            fineRange = 50;
+            coarseConvResult = conv2(imresize(normedWlImg, size(normedWlImg)/coarseRatio), imresize(reshapedGdsImg, size(reshapedGdsImg)/coarseRatio), 'valid');
+            [maxCorr,idx] = max(coarseConvResult(:));
+            [posY, posX] = ind2sub(size(coarseConvResult),idx);
+            xmin = max(1, posX*coarseRatio-fineRange);
+            xmax = min(posX*coarseRatio+fineRange+size(reshapedGdsImg, 2), size(normedWlImg, 2));
+            ymin = max(1, posY*coarseRatio-fineRange);
+            ymax = min(posY*coarseRatio+fineRange+size(reshapedGdsImg, 1), size(normedWlImg, 1));
+
+            convResult = conv2(normedWlImg(ymin:ymax, xmin:xmax), reshapedGdsImg, 'valid');
+            
+            [maxCorr,idx] = max(convResult(:));
+            [posY, posX] = ind2sub(size(convResult),idx);
+            gdsSize = size(reshapedGdsImg);
+            gdsRef = imref2d(gdsSize, xmin+posX + [0, gdsSize(2)], ymin+posY+[0, gdsSize(1)]);
+            wlRef = imref2d(size(reshapedWlImg));
+            
+            if exist('plotFig', 'var')
+                fusedFig = figure;
+                imshow(imfuse(reshapedWlImg, wlRef, reshapedGdsImg, gdsRef));
+                fusedFig.Position = [250 1 800 700];
+            end
+        end
         function gdsMatchAll(obj, plotFig)
             
             [allFolders, allFileNames] = obj.getAllDataFiles;
@@ -559,44 +627,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 idx = str2num(tokens{1}{1});
                 fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
                 load(fullfile(srcDir, allFileNames{k}), 'wl_img');
-                wl_img = rot90(wl_img, 2);
-                reshapedWlImg = imresize(wl_img, size(wl_img)./[obj.gdsPosition.verticalRatio, obj.gdsPosition.horizontalRatio]);
-                if isempty(obj.reshapedGdsImg)
-                    if isempty(obj.gdsImg)
-                        load(fullfile(obj.dataRootDir, 'CleanedData', 'reshapedGdsImg.mat'), 'reshapedGdsImg');
-                    else
-                        reshapedGdsImg = imrotate(obj.gdsImg, obj.gdsPosition.rotationAngle/pi*180);
-                    end
-                    obj.reshapedGdsImg = reshapedGdsImg;
-                else
-                    reshapedGdsImg = obj.reshapedGdsImg;
-                end
-
-                normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
-
-                coarseRatio = 10;
-                fineRange = 50;
-                coarseConvResult = conv2(imresize(normedWlImg, size(normedWlImg)/coarseRatio), imresize(reshapedGdsImg, size(reshapedGdsImg)/coarseRatio), 'valid');
-                [maxCorr,idx] = max(coarseConvResult(:));
-                [posY, posX] = ind2sub(size(coarseConvResult),idx);
-                xmin = max(1, posX*coarseRatio-fineRange);
-                xmax = min(posX*coarseRatio+fineRange+size(reshapedGdsImg, 2), size(normedWlImg, 2));
-                ymin = max(1, posY*coarseRatio-fineRange);
-                ymax = min(posY*coarseRatio+fineRange+size(reshapedGdsImg, 1), size(normedWlImg, 1));
-
-                convResult = conv2(normedWlImg(ymin:ymax, xmin:xmax), reshapedGdsImg, 'valid');
-                
-                [maxCorr,idx] = max(convResult(:));
-                [posY, posX] = ind2sub(size(convResult),idx);
-                gdsSize = size(reshapedGdsImg);
-                gdsRef = imref2d(gdsSize, xmin+posX + [0, gdsSize(2)], ymin+posY+[0, gdsSize(1)]);
-                wlRef = imref2d(size(reshapedWlImg));
-                
-                if exist('plotFig', 'var')
-                    fusedFig = figure;
-                    imshow(imfuse(reshapedWlImg, wlRef, reshapedGdsImg, gdsRef));
-                    fusedFig.Position = [250 1 800 700];
-                end
+                obj.gdsMatch(wl_img, true);
             end
         end
         function emitters = processAllExperiments(obj)
