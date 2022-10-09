@@ -11,6 +11,10 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         gdsPosition = [];
         gdsImg;
         wlImg;
+        gdsRectH;
+        gdsAx;
+        framePos_xy;
+        wgLines = {};
     end
     properties(Constant)
         processMincount = 12000;
@@ -390,6 +394,70 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
 
+        function framePos_xy = getGdsFrame(obj, gdsImg)
+            gdsFig = figure;
+            obj.gdsAx = axes(gdsFig);
+            gdsImH = imagesc(obj.gdsAx, gdsImg);
+            colormap(obj.gdsAx, 'gray');
+            hold(obj.gdsAx, 'on');
+            obj.gdsRectH = images.roi.Rectangle(obj.gdsAx, 'Position', [10, 10, size(gdsImg, 2)-10, size(gdsImg, 1)-10]);
+            obj.updateFramePos;
+            addlistener(obj.gdsRectH,'ROIMoved',@obj.updateFramePos);
+            gdsImH.ButtonDownFcn = @ROIConfirm;
+            gdsFig.KeyPressFcn = @ROIConfirm;
+            uiwait(gdsFig);
+            
+            framePos_xy = obj.gdsRectH.Position;
+            obj.framePos_xy = framePos_xy;
+        end
+
+        function updateFramePos(obj, varargin)
+            pos = obj.gdsRectH.Position;
+            xmin = pos(1);
+            ymin = pos(2);
+            xlen = pos(3);
+            ylen = pos(4);
+            hold(obj.gdsAx, 'on');
+            if isempty(obj.wgLines) || ~iscell(obj.wgLines)
+                obj.wgLines = cell(1, 6);
+            end
+            for k = 1:6
+                try
+                    obj.wgLines{k}.delete;
+                end
+                obj.wgLines{k} = plot(obj.gdsAx, [xmin, xmin+xlen], [ymin+ylen*k/7, ymin+ylen*k/7], 'Color', 'r');
+            end
+        end
+        function getRotatedPos(obj, gdsImg, framePos_xy, theta_deg)
+            rotFig = figure;
+            rotAx = axes(rotFig);
+            rotImg = imrotate(gdsImg, theta_deg, 'nearest', 'crop');
+            imagesc(rotAx, rotImg);
+            fprintf("Original size: %d, %d\n", size(gdsImg, 2), size(gdsImg, 1));
+            fprintf("Rotated size: %d, %d\n", size(rotImg, 2), size(rotImg, 1));
+            center_xy = [size(gdsImg, 2), size(gdsImg, 1)]/2;
+            frameCorners_xy = [framePos_xy(1), framePos_xy(2); framePos_xy(1), framePos_xy(2)+framePos_xy(4); framePos_xy(1)+framePos_xy(3), framePos_xy(2)+framePos_xy(4); framePos_xy(1)+framePos_xy(3), framePos_xy(2)];
+            vectors = frameCorners_xy - center_xy;
+            rotVectors = vectors*[cosd(theta_deg), -sind(theta_deg); sind(theta_deg), cosd(theta_deg)];
+            rotCorners_xy = rotVectors + center_xy;
+            % xmin = rotCorners_xy(1, 1);
+            % ymin = rotCorners_xy(1, 2);
+            % xlen = rotCorners_xy(3, 1)-rotCorners_xy(1, 1);
+            % ylen = rotCorners_xy(3, 2)-rotCorners_xy(1, 2);
+            % rotFramePos = [xmin, ymin, xlen, ylen];
+            wlLines = cell(1, 6);
+            hold(rotAx, 'on');
+            extendRatio = 2/3;
+            for k = 1:6
+                startPos = (rotCorners_xy(1, :)*k+rotCorners_xy(2, :)*(7-k))/7;
+                endPos = (rotCorners_xy(4, :)*k+rotCorners_xy(3, :)*(7-k))/7;
+                extendedStartPos = startPos + (startPos-endPos)*extendRatio;
+                extendedEndPos = endPos + (endPos-startPos)*extendRatio;
+                wgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
+            end
+
+        end
+            
         function getGdsTemplate(obj, wlImg, presetPosition)
             gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
             gdsImg = (gdsImg>0);
@@ -485,6 +553,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             % reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
             reshapedWlImg = imresize(obj.wlImg, size(obj.wlImg)./[verticalRatio, horizontalRatio]);
             reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180);
+            
 
             save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
@@ -647,6 +716,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
 
 
             reshapedGdsImg = imrotate(obj.gdsImg, gdsPosition.rotationAngle/pi*180);
+            
 
 
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
