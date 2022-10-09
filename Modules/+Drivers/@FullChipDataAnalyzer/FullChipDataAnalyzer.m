@@ -15,6 +15,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         gdsAx;
         framePos_xy;
         wgLines = {};
+        allFrameCorners_xy;
     end
     properties(Constant)
         processMincount = 12000;
@@ -26,6 +27,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         backgroundNoise = 1400; % Derived from the medium of all EMCCD pixels.
         regionMap = {'center', 'frame', 'tip', 'bulk', 'out'};
         namespace = "Drivers_FullChipDataAnalyzer";
+        extendRatio = 2/3;
     end
 
     methods(Static)
@@ -428,11 +430,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 obj.wgLines{k} = plot(obj.gdsAx, [xmin, xmin+xlen], [ymin+ylen*k/7, ymin+ylen*k/7], 'Color', 'r');
             end
         end
-        function getRotatedPos(obj, gdsImg, framePos_xy, theta_deg)
-            rotFig = figure;
-            rotAx = axes(rotFig);
+        function rotCorners_xy = getRotatedCorners(obj, gdsImg, theta_deg, drawFig)
+            if isempty(obj.framePos_xy)
+                load(fullfile(obj.dataRootDir, "CleanedData", "gdsFramePos.mat"));
+                obj.framePos_xy = framePos_xy;
+            else
+                framePos_xy = obj.framePos_xy;
+            end
             rotImg = imrotate(gdsImg, theta_deg, 'nearest', 'crop');
-            imagesc(rotAx, rotImg);
             fprintf("Original size: %d, %d\n", size(gdsImg, 2), size(gdsImg, 1));
             fprintf("Rotated size: %d, %d\n", size(rotImg, 2), size(rotImg, 1));
             center_xy = [size(gdsImg, 2), size(gdsImg, 1)]/2;
@@ -445,19 +450,25 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             % xlen = rotCorners_xy(3, 1)-rotCorners_xy(1, 1);
             % ylen = rotCorners_xy(3, 2)-rotCorners_xy(1, 2);
             % rotFramePos = [xmin, ymin, xlen, ylen];
-            wlLines = cell(1, 6);
+            if exist("drawFig", 'var') && drawFig
+                rotFig = figure;
+                rotAx = axes(rotFig);
+                imagesc(rotAx, rotImg);
+                colormap(rotAx, 'gray');
+                obj.plotRotLines(rotAx, rotCorners_xy);
+            end
+        end
+        function plotRotLines(obj, rotAx, rotCorners_xy)
+            extWgLines = cell(1, 6);
             hold(rotAx, 'on');
-            extendRatio = 2/3;
             for k = 1:6
                 startPos = (rotCorners_xy(1, :)*k+rotCorners_xy(2, :)*(7-k))/7;
                 endPos = (rotCorners_xy(4, :)*k+rotCorners_xy(3, :)*(7-k))/7;
-                extendedStartPos = startPos + (startPos-endPos)*extendRatio;
-                extendedEndPos = endPos + (endPos-startPos)*extendRatio;
-                wgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
+                extendedStartPos = startPos + (startPos-endPos)*obj.extendRatio;
+                extendedEndPos = endPos + (endPos-startPos)*obj.extendRatio;
+                extWgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
             end
-
         end
-            
         function getGdsTemplate(obj, wlImg, presetPosition)
             gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
             gdsImg = (gdsImg>0);
@@ -552,7 +563,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
 
             % reshapedGdsImg = imresize(obj.gdsImg, size(obj.gdsImg).*[verticalRatio, horizontalRatio]);
             reshapedWlImg = imresize(obj.wlImg, size(obj.wlImg)./[verticalRatio, horizontalRatio]);
-            reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180);
+            reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180, 'nearest', 'crop');
             
 
             save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
@@ -705,7 +716,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
             end
         end
-        function gdsMatch(obj, wl_img, gdsPosition, plotFig)
+        function rotCorners_xy = gdsMatch(obj, wl_img, gdsPosition, drawFig)
             wl_img = rot90(wl_img, 2);
             reshapedWlImg = imresize(wl_img, size(wl_img)./[gdsPosition.verticalRatio, gdsPosition.horizontalRatio]);
             if isempty(obj.gdsImg)
@@ -715,10 +726,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
 
 
-            reshapedGdsImg = imrotate(obj.gdsImg, gdsPosition.rotationAngle/pi*180);
-            
-
-
+            reshapedGdsImg = imrotate(obj.gdsImg, gdsPosition.rotationAngle/pi*180, 'nearest', 'crop');
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
 
             coarseRatio = 10;
@@ -738,24 +746,37 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             gdsSize = size(reshapedGdsImg);
             gdsRef = imref2d(gdsSize, xmin+posX + [0, gdsSize(2)], ymin+posY+[0, gdsSize(1)]);
             wlRef = imref2d(size(reshapedWlImg));
-            
-            if exist('plotFig', 'var')
+            rotCorners_xy = obj.getRotatedCorners(obj.gdsImg, gdsPosition.rotationAngle/pi*180);
+            rotCorners_xy = rotCorners_xy + [xmin+posX, ymin+posY];
+            rotCorners_xy = rotCorners_xy.*[gdsPosition.horizontalRatio, gdsPosition.verticalRatio];
+            if exist('drawFig', 'var') && drawFig
                 fusedFig = figure;
-                imshow(imfuse(reshapedWlImg, wlRef, reshapedGdsImg, gdsRef));
+                fusedAx = axes(fusedFig);
+                % imagesc(fusedAx, reshapedWlImg);
+                imagesc(fusedAx, wl_img);
+                colormap(fusedAx, 'gray');
+                % imshow(imfuse(reshapedWlImg, wlRef, reshapedGdsImg, gdsRef));
+
+                obj.plotRotLines(fusedAx, rotCorners_xy);
                 fusedFig.Position = [250 1 800 700];
+                pause(0.1);
             end
         end
-        function gdsMatchAll(obj, startNum)
+        function allFrameCorners_xy = gdsMatchAll(obj, drawFig, startNum)
             
             [allFolders, allFileNames] = obj.getAllDataFiles;
             load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
-            if ~exist('startNum')
+            if ~exist('startNum', 'var')
                 startNum = 1;
             end
-            for k = startNum:length(allFolders)
+            if ~exist('drawFig', 'var')
+                drawFig = false;
+            end
+            nChiplets = length(allFolders);
+            allFrameCorners_xy = NaN(nChiplets, 4, 2);
+            for k = startNum:nChiplets
                 srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
                 dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
-
                 [tokens,matches] = regexp(allFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
                 idx = str2num(tokens{1}{1});
                 fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
@@ -765,8 +786,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fprintf("ChipletSize: %d, ImageSlant: %d\n", chipletSize, imSlant);
                 tempPositionFile = fullfile(obj.dataRootDir, 'CleanedData', 'GdsPositions', sprintf("gdsPosition_%d_%d.mat", chipletSize, imSlant));
                 load(tempPositionFile, 'gdsPosition');
-                obj.gdsMatch(wl_img, gdsPosition, true);
+                allFrameCorners_xy(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, drawFig);
             end
+            obj.allFrameCorners_xy = allFrameCorners_xy;
         end
         function emitters = processAllExperiments(obj)
             if isempty(obj.dataRootDir)
