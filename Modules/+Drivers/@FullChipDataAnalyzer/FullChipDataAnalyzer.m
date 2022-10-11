@@ -15,13 +15,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         gdsAx;
         framePos_xy;
         wgLines = {};
-        allFrameCorners_xy;
+        prevChipletData;
+        prevChipletDataPath;
     end
     properties(Constant)
         processMincount = 12000;
         sumMincount = 12000;
         frameWidth = 5;
-        padding = 5;
+        padding = 2;
         freqPadding = 50;
         nWaveguides = 6;
         backgroundNoise = 1400; % Derived from the medium of all EMCCD pixels.
@@ -53,7 +54,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fprintf("chipletID and chipletIdx is not assigned. Please consider to format the data file similar with `chiplet1_x0_y0_ID16`.\n");
             end 
         end 
-        function emitters = processChiplet(chipletData, drawFig)
+        function emitters = processChiplet(chipletData, drawFig, cornerPosition_xy)
             % Parallel can be used if more data is required
             if isstruct(chipletData) && isfield(chipletData, 'path') && ~isfield(chipletData, 'widefieldData')
                 chipletIdx = chipletData.chipletIdx;
@@ -114,27 +115,26 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 tempIdx = find(emitterIdx==l);
                 tempXs = validXs(tempIdx);
                 tempYs = validYs(tempIdx);
-                
-                % For emitter image block: add padding to neighbor pixels
-                xmin = max(min(tempXs)-Drivers.FullChipDataAnalyzer.padding, imageXmin);
-                xmax = min(max(tempXs)+Drivers.FullChipDataAnalyzer.padding, imageXmax);
-                ymin = max(min(tempYs)-Drivers.FullChipDataAnalyzer.padding, imageYmin);
-                ymax = min(max(tempYs)+Drivers.FullChipDataAnalyzer.padding, imageYmax);
-                freqIdxMin = max(min(peakIdx(tempIdx))-Drivers.FullChipDataAnalyzer.freqPadding, 1);
-                freqIdxMax = min(max(peakIdx(tempIdx))+Drivers.FullChipDataAnalyzer.freqPadding, length(allFreqs));
-                
+
                 tempIntensities = peakIntensities(tempIdx);
                 tempFreqs = peakFreqs(tempIdx);
                 [maxIntensity, maxIdx] = max(tempIntensities);
-                
                 emitters(l).absPosX = tempXs(maxIdx);
                 emitters(l).absPosY = tempYs(maxIdx);
+                % For emitter image block: add padding to neighbor pixels
+                xmin = max(emitters(l).absPosX-Drivers.FullChipDataAnalyzer.padding, imageXmin);
+                xmax = min(emitters(l).absPosX+Drivers.FullChipDataAnalyzer.padding, imageXmax);
+                ymin = max(emitters(l).absPosY-Drivers.FullChipDataAnalyzer.padding, imageYmin);
+                ymax = min(emitters(l).absPosY+Drivers.FullChipDataAnalyzer.padding, imageYmax);
+                freqIdxMin = max(min(peakIdx(tempIdx))-Drivers.FullChipDataAnalyzer.freqPadding, 1);
+                freqIdxMax = min(max(peakIdx(tempIdx))+Drivers.FullChipDataAnalyzer.freqPadding, length(allFreqs));
+                
+                emitters(l).nthChiplet = chipletData.nthChiplet;
+
                 emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
                 emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
                 emitters(l).maxIntensity = double(maxIntensity);
-                [region, centerDistance] = Drivers.FullChipDataAnalyzer.getRegion(emitters(l).absPosX, emitters(l).absPosY, chipletData.widefieldData{1}.segment);
-                emitters(l).region = region;
-                emitters(l).centerDistance = centerDistance;
+
                 emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
                 emitters(l).chipletIdx = chipletData.chipletIdx;
                 emitters(l).chipletCoordX = chipletData.coordX;
@@ -148,6 +148,8 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 findPeakWidth_THz = NaN(nSpectrums, 1);
                 findPeakAmplitude = NaN(nSpectrums, 1);
                 spectrumValid = NaN(nSpectrums, 1);
+                fittedX = NaN(nSpectrums, 1);
+                fittedY = NaN(nSpectrums, 1);
                 for k = 1:nSpectrums
                     % freqs_THz = reshape(freqs_THz, nPoints, 1);
                     % intensities = chipletData.widefieldData{k}.filtered_imgs(emitters(l).absPosY, emitters(l).absPosX, :);
@@ -163,12 +165,17 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                         hasPeak = true;
                         [peakIntensity, sumPeakIdx] = max(sumIntensities);
                         peakFreq_THz = freqs_THz(sumPeakIdx);
+                        maxPlane = tempBox(:, :, sumPeakIdx);
+                        props = regionprops(true(size(maxPlane)), maxPlane, 'WeightedCentroid');
+                        fittedX(k) = props.WeightedCentroid(2)+xmin-1;
+                        fittedY(k) = props.WeightedCentroid(1)+ymin-1;
+
                         % Use findpeaks to briefly get the linewidth and peak frequency (Usually incorrect);
                         % fitStartIdx = max(1, peakIdx-40);
                         % fitEndIdx = min(nPoints, peakIdx+40);
                         [sortedFreqs_THz, sortedIdx] = sort(freqs_THz, 'ascend');
                         sumIntensities = sumIntensities(sortedIdx);
-
+                        
                         [findPeakIntensities, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(sumIntensities, sortedFreqs_THz);
                         [maxIntensity, maxIdx] = max(findPeakIntensities);
                         peakWidth_THz = findPeakWidths(maxIdx);
@@ -190,17 +197,32 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                         spectrumValid(k) = false;
                     end
                     spectrums(k) = struct('spectrumValid', spectrumValid(k), 'hasPeak', hasPeak, 'sumIntensities', sumIntensities, 'freqs_THz', freqs_THz, ...
-                    'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz);
+                    'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz, 'fittedX', fittedX(k), 'fittedY', fittedY(k));
                 end
                 emitters(l).spectrums = spectrums;
                 emitters(l).maxSumIntensity = max(peakIntensity);
                 emitters(l).valid = any(spectrumValid);
+                emitters(l).fittedX = mean(fittedX);
+                emitters(l).fittedY = mean(fittedY);
+                [region, centerDistance] = Drivers.FullChipDataAnalyzer.getRegion(emitters(l).fittedX, emitters(l).fittedY, cornerPosition_xy);
+                emitters(l).region = region;
+                emitters(l).centerDistance = centerDistance;
             end
             % valid = extractfield(emitters, 'valid');
             % emitters(~valid) = [];
         end
-        function [region, centerDistance] = getRegion(absPosX, absPosY, segment, plotImage)
-            cornerAbsPos_yx = segment.cornerPos+[segment.ymin, segment.xmin];
+        function [region, centerDistance] = getRegion(absPosX, absPosY, cornerPosition_xy, drawFig, wl_img)
+            if ~exist('wl_img', 'var')
+                xsize = 512;
+                ysize = 512;
+            else
+                xsize = size(wl_img, 2);
+                ysize = size(wl_img, 1);
+            end
+
+            cornerPosition_xy = [xsize, ysize]+1 - cornerPosition_xy;
+            cornerPosition_xy = cornerPosition_xy([3, 4, 1, 2], :);
+            cornerAbsPos_yx = cornerPosition_xy(:, [2, 1]);
             line1 = cornerAbsPos_yx(1:2, :);
             line2 = cornerAbsPos_yx(2:3, :);
             line3 = cornerAbsPos_yx(3:4, :);
@@ -220,43 +242,76 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             for k = 1:6
                 waveguideLines(k, 1, :) = cornerAbsPos_yx(1, :)*k/7+cornerAbsPos_yx(2, :)*(7-k)/7;
                 waveguideLines(k, 2, :) = cornerAbsPos_yx(4, :)*k/7+cornerAbsPos_yx(3, :)*(7-k)/7;
-                waveguideDists(k) = getPointLineDistance(absPosX, absPosY, waveguideLines(k, 1, 2), waveguideLines(k, 1, 1), waveguideLines(k, 2, 2), waveguideLines(k, 2, 1), true); % Infinity length should be set to true.
+                waveguideDists(k) = getPointLineDistance(absPosX, absPosY, waveguideLines(k, 1, 2), waveguideLines(k, 1, 1), waveguideLines(k, 2, 2), waveguideLines(k, 2, 1), true, true); % Infinity length should be set to true.
             end
             if inpolygon(absPosY, absPosX, cornerAbsPos_yx(:, 1), cornerAbsPos_yx(:, 2)) && ~onFrame
                 region = 'center';
-                centerDistance = min(waveguideDists);
+                [minval, closestLine] = min(abs(waveguideDists));
+                centerDistance = waveguideDists(closestLine);
             elseif onFrame
                 region = 'frame';
             elseif inpolygon(absPosY, absPosX, leftTipPolygon_yx(:, 1), leftTipPolygon_yx(:, 2)) || inpolygon(absPosY, absPosX, rightTipPolygon_yx(:, 1), rightTipPolygon_yx(:, 2))
                 region = 'tip';
-                centerDistance = min(waveguideDists);
+                [minval, closestLine] = min(abs(waveguideDists));
+                centerDistance = waveguideDists(closestLine);
             else
                 region = 'bulk';
             end
-            if exist('plotImage', 'var') && plotImage
+            if exist('drawFig', 'var') && drawFig
                 fig = figure;
                 ax = axes(fig);
-                imagesc(ax, segment.image);
+                imagesc(ax, wl_img);
                 colormap('gray');
                 hold(ax, 'on');
-                plot(ax, segment.cornerPos([1, 2, 3, 4, 1], 2), segment.cornerPos([1, 2, 3, 4, 1], 1));
-                for k = 1:6
-                    plot(ax, waveguideLines(k, :, 2)-segment.xmin, waveguideLines(k, :, 1)-segment.ymin);
-                end
-                scatter(ax, absPosX-segment.xmin, absPosY-segment.ymin, 'filled');
+                plot(ax, cornerAbsPos_yx([1, 2, 3, 4, 1], 2), cornerAbsPos_yx([1, 2, 3, 4, 1], 1));
+                Drivers.FullChipDataAnalyzer.plotRotLines(ax, cornerPosition_xy);
+                scatter(ax, absPosX, absPosY, 'filled');
+                fprintf("Distance: %f\n", centerDistance);
             end
         end
 
         obj = instance();
-        function plotDistance(emitters)
+        function valid = getEmitterValidity(emitters, drawFig)
+            valid = cell2mat(extractfield(emitters, 'valid'));
+            absPosX = extractfield(emitters, 'absPosX');
+            absPosY = extractfield(emitters, 'absPosY');
+            fittedX = extractfield(emitters, 'fittedX');
+            fittedY = extractfield(emitters, 'fittedY');
+            valid = valid&((fittedX-absPosX).^2+(fittedY-absPosY).^2<0.5);
+            valid = valid&(abs(fittedX-absPosX)<0.5)&(abs(fittedY-absPosY)<0.5);
+            if exist('drawFig', 'var') && drawFig
+                fig = figure;
+                ax = axes(fig);
+                scatter(ax, fittedX-absPosX, fittedY-absPosY, 5, 'filled');
+            end
+        end
+        function plotDistance(emitters, chiplets)
+            valid = Drivers.FullChipDataAnalyzer.getEmitterValidity(emitters);
             regions = extractfield(emitters, 'region');
             distances = extractfield(emitters, 'centerDistance');
             sumIntensities = extractfield(emitters, 'maxSumIntensity');
+            if exist('chiplets', 'var')
+                nthChiplet = extractfield(emitters, 'nthChiplet');
+                inTarget = ones(1, length(emitters));
+                for k = 1:length(chiplets)
+                    inTarget = inTarget & (nthChiplet == chiplets(k));
+                end
+                valid = valid & inTarget;
+            end
+            scatterSize = 10;
             fig = figure;
             ax = axes(fig);
-            scatter(ax, distances(strcmp(regions, 'center')), sumIntensities(strcmp(regions, 'center')));
+            scatter(ax, distances(strcmp(regions, 'center')&valid), sumIntensities(strcmp(regions, 'center')&valid), scatterSize, 'filled');
             hold(ax, 'on');
-            scatter(ax, distances(strcmp(regions, 'tip')), sumIntensities(strcmp(regions, 'tip')));
+            scatter(ax, distances(strcmp(regions, 'tip')&valid), sumIntensities(strcmp(regions, 'tip')&valid), scatterSize, 'filled');
+            if isfield(emitters(1), 'fittedLinewidth_THz')
+                fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
+                lwFig = figure;
+                lwAx = axes(lwFig);
+                scatter(lwAx, distances(strcmp(regions, 'center')&valid), fittedLinewidth_THz(strcmp(regions, 'center')&valid), scatterSize, 'filled');
+                hold(lwAx, 'on');
+                scatter(lwAx, distances(strcmp(regions, 'tip')&valid), fittedLinewidth_THz(strcmp(regions, 'tip')&valid), scatterSize, 'filled');
+            end
         end
 
         function emitters = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
@@ -327,9 +382,6 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                     % postfitIntensities = fit_result(fitFreqs_THz);
                     
 
-                    
-
-
                     if exist('drawFig', 'var') && drawFig
                         fitting_fig = figure;
                         fitting_ax = axes("Parent", fitting_fig);
@@ -357,6 +409,17 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 prevT = newT;
             end
             emitters = cell2mat(updatedEmitters);
+        end
+        function plotRotLines(rotAx, rotCorners_xy)
+            extWgLines = cell(1, 6);
+            hold(rotAx, 'on');
+            for k = 1:6
+                startPos = (rotCorners_xy(1, :)*k+rotCorners_xy(2, :)*(7-k))/7;
+                endPos = (rotCorners_xy(4, :)*k+rotCorners_xy(3, :)*(7-k))/7;
+                extendedStartPos = startPos + (startPos-endPos)*Drivers.FullChipDataAnalyzer.extendRatio;
+                extendedEndPos = endPos + (endPos-startPos)*Drivers.FullChipDataAnalyzer.extendRatio;
+                extWgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
+            end
         end
         function emitters = parallelFitPeaks(emitters, batchSize)
             if ~exist('batchSize', 'var')
@@ -387,6 +450,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
             setpref(obj.namespace, name, data);
         end
+        
         function data = fetchPrefData(obj, name)
             try
                 data = getpref(obj.namespace, name);
@@ -458,17 +522,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 obj.plotRotLines(rotAx, rotCorners_xy);
             end
         end
-        function plotRotLines(obj, rotAx, rotCorners_xy)
-            extWgLines = cell(1, 6);
-            hold(rotAx, 'on');
-            for k = 1:6
-                startPos = (rotCorners_xy(1, :)*k+rotCorners_xy(2, :)*(7-k))/7;
-                endPos = (rotCorners_xy(4, :)*k+rotCorners_xy(3, :)*(7-k))/7;
-                extendedStartPos = startPos + (startPos-endPos)*obj.extendRatio;
-                extendedEndPos = endPos + (endPos-startPos)*obj.extendRatio;
-                extWgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
-            end
-        end
+
         function getGdsTemplate(obj, wlImg, presetPosition)
             gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
             gdsImg = (gdsImg>0);
@@ -763,7 +817,6 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
         function allFrameCorners_xy = gdsMatchAll(obj, drawFig, startNum)
-            
             [allFolders, allFileNames] = obj.getAllDataFiles;
             load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
             if ~exist('startNum', 'var')
@@ -788,7 +841,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 load(tempPositionFile, 'gdsPosition');
                 allFrameCorners_xy(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, drawFig);
             end
-            obj.allFrameCorners_xy = allFrameCorners_xy;
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'), 'allFrameCorners_xy')
         end
         function emitters = processAllExperiments(obj)
             if isempty(obj.dataRootDir)
@@ -804,59 +857,35 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 mkdir(sumDir);
             end
             folders = dir(fullfile(obj.dataRootDir, 'CleanedData'));
-            allExperimentEmitters = cell(length(folders), 1);
-            for k = 1:length(folders)
-                folder = folders(k);
-                srcDir = fullfile(obj.dataRootDir, 'CleanedData', folder.name);
-                dstDir = fullfile(obj.dataRootDir, 'ProcessedData', folder.name);
-                if isfolder(srcDir) && ~contains(folder.name, '.')
-                    if ~isfolder(dstDir)
-                        mkdir(dstDir);
-                    end
-                    files = dir(srcDir);
+            [allFolders, allFileNames] = obj.getAllDataFiles;
+            nValid = length(allFileNames);
+            allEmitters = cell(nValid, 1);
 
-                    % Process single experiment (multiple chiplets)
-                    nValid = 0;
-                    validFileNames = {};
-                    for l = 1:length(files)
-                        file = files(l);
-                        % fprintf('Checking file %s (%d/%d)\n', file.name, l, length(files));
-                        [tokens,matches] = regexp(file.name,'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
-                        if ~isempty(tokens)
-                            nValid = nValid + 1;
-                            fprintf("Find widefield data file '%s'\n", file.name);
-                            validFileNames{end+1} = file.name;
-                            if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
-                                [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
-                                chipletCoordX = str2num(subTokens{1}{1});
-                                chipletCoordY = str2num(subTokens{1}{2});
-                                load(fullfile(srcDir, file.name), 'coordX', 'coordY');
-                                assert(chipletCoordX == coordX && chipletCoordY == coordY, 'Chiplet coordinate inside data does not match with the file name.');
-                            end
-                        end
-                    end
-
-                    allEmitters = cell(nValid, 1);
-
-                    for l = 1:nValid
-                        % Parallel can be used if more data is required (though more memory might be required)
-                        [tokens,matches] = regexp(validFileNames{l},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
-                        idx = str2num(tokens{1}{1});
-                        fprintf("Loading file '%s' (%d/%d), idx: %d.\n", validFileNames{l}, l, nValid, idx);
-                        chipletData = Drivers.FullChipDataAnalyzer.loadChipletData(fullfile(srcDir, validFileNames{l}));
-                        fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", validFileNames{l}, l, nValid, idx);
-                        emitters = Drivers.FullChipDataAnalyzer.processChiplet(chipletData, false);
-                        allEmitters{l} = emitters;
-                        save(fullfile(dstDir, sprintf("chiplet%d_emitters.mat", idx)), "emitters");
-                    end
-                    emitters = horzcat(allEmitters{:});
-                    allExperimentEmitters{k} = emitters;
-                    save(fullfile(dstDir, "processed_emitters_data.mat"), "emitters");
-                    copyfile(fullfile(dstDir, "processed_emitters_data.mat"), fullfile(sumDir, sprintf("%s.mat", folder.name)));
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'));
+            for k = 1:nValid
+                srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
+                dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
+                % Parallel can be used if more data is required (though more memory might be required)
+                [tokens,matches] = regexp(allFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                idx = str2num(tokens{1}{1});
+                fprintf("Loading file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, nValid, idx);
+                if strcmp(fullfile(srcDir, allFileNames{k}), obj.prevChipletDataPath) && ~isempty(obj.prevChipletData)
+                    chipletData = obj.prevChipletData;
+                else
+                    chipletData = Drivers.FullChipDataAnalyzer.loadChipletData(fullfile(srcDir, allFileNames{k}));
                 end
+                fprintf("Start processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, nValid, idx);
+                chipletData.nthChiplet = k;
+                obj.prevChipletData = chipletData;
+                obj.prevChipletDataPath = fullfile(srcDir, allFileNames{k});
+                emitters = Drivers.FullChipDataAnalyzer.processChiplet(chipletData, false, squeeze(allFrameCorners_xy(k, :, :)));
+                allEmitters{k} = emitters;
+                save(fullfile(dstDir, sprintf("chiplet%d_emitters.mat", idx)), "emitters");
             end
-            emitters = horzcat(allExperimentEmitters{:});
-            save(fullfile(sumDir, "all_emitters_data.mat"), emitters);
+            emitters = horzcat(allEmitters{:});
+            save(fullfile(obj.dataRootDir, 'ProcessedData', "all_emitters_data.mat"), "emitters");
+            % emitters = horzcat(allExperimentEmitters{:});
+            % save(fullfile(sumDir, "all_emitters_data.mat"), emitters);
         end
     end
 end
@@ -889,7 +918,7 @@ function validSites = spacialFilter(polyPos, x, y)
 end
 
 
-function distance = getPointLineDistance(x3,y3,x1,y1,x2,y2,infinityLength)
+function distance = getPointLineDistance(x3,y3,x1,y1,x2,y2,infinityLength,specifySide)
     % Get the distance from a point (x3, y3) to
     % a line segment defined by two points (x1, y1) and (x2, y2);
     % If the one of the two agnles are obtuse, which means the permendicular line is out of the line segment, 
@@ -897,7 +926,11 @@ function distance = getPointLineDistance(x3,y3,x1,y1,x2,y2,infinityLength)
     try
         
         % Find the numerator for our point-to-line distance formula.
-        numerator = abs((x2 - x1) * (y1 - y3) - (x1 - x3) * (y2 - y1));
+        if exist('specifySide', 'var') && specifySide
+            numerator = (x2 - x1) * (y1 - y3) - (x1 - x3) * (y2 - y1);
+        else
+            numerator = abs((x2 - x1) * (y1 - y3) - (x1 - x3) * (y2 - y1));
+        end
         
         % Find the denominator for our point-to-line distance formula.
         denominator = sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2);
