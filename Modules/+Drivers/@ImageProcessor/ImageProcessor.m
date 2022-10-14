@@ -332,13 +332,13 @@ classdef ImageProcessor < Modules.Driver
 
         function angle = getAngle(obj, segments, showPlots, resolution_deg)
             if ~exist('resolution_deg', 'var')
-                resolution_deg = 0.1;
+                resolution_deg = 0.01;
             end
             if ~exist('showPlots', 'var')
                 showPlots = false;
             end
             nSegments = length(segments);
-            angles = [-90:resolution_deg:90];
+            angles = [-30:resolution_deg:30];
             nAngles = length(angles);
             vars = zeros(nSegments, nAngles);
             for k = 1:nSegments
@@ -376,8 +376,8 @@ classdef ImageProcessor < Modules.Driver
 
                     hold(s2, 'on');
                     plot(s2, conv2(imrotate(segIm, -angle, 'crop'), line_im, 'valid'), 'Color', cmap(1, :), 'LineWidth', 2);
-                    plot(s2, conv2(imrotate(segIm, -angle+45, 'crop'), line_im, 'valid'), 'Color', cmap(2, :), 'LineWidth', 2);
-                    plot(s2, conv2(imrotate(segIm, -angle+90, 'crop'), line_im, 'valid'), 'Color', cmap(3, :), 'LineWidth', 2);
+                    % plot(s2, conv2(imrotate(segIm, -angle+45, 'crop'), line_im, 'valid'), 'Color', cmap(2, :), 'LineWidth', 2);
+                    % plot(s2, conv2(imrotate(segIm, -angle+90, 'crop'), line_im, 'valid'), 'Color', cmap(3, :), 'LineWidth', 2);
                     s2.FontSize = 16;
                     s2.LineWidth = 2;
                     s2.XLabel.String = 'y';
@@ -389,8 +389,8 @@ classdef ImageProcessor < Modules.Driver
                     hold(s3, 'on');
                     
                     plot(s3, angle, maxVar, '.', 'Color', cmap(1, :), 'MarkerSize', 30);
-                    plot(s3, angle-45, meanVars(idx-int16(45/resolution_deg)+1), '.', 'Color', cmap(2, :), 'MarkerSize', 30);
-                    plot(s3, angle-90, meanVars(idx-int16(90/resolution_deg)+1), '.', 'Color', cmap(3, :), 'MarkerSize', 30);
+                    % plot(s3, angle-45, meanVars(idx-int16(45/resolution_deg)+1), '.', 'Color', cmap(2, :), 'MarkerSize', 30);
+                    % plot(s3, angle-90, meanVars(idx-int16(90/resolution_deg)+1), '.', 'Color', cmap(3, :), 'MarkerSize', 30);
                     box(s3, 'on');
                     plot(s3, angles, meanVars, 'Color', 'k', 'LineWidth', 2);
                     xlim(s3, [-90, 90]);

@@ -1,4 +1,4 @@
-classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
+classdef FullChipDataAnalyzer_bak < matlab.mixin.Heterogeneous & handle
     properties
         srcDir = ""; % Source directory.
         dstDir = ""; % Destination directory. Will save processed data under this directory

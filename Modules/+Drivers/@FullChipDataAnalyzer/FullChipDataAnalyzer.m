@@ -22,6 +22,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         processMincount = 12000;
         sumMincount = 12000;
         frameWidth = 5;
+        waveguideWidth = 2;
         padding = 2;
         freqPadding = 50;
         nWaveguides = 6;
@@ -277,42 +278,20 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             absPosY = extractfield(emitters, 'absPosY');
             fittedX = extractfield(emitters, 'fittedX');
             fittedY = extractfield(emitters, 'fittedY');
+            centerDistance = extractfield(emitters, 'centerDistance');
+            fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
+
             valid = valid&((fittedX-absPosX).^2+(fittedY-absPosY).^2<0.5);
             valid = valid&(abs(fittedX-absPosX)<0.5)&(abs(fittedY-absPosY)<0.5);
+            valid = valid&(abs(centerDistance)<5);
+            valid = valid&(fittedLinewidth_THz>30e-6);
             if exist('drawFig', 'var') && drawFig
                 fig = figure;
                 ax = axes(fig);
                 scatter(ax, fittedX-absPosX, fittedY-absPosY, 5, 'filled');
             end
         end
-        function plotDistance(emitters, chiplets)
-            valid = Drivers.FullChipDataAnalyzer.getEmitterValidity(emitters);
-            regions = extractfield(emitters, 'region');
-            distances = extractfield(emitters, 'centerDistance');
-            sumIntensities = extractfield(emitters, 'maxSumIntensity');
-            if exist('chiplets', 'var')
-                nthChiplet = extractfield(emitters, 'nthChiplet');
-                inTarget = ones(1, length(emitters));
-                for k = 1:length(chiplets)
-                    inTarget = inTarget & (nthChiplet == chiplets(k));
-                end
-                valid = valid & inTarget;
-            end
-            scatterSize = 10;
-            fig = figure;
-            ax = axes(fig);
-            scatter(ax, distances(strcmp(regions, 'center')&valid), sumIntensities(strcmp(regions, 'center')&valid), scatterSize, 'filled');
-            hold(ax, 'on');
-            scatter(ax, distances(strcmp(regions, 'tip')&valid), sumIntensities(strcmp(regions, 'tip')&valid), scatterSize, 'filled');
-            if isfield(emitters(1), 'fittedLinewidth_THz')
-                fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
-                lwFig = figure;
-                lwAx = axes(lwFig);
-                scatter(lwAx, distances(strcmp(regions, 'center')&valid), fittedLinewidth_THz(strcmp(regions, 'center')&valid), scatterSize, 'filled');
-                hold(lwAx, 'on');
-                scatter(lwAx, distances(strcmp(regions, 'tip')&valid), fittedLinewidth_THz(strcmp(regions, 'tip')&valid), scatterSize, 'filled');
-            end
-        end
+        
 
         function emitters = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
             nEmitters = length(emitters);
@@ -472,9 +451,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             gdsImH.ButtonDownFcn = @ROIConfirm;
             gdsFig.KeyPressFcn = @ROIConfirm;
             uiwait(gdsFig);
-            
             framePos_xy = obj.gdsRectH.Position;
             obj.framePos_xy = framePos_xy;
+            save(fullfile(obj.dataRootDir, "CleanedData", "framePos_xy.mat"), 'framePos_xy');
         end
 
         function updateFramePos(obj, varargin)
@@ -494,16 +473,11 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 obj.wgLines{k} = plot(obj.gdsAx, [xmin, xmin+xlen], [ymin+ylen*k/7, ymin+ylen*k/7], 'Color', 'r');
             end
         end
-        function rotCorners_xy = getRotatedCorners(obj, gdsImg, theta_deg, drawFig)
-            if isempty(obj.framePos_xy)
-                load(fullfile(obj.dataRootDir, "CleanedData", "gdsFramePos.mat"));
-                obj.framePos_xy = framePos_xy;
-            else
-                framePos_xy = obj.framePos_xy;
-            end
-            rotImg = imrotate(gdsImg, theta_deg, 'nearest', 'crop');
-            fprintf("Original size: %d, %d\n", size(gdsImg, 2), size(gdsImg, 1));
-            fprintf("Rotated size: %d, %d\n", size(rotImg, 2), size(rotImg, 1));
+        function rotCorners_xy = getRotatedGdsCorners(obj, gdsImg, framePos_xy, theta_deg, drawFig)
+            % Calculate rotatedCorners for chiplet gds
+
+            % fprintf("Original size: %d, %d\n", size(gdsImg, 2), size(gdsImg, 1));
+            % fprintf("Rotated size: %d, %d\n", size(rotImg, 2), size(rotImg, 1));
             center_xy = [size(gdsImg, 2), size(gdsImg, 1)]/2;
             frameCorners_xy = [framePos_xy(1), framePos_xy(2); framePos_xy(1), framePos_xy(2)+framePos_xy(4); framePos_xy(1)+framePos_xy(3), framePos_xy(2)+framePos_xy(4); framePos_xy(1)+framePos_xy(3), framePos_xy(2)];
             vectors = frameCorners_xy - center_xy;
@@ -515,6 +489,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             % ylen = rotCorners_xy(3, 2)-rotCorners_xy(1, 2);
             % rotFramePos = [xmin, ymin, xlen, ylen];
             if exist("drawFig", 'var') && drawFig
+                rotImg = imrotate(gdsImg, theta_deg, 'nearest', 'crop');
                 rotFig = figure;
                 rotAx = axes(rotFig);
                 imagesc(rotAx, rotImg);
@@ -770,7 +745,43 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
             end
         end
-        function rotCorners_xy = gdsMatch(obj, wl_img, gdsPosition, drawFig)
+        function rotCorners_xy = gdsAutoMatch(obj, wl_img, drawFig)
+            wl_img = rot90(wl_img, 2);
+            wl_img = imresize(wl_img, size(wl_img)*2);
+            ip = Drivers.ImageProcessor.instance();
+            [di, segments] = ip.processImage(wl_img);
+            angle = ip.getAngle(segments(1), true);
+            
+            % resolution_deg = 0.02;
+            % angles = [-30:resolution_deg:30];
+            % nAngles = length(angles);
+            % vars = zeros(1, nAngles);
+            % lineImg = ones(size(wl_img, 2), obj.waveguideWidth);
+            % for k = 1:nAngles
+            %     deg = angles(k);
+            %     rotWlImg = imrotate(wl_img, -deg, 'crop');
+            %     vars(k) = var(conv2(rotWlImg, lineImg, 'valid'), 0, 'all');
+            % end
+            
+            % [maxVar, idx] = max(vars);
+            % maxAngle = angles(idx);
+            % if exist('drawFig', 'var') && drawFig
+            %     fig = figure;
+            %     s1 = subplot(1, 3, 1);
+            %     plot(s1, angles, vars);
+            %     s2 = subplot(1, 3, 2);
+            %     imshow(imrotate(wl_img, -maxAngle, 'bicubic', 'crop'));
+            %     s3 = subplot(1, 3, 3);
+            %     rotWlImg = imrotate(wl_img, -maxAngle, 'crop');
+            %     convResults = conv2(rotWlImg, lineImg, 'valid');
+            %     plot(s3, convResults)
+            % end
+            fig = figure;
+            imshow(imrotate(wl_img, -angle, 'bicubic', 'crop'));
+            
+            
+        end
+        function rotCorners_xy = gdsMatch(obj, wl_img, gdsPosition, drawFig, fusedAx)
             wl_img = rot90(wl_img, 2);
             reshapedWlImg = imresize(wl_img, size(wl_img)./[gdsPosition.verticalRatio, gdsPosition.horizontalRatio]);
             if isempty(obj.gdsImg)
@@ -800,12 +811,22 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             gdsSize = size(reshapedGdsImg);
             gdsRef = imref2d(gdsSize, xmin+posX + [0, gdsSize(2)], ymin+posY+[0, gdsSize(1)]);
             wlRef = imref2d(size(reshapedWlImg));
-            rotCorners_xy = obj.getRotatedCorners(obj.gdsImg, gdsPosition.rotationAngle/pi*180);
+            if isempty(obj.framePos_xy)
+                try
+                    load(fullfile(obj.dataRootDir, "CleanedData", "framePos_xy.mat"), 'framePos_xy');
+                    obj.framePos_xy = framePos_xy;
+                catch
+                    obj.framePos_xy = obj.getGdsFrame(obj.gdsImg);
+                end
+            end
+            rotCorners_xy = obj.getRotatedGdsCorners(obj.gdsImg, obj.framePos_xy, gdsPosition.rotationAngle/pi*180);
             rotCorners_xy = rotCorners_xy + [xmin+posX, ymin+posY];
             rotCorners_xy = rotCorners_xy.*[gdsPosition.horizontalRatio, gdsPosition.verticalRatio];
             if exist('drawFig', 'var') && drawFig
-                fusedFig = figure;
-                fusedAx = axes(fusedFig);
+                if ~exist('fusedAx', 'var') || isempty(fusedAx) || ~isvalid(fusedAx)
+                    fusedFig = figure;
+                    fusedAx = axes(fusedFig);
+                end
                 % imagesc(fusedAx, reshapedWlImg);
                 imagesc(fusedAx, wl_img);
                 colormap(fusedAx, 'gray');
@@ -816,17 +837,36 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 pause(0.1);
             end
         end
-        function allFrameCorners_xy = gdsMatchAll(obj, drawFig, startNum)
+        function allFrameCorners_xy = plotChipletEmitters(obj, plotEmitters, emitters, startNum)
             [allFolders, allFileNames] = obj.getAllDataFiles;
             load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
             if ~exist('startNum', 'var')
                 startNum = 1;
             end
-            if ~exist('drawFig', 'var')
-                drawFig = false;
-            end
             nChiplets = length(allFolders);
             allFrameCorners_xy = NaN(nChiplets, 4, 2);
+            if exist('plotEmitters', 'var')
+                if ~exist('emitters', 'var') || isempty(emitters)
+                    load(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'all_emitters_data.mat'), 'emitters')
+                end
+                nthChiplet = extractfield(emitters, 'nthChiplet');
+                fittedX = extractfield(emitters, 'fittedX');
+                fittedY = extractfield(emitters, 'fittedY');
+                xSize = 512;
+                ySize = 512;
+                fittedX = xSize + 1 - fittedX;
+                fittedY = ySize + 1 - fittedY;
+                absPosX = extractfield(emitters, 'absPosX');
+                absPosY = extractfield(emitters, 'absPosY');
+                absPosX = xSize + 1 - absPosX;
+                absPosY = ySize + 1 - absPosY;
+                centerDistance = extractfield(emitters, 'centerDistance');
+                region = extractfield(emitters, 'region');
+                valid = obj.getEmitterValidity(emitters);
+                fittedPeakAmplitude = extractfield(emitters, 'fittedPeakAmplitude');
+                fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
+            end
+
             for k = startNum:nChiplets
                 srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
                 dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
@@ -839,9 +879,164 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fprintf("ChipletSize: %d, ImageSlant: %d\n", chipletSize, imSlant);
                 tempPositionFile = fullfile(obj.dataRootDir, 'CleanedData', 'GdsPositions', sprintf("gdsPosition_%d_%d.mat", chipletSize, imSlant));
                 load(tempPositionFile, 'gdsPosition');
-                allFrameCorners_xy(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, drawFig);
+                fig = figure;
+                if exist('plotEmitters', 'var')
+                    cmap = lines(2);
+                    tipCbAx = axes(fig);
+                    tipCbAx.Visible = 'off';
+                    colormap(tipCbAx, linspace(1, 0, 64)'*cmap(2, :));
+                    tipCbH = colorbar(tipCbAx);
+                    tipCbH.Position = [0.92, 0.1, 0.03, 0.8];
+                    centerCbAx = axes(fig);
+                    centerCbAx.Visible = 'off';
+                    colormap(centerCbAx, linspace(1, 0, 64)'*cmap(1, :));
+                    centerCbH = colorbar(centerCbAx);
+                    centerCbH.Position = [0.07, 0.1, 0.03, 0.8];
+
+
+                end
+                fusedAx = axes(fig);
+                allFrameCorners_xy(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, true, fusedAx);
+                fusedAx.Position = [0.17, 0.1, 0.7, 0.8];
+                if exist('plotEmitters', 'var')
+                    tipValid = valid & (nthChiplet == k) & strcmp(region, 'tip');
+                    centerValid = valid & (nthChiplet == k) & strcmp(region, 'center'); 
+                    hold(fusedAx, 'on');
+                    linewidthRef = 1e-4;
+                    tipFittedX = fittedX(tipValid);
+                    tipFittedY = fittedY(tipValid);
+                    tipPosErr = sqrt((tipFittedX - absPosX(tipValid)).^2+(tipFittedY - absPosY(tipValid)).^2);
+                    tipColors = max(0, min((1-abs(centerDistance(tipValid))')/1, 1)*cmap(2, :));
+                    scatter(fusedAx, tipFittedX, tipFittedY, fittedPeakAmplitude(tipValid)/50000, tipColors, 'filled');
+                    tipFittedLinewidth_THz = fittedLinewidth_THz(tipValid);
+                    for l = 1:sum(tipValid)
+                        line([tipFittedX(l)-tipPosErr(l), tipFittedX(l)+tipPosErr(l)], [tipFittedY(l), tipFittedY(l)], 'Color', tipColors(l, :), 'Parent', fusedAx, 'LineWidth', 1);
+                        line([tipFittedX(l), tipFittedX(l)], [tipFittedY(l)+tipFittedLinewidth_THz(l)/linewidthRef, tipFittedY(l)-tipFittedLinewidth_THz(l)/linewidthRef], 'Color', tipColors(l, :), 'Parent', fusedAx, 'LineWidth', 1);
+                    end
+
+
+
+                    centerFittedX = fittedX(centerValid);
+                    centerFittedY = fittedY(centerValid);
+                    centerPosErr = sqrt((centerFittedX - absPosX(centerValid)).^2+(centerFittedY - absPosY(centerValid)).^2);
+                    centerColors = max(0, min((1-abs(centerDistance(centerValid))')/1, 1)*cmap(1, :));
+                    scatter(fusedAx, centerFittedX, centerFittedY, fittedPeakAmplitude(centerValid)/50000, centerColors, 'filled');
+                    centerFittedLinewidth_THz = fittedLinewidth_THz(centerValid);
+                    for l = 1:sum(centerValid)
+                        line([centerFittedX(l)-centerPosErr(l), centerFittedX(l)+centerPosErr(l)], [centerFittedY(l), centerFittedY(l)], 'Color', centerColors(l, :), 'Parent', fusedAx, 'LineWidth', 1);
+                        line([centerFittedX(l), centerFittedX(l)], [centerFittedY(l)+centerFittedLinewidth_THz(l)/linewidthRef, centerFittedY(l)-centerFittedLinewidth_THz(l)/linewidthRef], 'Color', centerColors(l, :), 'Parent', fusedAx, 'LineWidth', 1);
+                    end
+
+
+                    pause(0.1);
+                end
+                fig.Position = [500, 200, 1000, 800];
+                saveas(fig, fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k}, sprintf("chiplet%d_size%d_slant%d.png", idx, chipletSize, imSlant)));
             end
+
             save(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'), 'allFrameCorners_xy')
+        end
+        function fig = plotScatter(obj, emitters, plotAll, chiplets)
+            nthChiplet = extractfield(emitters, 'nthChiplet');
+            valid = obj.getEmitterValidity(emitters);
+            if ~exist('chiplets', 'var')
+                % plot all chiplets
+                chiplets = unique(nthChiplet);
+            end
+            
+            fittedX = extractfield(emitters, 'fittedX');
+            fittedY = extractfield(emitters, 'fittedY');
+            xSize = 512;
+            ySize = 512;
+            % fittedX = xSize + 1 - fittedX;
+            % fittedY = ySize + 1 - fittedY;
+            absPosX = extractfield(emitters, 'absPosX');
+            absPosY = extractfield(emitters, 'absPosY');
+            % absPosX = xSize + 1 - absPosX;
+            % absPosY = ySize + 1 - absPosY;
+            centerDistance = extractfield(emitters, 'centerDistance');
+            region = extractfield(emitters, 'region');
+            fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
+            fittedPeakAmplitude = extractfield(emitters, 'fittedPeakAmplitude');
+            % fitted
+
+            [allFolders, allFileNames] = obj.getAllDataFiles;
+
+            nChiplets = length(allFolders);
+            cmap = lines(2);
+            pixel2nm = 160;
+            centerDistance = centerDistance * pixel2nm;
+
+            targetChiplets = {chiplets};
+            if exist('plotAll', 'var') && plotAll
+                for k = 1:length(chiplets)
+                    targetChiplets{end+1} = chiplets(k);
+                end
+            end
+            for k = 1:length(targetChiplets)
+                inTarget = zeros(1, length(valid));
+                targetChiplet = targetChiplets{k};
+                for l = 1:length(targetChiplet)
+                    inTarget = inTarget | (nthChiplet == targetChiplet(l));
+                end
+                tipValid = valid & inTarget & strcmp(region, 'tip');
+                % tipValid = valid & strcmp(region, 'tip');
+                
+                lwFig = figure;
+                lwAx = axes(lwFig);
+                scatterSize = 10;
+                
+                tipCenterDistance = centerDistance(tipValid);
+                tipFittedX = fittedX(tipValid);
+                tipFittedY = fittedY(tipValid);
+                tipPosErr = sqrt((tipFittedX - absPosX(tipValid)).^2+(tipFittedY - absPosY(tipValid)).^2)*pixel2nm;
+                tipFittedLinewidth_THz = fittedLinewidth_THz(tipValid);
+                tipFOM = 30e-6./tipFittedLinewidth_THz;
+                
+                scatter(lwAx, tipCenterDistance, tipFOM, scatterSize, 'filled', 'Color', cmap(2, :), 'MarkerFaceAlpha', 0.5, 'MarkerEdgeAlpha', 0.5);
+                
+                for l = 1:sum(tipValid)
+                    line([tipCenterDistance(l)-tipPosErr(l), tipCenterDistance(l)+tipPosErr(l)], [tipFOM(l), tipFOM(l)], 'Color', [cmap(1, :), 0.2], 'Parent', lwAx, 'LineWidth', 1);
+                    % line([tipCenterDistance(l), tipCenterDistance(l)], [tipFOM(l)+tipFOM(l), tipFOM(l)-tipFOM(l)], 'Color', cmap(2, :), 'Parent', lwAx, 'LineWidth', 1);
+                end
+                
+                centerValid = valid & inTarget & strcmp(region, 'center'); 
+                % centerValid = valid & s   trcmp(region, 'center');
+                centerFittedX = fittedX(centerValid);
+                centerFittedY = fittedY(centerValid);
+                centerPosErr = sqrt((centerFittedX - absPosX(centerValid)).^2+(centerFittedY - absPosY(centerValid)).^2)*pixel2nm;
+
+                centerCenterDistance = centerDistance(centerValid);
+                centerFittedLinewidth_THz = fittedLinewidth_THz(centerValid);
+                centerFOM = 30e-6./centerFittedLinewidth_THz;
+                hold(lwAx, 'on');
+                scatter(lwAx, centerCenterDistance, centerFOM, scatterSize, 'filled', 'Color', cmap(1, :), 'MarkerFaceAlpha', 0.5, 'MarkerEdgeAlpha', 0.5)
+                
+                for l = 1:sum(centerValid)
+                    line([centerCenterDistance(l)-centerPosErr(l), centerCenterDistance(l)+centerPosErr(l)], [centerFOM(l), centerFOM(l)], 'Color', [cmap(2, :), 0.2], 'Parent', lwAx, 'LineWidth', 1);
+                    % line([centerCenterDistance(l), centerCenterDistance(l)], [centerFOM(l)+centerFOM(l), centerFOM(l)-centerFOM(l)], 'Color', cmap(1, :), 'Parent', lwAx, 'LineWidth', 1);
+                end
+                lwAx.LineWidth = 2;
+                lwAx.FontSize = 13;
+                box(lwAx, 'on');
+                lwAx.XLabel.String = "Distance (nm)";
+                lwAx.YLabel.String = "FOM";
+                % legend(lwAx, {'tip', 'center'}ax );
+                pause(0.1);
+            end
+                
+            % scatterSize = 10;
+            % fig = figure;
+            % ax = axes(fig);
+
+            % scatter(ax, distances(strcmp(region, 'center')&valid), sumIntensities(strcmp(region, 'center')&valid), scatterSize, 'filled');
+            % hold(ax, 'on');
+            % scatter(ax, distances(strcmp(region, 'tip')&valid), sumIntensities(strcmp(region, 'tip')&valid), scatterSize, 'filled');
+            % if isfield(emitters(1), 'fittedLinewidth_THz')
+
+            %     hold(lwAx, 'on');
+            %     scatter(lwAx, distances(strcmp(region, 'tip')&valid), fittedLinewidth_THz(strcmp(regions, 'tip')&valid), scatterSize, 'filled');
+            % end
         end
         function emitters = processAllExperiments(obj)
             if isempty(obj.dataRootDir)
