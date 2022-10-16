@@ -746,12 +746,16 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
             end
         end
+        
         function rotCorners_xy = gdsAutoMatch(obj, wl_img, drawFig)
+
             wl_img = rot90(wl_img, 2);
             wl_img = imresize(wl_img, size(wl_img)*2);
             ip = Drivers.ImageProcessor.instance();
             [di, segments] = ip.processImage(wl_img);
-            angle = ip.getAngle(segments(1), true);
+            ip.waveguideWidth_pixel = 8;
+            % angle = ip.getAngle(segments(1), true);
+            cornerPositions = ip.getCornerPositions(segments(1), true);
             
             % resolution_deg = 0.02;
             % angles = [-30:resolution_deg:30];
@@ -777,8 +781,8 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             %     convResults = conv2(rotWlImg, lineImg, 'valid');
             %     plot(s3, convResults)
             % end
-            fig = figure;
-            imshow(imrotate(wl_img, -angle, 'bicubic', 'crop'));
+            % fig = figure;
+            % imshow(imrotate(wl_img, -angle, 'bicubic', 'crop'));
             
             
         end
