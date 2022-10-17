@@ -10,6 +10,7 @@ classdef ImageProcessor < Modules.Driver
         display = Prefs.MultipleChoice('Raw', 'allow_empty', false, 'choices', Drivers.ImageProcessor.displayTypes);
         plotAllIntermediate = Prefs.Boolean(false, 'help', 'Whether to display the intermediate filtered results.')
         waveguideWidth_pixel = Prefs.Integer(5, 'unit', 'pixel', 'min', 1, 'max', 20, 'help', 'Width of the waveguide in each chiplet. Used for angle detection.')
+        hyperResolutionRatio = Prefs.Double(2, 'help', 'The extend ratio for hyper resolution processing');
         cornerLengthRatio = Prefs.Integer(15, 'min', 1, 'max', 20, 'help', 'When doing corner detection, the ratio between edge length and width.')
         showCorners = Prefs.Boolean(true, 'help', 'Whether to run corner detection and show all corners on the plot')
         angle_deg = Prefs.Double(NaN, 'allow_nan', true, 'readonly', true, 'unit', 'degree', 'min', -90, 'max', 90, 'help', 'The offset angle of the image relative to the horizontal position. Can be set by calling `setTemplate`');
@@ -329,9 +330,187 @@ classdef ImageProcessor < Modules.Driver
                 processedImage(CC.PixelIdxList{idx(k)}) = 1;
             end
         end
-        function cornerPositions = getCornerPositions(obj, segments, showPlots)
+        function cornerPositions = getCornerPositions(obj, wlImg, drawFig)
+            if ~exist('drawFig', 'var')
+                drawFig = false;
+            end
+            extendedWlImg = imresize(wlImg, size(wlImg)*obj.hyperResolutionRatio);
+            cmap = lines(2);
+            obj.binarizeThresRatio = 0.07;
+            [di, segments] = obj.processImage(extendedWlImg);
+
+            obj.waveguideWidth_pixel = 5;
+            angle = obj.getAngle(segments(1), drawFig, 0.02, true);
+            coarseCornerPositions = obj.getCoarseCornerPositions(segments(1), drawFig) + [segments{1}.xmin, segments{1}.ymin];
+            xCenter = size(extendedWlImg, 2)/2+0.5;
+            yCenter = size(extendedWlImg, 1)/2+0.5;
+            cornerVectors = coarseCornerPositions - [xCenter, yCenter];
+            rotCoarseCornerPositions = cornerVectors*[cosd(angle), sind(angle); -sind(angle), cosd(angle)]+[xCenter, yCenter];
+            rotWlImg = imrotate(extendedWlImg, -angle, 'crop');
+
+            yStarts = NaN(1, 6);
+            yEnds = NaN(1, 6);
+            xSegCenter = sum(rotCoarseCornerPositions(:, 1))/4;
+            xLeft = (rotCoarseCornerPositions(1, 1)+rotCoarseCornerPositions(2, 1))/2;
+            xRight = (rotCoarseCornerPositions(3, 1)+rotCoarseCornerPositions(4, 1))/2;
+            yTop = (rotCoarseCornerPositions(1, 2)+rotCoarseCornerPositions(4, 2))/2;
+            yBottom = (rotCoarseCornerPositions(2, 2)+rotCoarseCornerPositions(3, 2))/2;
+
+            pieceXmin = xSegCenter - size(segments{1}.image, 2)/2;
+            pieceXmax = xSegCenter + size(segments{1}.image, 2)/2;
+            for k = 1:6
+                pieceYmin = (yTop*(7.5-k)+yBottom*(k-0.5))/7;
+                pieceYmax = (yTop*(6.5-k)+yBottom*(k+0.5))/7;
+                wlPiece = rotWlImg(pieceYmin:pieceYmax, pieceXmin:pieceXmax);
+                [yStart, yEnd] = obj.fitSingleWaveguide(wlPiece, xLeft-pieceXmin, xRight-pieceXmin, false);
+                yStarts(k) = yStart+pieceYmin-1;
+                yEnds(k) = yEnd+pieceYmin-1;
+            end
+
+            pStart = polyfit([1:6], yStarts, 2);
+            pEnd = polyfit([1:6], yEnds, 2);
+            rotCornerPositions = NaN(4, 2);
+            rotCornerPositions([1, 2], 1) = xLeft;
+            rotCornerPositions([3, 4], 1) = xRight;
+            rotCornerPositions(1, 2) = polyval(pStart, 0);
+            rotCornerPositions(2, 2) = polyval(pStart, 7);
+            rotCornerPositions(3, 2) = polyval(pEnd, 7);
+            rotCornerPositions(4, 2) = polyval(pEnd, 0);
+
+            rotVectors = rotCornerPositions - [xCenter, yCenter];
+            hyperResCornerPositions = rotVectors*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
+
+            cornerPositions = hyperResCornerPositions / 2;
+            if drawFig
+                fig = figure;
+                fig.Position = [300, 200, 1800, 1600];
+                s1 = subplot(2, 2, 1);
+                imagesc(s1, rotWlImg);
+                % box(s1, 'on');
+                colormap(s1, 'gray');
+                hold(s1, 'on');
+                extendRatio = ((pieceXmax-pieceXmin+1)/(xRight-xLeft+1)-1)/2;
+                plot(s1, rotCornerPositions([1, 2, 3, 4, 1], 1), rotCornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+
+                for k = 1:6
+                    xstart = (rotCornerPositions(1, 1)*k+rotCornerPositions(2, 1)*(7-k))/7;
+                    xend = (rotCornerPositions(4, 1)*k+rotCornerPositions(3, 1)*(7-k))/7;
+                    ystart = (rotCornerPositions(1, 2)*k+rotCornerPositions(2, 2)*(7-k))/7;
+                    yend = (rotCornerPositions(4, 2)*k+rotCornerPositions(3, 2)*(7-k))/7;
+                    xstartExtended = xstart + (xstart - xend)*extendRatio;
+                    xendExtended = xend + (xend - xstart)*extendRatio;
+                    ystartExtended = ystart + (ystart - yend)*extendRatio;
+                    yendExtended = yend + (yend - ystart)*extendRatio;
+
+                    plot(s1, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap(2, :));
+                end
+                s2 = subplot(2, 2, 2);
+                imagesc(s2, rotWlImg);
+                colormap(s2, 'gray');
+                hold(s2, 'on');
+                % plot(s2, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+                for k = 1:6
+                    xstart = xLeft;
+                    xend = xRight;
+                    ystart = yStarts(k);
+                    yend = yEnds(k);
+
+                    xstartExtended = xstart + (xstart - xend)*extendRatio;
+                    xendExtended = xend + (xend - xstart)*extendRatio;
+                    ystartExtended = ystart + (ystart - yend)*extendRatio;
+                    yendExtended = yend + (yend - ystart)*extendRatio;
+                    
+                    plot(s2, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap(2, :));
+                end
+
+
+                s3 = subplot(2, 2, 3);
+                imagesc(s3, rotWlImg);
+                colormap(s3, 'gray');
+                hold(s3, 'on');
+                plot(s3, rotCornerPositions([1, 2, 3, 4, 1], 1), rotCornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+                for k = 1:6
+                    xstart = (rotCornerPositions(1, 1)*k+rotCornerPositions(2, 1)*(7-k))/7;
+                    xend = (rotCornerPositions(4, 1)*k+rotCornerPositions(3, 1)*(7-k))/7;
+                    ystart = (rotCornerPositions(1, 2)*k+rotCornerPositions(2, 2)*(7-k))/7;
+                    yend = (rotCornerPositions(4, 2)*k+rotCornerPositions(3, 2)*(7-k))/7;
+
+                    xstartExtended = xstart + (xstart - xend)*extendRatio;
+                    xendExtended = xend + (xend - xstart)*extendRatio;
+                    ystartExtended = ystart + (ystart - yend)*extendRatio;
+                    yendExtended = yend + (yend - ystart)*extendRatio;
+                    
+                    plot(s3, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap(2, :));
+                end
+                
+                s4 = subplot(2, 2, 4);
+                imagesc(s4, wlImg);
+                colormap(s4, 'gray');
+                hold(s4, 'on');
+                plot(s4, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+                for k = 1:6
+                    xstart = (cornerPositions(1, 1)*k+cornerPositions(2, 1)*(7-k))/7;
+                    xend = (cornerPositions(4, 1)*k+cornerPositions(3, 1)*(7-k))/7;
+                    ystart = (cornerPositions(1, 2)*k+cornerPositions(2, 2)*(7-k))/7;
+                    yend = (cornerPositions(4, 2)*k+cornerPositions(3, 2)*(7-k))/7;
+
+                    xstartExtended = xstart + (xstart - xend)*extendRatio;
+                    xendExtended = xend + (xend - xstart)*extendRatio;
+                    ystartExtended = ystart + (ystart - yend)*extendRatio;
+                    yendExtended = yend + (yend - ystart)*extendRatio;
+                    
+                    plot(s4, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap(2, :));
+                end
+            end
+        end
+        function [yStart, yEnd] = fitSingleWaveguide(obj, wlPiece, xStart, xEnd, drawFig)
+            wgWidth = round(obj.waveguideWidth_pixel*obj.hyperResolutionRatio*1.5);
+            xSize = size(wlPiece, 2);
+            ySize = size(wlPiece, 1);
+            % wgNoFrame = [wlPiece(:, 1:xStart-wgWidth), zeros(), wlPiece(:, xStart+wgWidth:xEnd-wgWidth), wlPiece(:, xEnd+wgWidth:end)];
+            wgNoFrame = wlPiece;
+            wgNoFrame(:, xStart-wgWidth:xStart+wgWidth) = 0;
+            wgNoFrame(:, xEnd-wgWidth:xEnd+wgWidth) = 0;
+            thresRatio = 1/3; % Only pixels with brightness over thresRatio will remain
+
+            sortedBrightness = sort(wgNoFrame(:), 'descend');
+            thres = sortedBrightness(round(length(wgNoFrame(:))*thresRatio));
+            wgOnly = wgNoFrame;
+            wgOnly(wgOnly < thres) = 0;
+
+            xs = [];
+            ys = [];    
+            for k = 1:xSize
+                if k >= xStart-wgWidth && k <= xStart+wgWidth || k > xEnd-wgWidth && k < xEnd+wgWidth
+                    continue;
+                end
+                if sum(wgOnly(:, k) ~= 0) > 10
+                    xs(end+1) = k;
+                    ys(end+1) = [1:ySize]*double(wgOnly(:, k))/sum(wgOnly(:, k), 'all');
+                end
+            end
+
+            p = polyfit(xs, ys, 1);
+            yStart = polyval(p, xStart);
+            yEnd = polyval(p, xEnd);
+
+
+            if exist('drawFig', 'var') && drawFig
+                fig = figure;
+                fig.Position = [500, 100, 500, 120];
+                ax = axes(fig);
+                imagesc(ax, wgOnly);
+                colormap('gray');
+                hold(ax, 'on');
+                plot(ax, [1, xSize], polyval(p, [1, xSize]));
+            end
+        end
+        function cornerPositions = getCoarseCornerPositions(obj, segments, drawFig)
+            if ~exist('drawFig', 'var')
+                drawFig = false;
+            end
             cmap = lines(1);
-            rotationAngle = obj.getAngle(segments, true, 0.02, true);
+            rotationAngle = obj.getAngle(segments, drawFig, 0.02, true);
             segImg = segments{1}.image;
             segX = size(segImg, 2);
             segY = size(segImg, 1);
@@ -345,15 +524,26 @@ classdef ImageProcessor < Modules.Driver
             p = polyfit([1:6], maxPeakPos, 1);
             ymin = polyval(p, 0)+obj.waveguideWidth_pixel/2+0.5;
             ymax = polyval(p, 7)+obj.waveguideWidth_pixel/2+0.5;
-            
-            verLineImg = ones(segY, obj.waveguideWidth_pixel);
-            xConvResult = conv2(rotSegImg, verLineImg, 'valid');
+            yCropMin = round(polyval(p, 0));
+            yCropMax = round(polyval(p, 7)) + obj.waveguideWidth_pixel;
+            verLineImg = ones(yCropMax-yCropMin+1, obj.waveguideWidth_pixel);
+            xConvResult = conv2(rotSegImg(yCropMin:yCropMax, :), verLineImg, 'valid');
             [peakVals, peakPos] = findpeaks(xConvResult, [1:length(xConvResult)]);
             [sortedPeakVals, sortedPeakIdx] = sort(peakVals, 'descend');
-            [maxPeakPos, maxPeakIdx] = sort(peakPos(sortedPeakIdx(1:2)), 'ascend');
+            sortedPeakPos = peakPos(sortedPeakIdx);
+            maxPeakPos = sortedPeakPos(1);
+            maxPeakVal = sortedPeakVals(1);
+            for k = 2:length(sortedPeakVals)
+                if abs(sortedPeakPos(k)-maxPeakPos) > segX/3
+                    maxPeakPos(2) = sortedPeakPos(k);
+                    maxPeakVal(2) = sortedPeakVals(k);
+                    break;
+                end
+            end
+
             for k = 1:2
                 pos = maxPeakPos(k);
-                val = sortedPeakVals(maxPeakIdx(k));
+                val = maxPeakVal(k);
                 thres = val * 0.97;
                 neighborStart = max(1, pos-30);
                 neighborEnd = min(pos+30, length(xConvResult));
@@ -362,8 +552,10 @@ classdef ImageProcessor < Modules.Driver
                 peakEndPos = max(find(neighborVals>thres));
                 maxPeakPos(k) = (peakStartPos+peakEndPos)/2+neighborStart-1;
             end
-            xmin = maxPeakPos(1)+obj.waveguideWidth_pixel/2+0.5;
-            xmax = maxPeakPos(2)+obj.waveguideWidth_pixel/2+0.5;
+
+
+            xmin = min(maxPeakPos)+obj.waveguideWidth_pixel/2+0.5;
+            xmax = max(maxPeakPos)+obj.waveguideWidth_pixel/2+0.5;
 
             % center = [segX, segY]/2+0.5;
             xcenter = (segX+1)/2;
@@ -372,7 +564,7 @@ classdef ImageProcessor < Modules.Driver
             rotVectors = rotCorners - [xcenter, ycenter];
             realVectors = rotVectors*[cosd(rotationAngle), -sind(rotationAngle); sind(rotationAngle), cosd(rotationAngle)];
             cornerPositions = realVectors + [xcenter, ycenter];
-            if exist('showPlots', 'var') && showPlots
+            if exist('drawFig', 'var') && drawFig
                 fig = figure;
                 fig.Position = [500, 200, 1200, 350];
                 s1 = subplot(1, 3, 1);
@@ -413,12 +605,12 @@ classdef ImageProcessor < Modules.Driver
                 plot(s3, [1:length(xConvResult)], xConvResult);
             end
         end
-        function angle = getAngle(obj, segments, showPlots, resolution_deg, usePeakVals)
+        function angle = getAngle(obj, segments, drawFig, resolution_deg, usePeakVals)
             if ~exist('resolution_deg', 'var')
                 resolution_deg = 0.1;
             end
-            if ~exist('showPlots', 'var')
-                showPlots = false;
+            if ~exist('drawFig', 'var')
+                drawFig = false;
             end
             nSegments = length(segments);
             angles = [-30:resolution_deg:30];
@@ -450,7 +642,7 @@ classdef ImageProcessor < Modules.Driver
             end
             angle = angles(idx);
             obj.angle_deg = angle;
-            if showPlots && nSegments >= 1
+            if drawFig && nSegments >= 1
                 try
                     close(7);
                 end
@@ -521,7 +713,7 @@ classdef ImageProcessor < Modules.Driver
             end 
             obj.angleCalibrated = true;
         end
-        function segments = detectCorners(obj, segments, showPlots) % `Corners` are in image coordinates (y, x)
+        function segments = detectCorners(obj, segments, drawFig) % `Corners` are in image coordinates (y, x)
             nSegments = length(segments);
             if nSegments == 0
                 return
@@ -570,7 +762,7 @@ classdef ImageProcessor < Modules.Driver
             
             cornerIm(1:(lr+1)*w, 1:(lr+1)*w) = -1; % left edge
 
-            if exist('showPlots', 'var') && showPlots
+            if exist('drawFig', 'var') && drawFig
                 fig = figure(9);
                 fig.Position = [100, 100, 1200, 600];
                 subplot(nSegments+1, 5, 1);
@@ -591,7 +783,7 @@ classdef ImageProcessor < Modules.Driver
                 if obj.enableTemplateMatching && ~isempty(obj.template) &&  segSizeX > size(obj.template.image, 2)*(1-obj.tolerance) && segSizeY > size(obj.template.image, 1)*(1-obj.tolerance)
                     continue;
                 end
-                if exist('showPlots', 'var') && showPlots
+                if exist('drawFig', 'var') && drawFig
 
                     identityMask = zeros((2*lr+1)*w);
                     identityMask(lr*w+round(w/2), lr*w+round(w/2)) = 1;
@@ -604,7 +796,7 @@ classdef ImageProcessor < Modules.Driver
                     avg = mean2(corrResult);
                     [maxVal, maxIdx] = max(corrResult(:));
                     [maxY, maxX] = ind2sub(size(corrResult), maxIdx);
-                    if exist('showPlots', 'var') && showPlots
+                    if exist('drawFig', 'var') && drawFig
                         subplot(nSegments+1, 5, 5*k+l+1);
                         imshow(corrResult, []);
                         set(get(gca, 'XLabel'), 'String', sprintf("avg: %f\nmax: %f\n", avg, maxVal));
@@ -804,8 +996,8 @@ classdef ImageProcessor < Modules.Driver
                 segments{k}.cornerMask = cornerMask;
             end
         end
-        function [segment, maxCorr] = matchTemplate(obj, segment, showPlots)
-            % showPlots: bool
+        function [segment, maxCorr] = matchTemplate(obj, segment, drawFig)
+            % drawFig: bool
             
             xcorrResult = xcorr2(double(segment.image),double(obj.template.image));
             [maxCorr,idx] = max(xcorrResult(:));
