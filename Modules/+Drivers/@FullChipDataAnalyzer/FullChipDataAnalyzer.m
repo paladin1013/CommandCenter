@@ -747,44 +747,46 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
         
-        function rotCorners_xy = gdsAutoMatch(obj, wl_img, drawFig)
+        function rotCorners_xy = waveguideAutoMatch(obj, wl_img, drawFig, ax)
 
             wl_img = rot90(wl_img, 2);
             wl_img = imresize(wl_img, size(wl_img)*2);
             ip = Drivers.ImageProcessor.instance();
+            if exist('drawFig', 'var') && drawFig
+                ip.plotAllIntermediate = true;
+            else
+                ip.plotAllIntermediate = false;
+            end
+            ip.binarizeThresRatio = 0.07;
             [di, segments] = ip.processImage(wl_img);
-            ip.waveguideWidth_pixel = 8;
+            ip.waveguideWidth_pixel = 5;
             % angle = ip.getAngle(segments(1), true);
-            cornerPositions = ip.getCornerPositions(segments(1), true);
-            
-            % resolution_deg = 0.02;
-            % angles = [-30:resolution_deg:30];
-            % nAngles = length(angles);
-            % vars = zeros(1, nAngles);
-            % lineImg = ones(size(wl_img, 2), obj.waveguideWidth);
-            % for k = 1:nAngles
-            %     deg = angles(k);
-            %     rotWlImg = imrotate(wl_img, -deg, 'crop');
-            %     vars(k) = var(conv2(rotWlImg, lineImg, 'valid'), 0, 'all');
-            % end
-            
-            % [maxVar, idx] = max(vars);
-            % maxAngle = angles(idx);
-            % if exist('drawFig', 'var') && drawFig
-            %     fig = figure;
-            %     s1 = subplot(1, 3, 1);
-            %     plot(s1, angles, vars);
-            %     s2 = subplot(1, 3, 2);
-            %     imshow(imrotate(wl_img, -maxAngle, 'bicubic', 'crop'));
-            %     s3 = subplot(1, 3, 3);
-            %     rotWlImg = imrotate(wl_img, -maxAngle, 'crop');
-            %     convResults = conv2(rotWlImg, lineImg, 'valid');
-            %     plot(s3, convResults)
-            % end
-            % fig = figure;
-            % imshow(imrotate(wl_img, -angle, 'bicubic', 'crop'));
-            
-            
+            rotCorners_xy = ip.getCornerPositions(segments(1), true);
+            rotCorners_xy = rotCorners_xy + [segments{1}.xmin, segments{1}.ymin];
+            if ~exist('drawFig', 'var') || ~drawFig
+                return;
+            end
+            if ~exist('ax') || isempty(ax) || ~isvalid(ax)
+                fig = figure;
+                ax = axes(fig);
+            end
+            imagesc(ax, wl_img);
+            colormap(ax, 'gray');
+            hold(ax, 'on');
+            plot(ax, rotCorners_xy([1, 2, 3, 4, 1], 1), rotCorners_xy([1, 2, 3, 4, 1], 2));
+            cmap = lines(1);
+            for k = 1:6
+                xstart = (rotCorners_xy(1, 1)*k+rotCorners_xy(2, 1)*(7-k))/7;
+                xend = (rotCorners_xy(4, 1)*k+rotCorners_xy(3, 1)*(7-k))/7;
+                ystart = (rotCorners_xy(1, 2)*k+rotCorners_xy(2, 2)*(7-k))/7;
+                yend = (rotCorners_xy(4, 2)*k+rotCorners_xy(3, 2)*(7-k))/7;
+
+                xstartExtended = xstart + (xstart - xend)*2/3;
+                xendExtended = xend + (xend - xstart)*2/3;
+                ystartExtended = ystart + (ystart - yend)*2/3;
+                yendExtended = yend + (yend - ystart)*2/3;
+                plot(ax, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap);
+            end
         end
         function emitterGroups = divideEmitters(obj, emitters, chiplets)
             nChiplets = length(chiplets);

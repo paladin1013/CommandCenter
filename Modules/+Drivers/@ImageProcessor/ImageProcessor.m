@@ -331,7 +331,7 @@ classdef ImageProcessor < Modules.Driver
         end
         function cornerPositions = getCornerPositions(obj, segments, showPlots)
             cmap = lines(1);
-            rotationAngle = obj.getAngle(segments, false, 0.02);
+            rotationAngle = obj.getAngle(segments, true, 0.02, true);
             segImg = segments{1}.image;
             segX = size(segImg, 2);
             segY = size(segImg, 1);
@@ -343,16 +343,27 @@ classdef ImageProcessor < Modules.Driver
             [sortedPeakVals, sortedPeakIdx] = sort(peakVals, 'descend');
             maxPeakPos = sort(peakPos(sortedPeakIdx(1:6)), 'ascend');
             p = polyfit([1:6], maxPeakPos, 1);
-            ymin = polyval(p, 0)+obj.waveguideWidth_pixel/2;
-            ymax = polyval(p, 7)+obj.waveguideWidth_pixel/2;
+            ymin = polyval(p, 0)+obj.waveguideWidth_pixel/2+0.5;
+            ymax = polyval(p, 7)+obj.waveguideWidth_pixel/2+0.5;
             
             verLineImg = ones(segY, obj.waveguideWidth_pixel);
             xConvResult = conv2(rotSegImg, verLineImg, 'valid');
             [peakVals, peakPos] = findpeaks(xConvResult, [1:length(xConvResult)]);
             [sortedPeakVals, sortedPeakIdx] = sort(peakVals, 'descend');
-            maxPeakPos = sort(peakPos(sortedPeakIdx(1:2)), 'ascend');
-            xmin = maxPeakPos(1)+obj.waveguideWidth_pixel/2;
-            xmax = maxPeakPos(2)+obj.waveguideWidth_pixel/2;
+            [maxPeakPos, maxPeakIdx] = sort(peakPos(sortedPeakIdx(1:2)), 'ascend');
+            for k = 1:2
+                pos = maxPeakPos(k);
+                val = sortedPeakVals(maxPeakIdx(k));
+                thres = val * 0.97;
+                neighborStart = max(1, pos-30);
+                neighborEnd = min(pos+30, length(xConvResult));
+                neighborVals = xConvResult(neighborStart:neighborEnd);
+                peakStartPos = min(find(neighborVals>thres));
+                peakEndPos = max(find(neighborVals>thres));
+                maxPeakPos(k) = (peakStartPos+peakEndPos)/2+neighborStart-1;
+            end
+            xmin = maxPeakPos(1)+obj.waveguideWidth_pixel/2+0.5;
+            xmax = maxPeakPos(2)+obj.waveguideWidth_pixel/2+0.5;
 
             % center = [segX, segY]/2+0.5;
             xcenter = (segX+1)/2;
@@ -363,8 +374,8 @@ classdef ImageProcessor < Modules.Driver
             cornerPositions = realVectors + [xcenter, ycenter];
             if exist('showPlots', 'var') && showPlots
                 fig = figure;
-                fig.Position = [500, 200, 1000, 400];
-                s1 = subplot(1, 2, 1);
+                fig.Position = [500, 200, 1200, 350];
+                s1 = subplot(1, 3, 1);
                 imagesc(s1, rotSegImg);
                 colormap(s1, 'gray');
                 hold(s1, 'on');
@@ -374,10 +385,14 @@ classdef ImageProcessor < Modules.Driver
                     xend = (rotCorners(4, 1)*k+rotCorners(3, 1)*(7-k))/7;
                     ystart = (rotCorners(1, 2)*k+rotCorners(2, 2)*(7-k))/7;
                     yend = (rotCorners(4, 2)*k+rotCorners(3, 2)*(7-k))/7;
-                    plot(s1, [xstart, xend], [ystart, yend], 'Color', cmap);
+                    xstartExtended = xstart + (xstart - xend)*2/3;
+                    xendExtended = xend + (xend - xstart)*2/3;
+                    ystartExtended = ystart + (ystart - yend)*2/3;
+                    yendExtended = yend + (yend - ystart)*2/3;
+                    plot(s1, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap);
                 end
 
-                s2 = subplot(1, 2, 2);
+                s2 = subplot(1, 3, 2);
                 imagesc(s2, segImg);
                 colormap(s2, 'gray');
                 hold(s2, 'on');
@@ -387,11 +402,18 @@ classdef ImageProcessor < Modules.Driver
                     xend = (cornerPositions(4, 1)*k+cornerPositions(3, 1)*(7-k))/7;
                     ystart = (cornerPositions(1, 2)*k+cornerPositions(2, 2)*(7-k))/7;
                     yend = (cornerPositions(4, 2)*k+cornerPositions(3, 2)*(7-k))/7;
-                    plot(s2, [xstart, xend], [ystart, yend], 'Color', cmap);
+
+                    xstartExtended = xstart + (xstart - xend)*2/3;
+                    xendExtended = xend + (xend - xstart)*2/3;
+                    ystartExtended = ystart + (ystart - yend)*2/3;
+                    yendExtended = yend + (yend - ystart)*2/3;
+                    plot(s2, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap);
                 end
+                s3 = subplot(1, 3, 3);
+                plot(s3, [1:length(xConvResult)], xConvResult);
             end
         end
-        function angle = getAngle(obj, segments, showPlots, resolution_deg)
+        function angle = getAngle(obj, segments, showPlots, resolution_deg, usePeakVals)
             if ~exist('resolution_deg', 'var')
                 resolution_deg = 0.1;
             end
@@ -402,6 +424,7 @@ classdef ImageProcessor < Modules.Driver
             angles = [-30:resolution_deg:30];
             nAngles = length(angles);
             vars = zeros(nSegments, nAngles);
+            maxPeakSums = zeros(1, nAngles);
             for k = 1:nSegments
                 segIm = segments{k}.image;
                 segY = size(segIm, 1);
@@ -410,11 +433,21 @@ classdef ImageProcessor < Modules.Driver
                 for l = 1:nAngles
                     deg = angles(l);
                     segImRotated = imrotate(segIm, -deg, 'crop');
-                    vars(k, l) = var(conv2(segImRotated, lineImg, 'valid'), 0, 'all');
+                    tempConvResult = conv2(segImRotated, lineImg, 'valid');
+                    if exist('usePeakVals', 'var') && usePeakVals && k == 1
+                        [peaks, peakPos] = findpeaks(tempConvResult);
+                        sortedPeakVals = sort(peaks, 'descend');
+                        maxPeakSums(l) = sum(sortedPeakVals(1:6));
+                    end
+                    vars(k, l) = var(tempConvResult, 0, 'all');
                 end
             end
-            meanVars = mean(vars, 1);
-            [maxVar, idx] = max(meanVars);
+            if exist('usePeakVals', 'var') && usePeakVals
+                [maxPeakSum, idx] = max(maxPeakSums);
+            else
+                meanVars = mean(vars, 1);
+                [maxVar, idx] = max(meanVars);
+            end
             angle = angles(idx);
             obj.angle_deg = angle;
             if showPlots && nSegments >= 1
@@ -449,11 +482,17 @@ classdef ImageProcessor < Modules.Driver
                     s3 = subplot(2, 2, 3);
                     hold(s3, 'on');
                     
-                    plot(s3, angle, maxVar, '.', 'Color', cmap(1, :), 'MarkerSize', 30);
                     % plot(s3, angle-45, meanVars(idx-int16(45/resolution_deg)+1), '.', 'Color', cmap(2, :), 'MarkerSize', 30);
                     % plot(s3, angle-90, meanVars(idx-int16(90/resolution_deg)+1), '.', 'Color', cmap(3, :), 'MarkerSize', 30);
+                    if exist('usePeakVals', 'var') && usePeakVals
+                        plot(s3, angle, maxPeakSum, '.', 'Color', cmap(1, :), 'MarkerSize', 30);
+                        plot(s3, angles, maxPeakSums, 'Color', 'k', 'LineWidth', 2);
+                    else
+                        plot(s3, angle, maxVar, '.', 'Color', cmap(1, :), 'MarkerSize', 30);
+                        plot(s3, angles, meanVars, 'Color', 'k', 'LineWidth', 2);
+                    end
+
                     box(s3, 'on');
-                    plot(s3, angles, meanVars, 'Color', 'k', 'LineWidth', 2);
                     xlim(s3, [-90, 90]);
                     s3.FontSize = 16;
                     s3.LineWidth = 2;
