@@ -808,6 +808,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 idx = str2num(tokens{1}{1});
                 fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
                 load(fullfile(srcDir, allFileNames{k}), 'wl_img');
+                wl_img = rot90(wl_img, 2);
                 fig = figure;
                 fig.Position = [500, 200, 1000, 800];
                 ax = axes(fig);
@@ -993,24 +994,20 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
 
             save(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'), 'allWaveguidePositions')
-        end
-        function emitters = updateEmitterCenterDistance(obj, emitters, allFrameCorners_xy)
+        end 
+        function emitters = updateEmitterCenterDistance(obj, emitters, allWaveguidePositions)
             nthChiplet = extractfield(emitters, 'nthChiplet');
             region = extractfield(emitters, 'region');
             chipletList = unique(nthChiplet);
             for k = 1:length(chipletList)
                 tempN = chipletList(k);
                 emitterIdx = find(nthChiplet==tempN & (strcmp(region, 'tip')|strcmp(region, 'center')));
-                cornerAbsPos_yx = allFrameCorners_xy(tempN, [2, 1], :);
                 for l = 1:length(emitterIdx)
-                    waveguidePositions = NaN(6, 2, 2); % 6 waveguides; 2 points; yx axis
                     waveguideDists = NaN(6, 1);
-                    absPosX = emitter(emitterIdx(l)).absPosX;
-                    absPosY = emitter(emitterIdx(l)).absPosY;
+                    absPosX = emitters(emitterIdx(l)).absPosX;
+                    absPosY = emitters(emitterIdx(l)).absPosY;
                     for m = 1:6
-                        waveguidePositions(m, 1, :) = cornerAbsPos_yx(1, :)*m/7+cornerAbsPos_yx(2, :)*(7-m)/7;
-                        waveguidePositions(m, 2, :) = cornerAbsPos_yx(4, :)*m/7+cornerAbsPos_yx(3, :)*(7-m)/7;
-                        waveguideDists(m) = getPointLineDistance(absPosX, absPosY, waveguidePositions(m, 1, 2), waveguidePositions(m, 1, 1), waveguidePositions(m, 2, 2), waveguidePositions(m, 2, 1), true, true); % Infinity length should be set to true.
+                        waveguideDists(m) = getPointLineDistance(absPosX, absPosY, allWaveguidePositions(tempN, m, 1), allWaveguidePositions(tempN, m, 2), allWaveguidePositions(tempN, m, 3), allWaveguidePositions(tempN, m, 4), true, true); % Infinity length should be set to true.
                     end
                     [minval, closestLine] = min(abs(waveguideDists));
                     emitters(emitterIdx(l)).centerDistance = waveguideDists(closestLine);

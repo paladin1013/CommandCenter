@@ -356,13 +356,13 @@ classdef ImageProcessor < Modules.Driver
             yTop = (rotCoarseCornerPositions(1, 2)+rotCoarseCornerPositions(4, 2))/2;
             yBottom = (rotCoarseCornerPositions(2, 2)+rotCoarseCornerPositions(3, 2))/2;
 
-            pieceXmin = xSegCenter - size(segments{1}.image, 2)/2;
-            pieceXmax = xSegCenter + size(segments{1}.image, 2)/2;
+            pieceXmin = round(xSegCenter - size(segments{1}.image, 2)/2);
+            pieceXmax = round(xSegCenter + size(segments{1}.image, 2)/2);
             for k = 1:6
-                pieceYmin = (yTop*(7.5-k)+yBottom*(k-0.5))/7;
-                pieceYmax = (yTop*(6.5-k)+yBottom*(k+0.5))/7;
+                pieceYmin = round((yTop*(7.5-k)+yBottom*(k-0.5))/7);
+                pieceYmax = round((yTop*(6.5-k)+yBottom*(k+0.5))/7);
                 wlPiece = rotWlImg(pieceYmin:pieceYmax, pieceXmin:pieceXmax);
-                [yStart, yEnd] = obj.fitSingleWaveguide(wlPiece, xLeft-pieceXmin, xRight-pieceXmin, drawFig);
+                [yStart, yEnd] = obj.fitSingleWaveguide(wlPiece, round(xLeft-pieceXmin), round(xRight-pieceXmin), drawFig);
                 yStarts(k) = yStart+pieceYmin-1;
                 yEnds(k) = yEnd+pieceYmin-1;
             end
@@ -504,6 +504,11 @@ classdef ImageProcessor < Modules.Driver
                     result = x < xStart-wgWidth;
                 end
             end
+            centerXs = [];
+            centerYs = [];
+            peakXs = [];
+            peakStartYs = [];
+            peakEndYs = [];
             for k = 1:xSize
                 if k >= xStart-wgWidth && k <= xStart+wgWidth || k >= xEnd-wgWidth && k <= xEnd+wgWidth
                     continue;
@@ -519,29 +524,36 @@ classdef ImageProcessor < Modules.Driver
 %                     ys(end+1) = (min(nonZeroYs)+max(nonZeroYs))/2;
                 elseif sum(wgOnly(:, k) ~= 0) > 10 && maxVals(k) > sortedMaxVals(round(xSize/5))
                     background = min(wgOnly(wgOnly(:,k)>0, k));
+                    tempWgCol = wgOnly(:,k);
+                    tempWgCol(tempWgCol > 0) = tempWgCol(tempWgCol > 0) - background;
+                    yCenterOfMass = [1:ySize]*double(tempWgCol)/sum(tempWgCol, 'all');
+                    centerXs(end+1) = k;
+                    centerYs(end+1) = yCenterOfMass;
                     [peakVals, peakPos] = findpeaks(wgOnly(:, k));
                     [sortedPeakVals, sortedIdx] = sort(peakVals, 'descend');
                     sortedPeakPos = peakPos(sortedIdx);
-                    for l = 2:length(sortedPeakVals)
-                        if abs(sortedPeakPos(1)-sortedPeakPos(l)) > 5
-                            peakStart = min(sortedPeakPos(1), sortedPeakPos(l));
-                            peakEnd = max(sortedPeakPos(1), sortedPeakPos(l));
-                            [peakVals, peakPos] = findpeaks(-wgOnly(peakStart:peakEnd, k));
-                            if length(peakVals) == 1
-                                for m = 1:5
-                                    xs(end+1) = k;
-                                    ys(end+1) = peakStart + peakPos - 1;
+                    if length(sortedPeakPos) >= 2 && abs(sortedPeakPos(1)-sortedPeakPos(2)) > 3
+                        peakStart = min(sortedPeakPos(1), sortedPeakPos(2));
+                        peakEnd = max(sortedPeakPos(1), sortedPeakPos(2));
+                        if length(find(wgOnly(1:peakStart,k))) >= 5 && length(find(wgOnly(peakEnd:ySize,k))) >= 5
+                            peakXs(end+1) = k;
+                            peakStartYs(end+1) = peakStart;
+                            peakEndYs(end+1) = peakEnd;
+                            if peakStart <= yCenterOfMass && peakEnd >= yCenterOfMass
+                                [peakVals, peakPos] = findpeaks(-wgOnly(peakStart:peakEnd, k));
+                                if length(peakVals) == 1
+                                    for m = 1:5
+                                        xs(end+1) = k;
+                                        ys(end+1) = peakStart + peakPos - 1;
+                                    end
                                 end
+                                xs(end+1) = k;
+                                ys(end+1) = (sortedPeakPos(1)+sortedPeakPos(2))/2;
                             end
-                                % ys(end+1) = peakStart + peakPos - 1;
-                            xs(end+1) = k;
-                            ys(end+1) = (sortedPeakPos(1)+sortedPeakPos(l))/2;
-                            break;
                         end
-                    end 
+                    end
                     xs(end+1) = k;
-                    ys(end+1) = [1:ySize]*double(wgOnly(:, k))/sum(wgOnly(:, k), 'all');
-
+                    ys(end+1) = yCenterOfMass;
                 end
             end
 
@@ -558,6 +570,11 @@ classdef ImageProcessor < Modules.Driver
                 colormap('gray');
                 hold(ax, 'on');
                 plot(ax, [1, xSize], polyval(p, [1, xSize]));
+                scatter(ax, xs, ys, 10, 'filled');
+                scatter(ax, centerXs, centerYs, 10, 'filled');
+                scatter(ax, peakXs, peakStartYs, 10, 'filled');
+                scatter(ax, peakXs, peakEndYs, 10, 'filled');
+                
             end
         end
         function cornerPositions = getCoarseCornerPositions(obj, segments, drawFig)
