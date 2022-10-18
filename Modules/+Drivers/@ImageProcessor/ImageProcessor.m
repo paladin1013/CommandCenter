@@ -330,7 +330,7 @@ classdef ImageProcessor < Modules.Driver
                 processedImage(CC.PixelIdxList{idx(k)}) = 1;
             end
         end
-        function cornerPositions = getCornerPositions(obj, wlImg, drawFig)
+        function [waveguidePositions, extendRatio] = getWaveguidePositions(obj, wlImg, drawFig)
             if ~exist('drawFig', 'var')
                 drawFig = false;
             end
@@ -362,7 +362,7 @@ classdef ImageProcessor < Modules.Driver
                 pieceYmin = (yTop*(7.5-k)+yBottom*(k-0.5))/7;
                 pieceYmax = (yTop*(6.5-k)+yBottom*(k+0.5))/7;
                 wlPiece = rotWlImg(pieceYmin:pieceYmax, pieceXmin:pieceXmax);
-                [yStart, yEnd] = obj.fitSingleWaveguide(wlPiece, xLeft-pieceXmin, xRight-pieceXmin, false);
+                [yStart, yEnd] = obj.fitSingleWaveguide(wlPiece, xLeft-pieceXmin, xRight-pieceXmin, drawFig);
                 yStarts(k) = yStart+pieceYmin-1;
                 yEnds(k) = yEnd+pieceYmin-1;
             end
@@ -377,10 +377,21 @@ classdef ImageProcessor < Modules.Driver
             rotCornerPositions(3, 2) = polyval(pEnd, 7);
             rotCornerPositions(4, 2) = polyval(pEnd, 0);
 
-            rotVectors = rotCornerPositions - [xCenter, yCenter];
-            hyperResCornerPositions = rotVectors*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
+            rotWaveguidePositions = NaN(6, 4);
+            rotWaveguidePositions(:, 1) = xLeft;
+            rotWaveguidePositions(:, 3) = xRight;
+            
+            for k = 1:6
+                rotWaveguidePositions(k, 2) = polyval(pStart, k);
+                rotWaveguidePositions(k, 4) = polyval(pEnd, k);
+            end
 
-            cornerPositions = hyperResCornerPositions / 2;
+            rotVectors = rotWaveguidePositions - [xCenter, yCenter, xCenter, yCenter];
+            hyperResWaveguidePositions = rotWaveguidePositions;
+            hyperResWaveguidePositions(:, 1:2) = rotVectors(:, 1:2)*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
+            hyperResWaveguidePositions(:, 3:4) = rotVectors(:, 3:4)*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
+            waveguidePositions = hyperResWaveguidePositions / 2;
+            extendRatio = ((pieceXmax-pieceXmin+1)/(xRight-xLeft+1)-1)/2;
             if drawFig
                 fig = figure;
                 fig.Position = [300, 200, 1800, 1600];
@@ -389,14 +400,13 @@ classdef ImageProcessor < Modules.Driver
                 % box(s1, 'on');
                 colormap(s1, 'gray');
                 hold(s1, 'on');
-                extendRatio = ((pieceXmax-pieceXmin+1)/(xRight-xLeft+1)-1)/2;
-                plot(s1, rotCornerPositions([1, 2, 3, 4, 1], 1), rotCornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+                plot(s1, rotCoarseCornerPositions([1, 2, 3, 4, 1], 1), rotCoarseCornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
 
                 for k = 1:6
-                    xstart = (rotCornerPositions(1, 1)*k+rotCornerPositions(2, 1)*(7-k))/7;
-                    xend = (rotCornerPositions(4, 1)*k+rotCornerPositions(3, 1)*(7-k))/7;
-                    ystart = (rotCornerPositions(1, 2)*k+rotCornerPositions(2, 2)*(7-k))/7;
-                    yend = (rotCornerPositions(4, 2)*k+rotCornerPositions(3, 2)*(7-k))/7;
+                    xstart = (rotCoarseCornerPositions(1, 1)*k+rotCoarseCornerPositions(2, 1)*(7-k))/7;
+                    xend = (rotCoarseCornerPositions(4, 1)*k+rotCoarseCornerPositions(3, 1)*(7-k))/7;
+                    ystart = (rotCoarseCornerPositions(1, 2)*k+rotCoarseCornerPositions(2, 2)*(7-k))/7;
+                    yend = (rotCoarseCornerPositions(4, 2)*k+rotCoarseCornerPositions(3, 2)*(7-k))/7;
                     xstartExtended = xstart + (xstart - xend)*extendRatio;
                     xendExtended = xend + (xend - xstart)*extendRatio;
                     ystartExtended = ystart + (ystart - yend)*extendRatio;
@@ -428,12 +438,12 @@ classdef ImageProcessor < Modules.Driver
                 imagesc(s3, rotWlImg);
                 colormap(s3, 'gray');
                 hold(s3, 'on');
-                plot(s3, rotCornerPositions([1, 2, 3, 4, 1], 1), rotCornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+                % plot(s3, rotCornerPositions([1, 2, 3, 4, 1], 1), rotCornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
                 for k = 1:6
-                    xstart = (rotCornerPositions(1, 1)*k+rotCornerPositions(2, 1)*(7-k))/7;
-                    xend = (rotCornerPositions(4, 1)*k+rotCornerPositions(3, 1)*(7-k))/7;
-                    ystart = (rotCornerPositions(1, 2)*k+rotCornerPositions(2, 2)*(7-k))/7;
-                    yend = (rotCornerPositions(4, 2)*k+rotCornerPositions(3, 2)*(7-k))/7;
+                    xstart = rotWaveguidePositions(k, 1);
+                    ystart = rotWaveguidePositions(k, 2);
+                    xend = rotWaveguidePositions(k, 3);
+                    yend = rotWaveguidePositions(k, 4);
 
                     xstartExtended = xstart + (xstart - xend)*extendRatio;
                     xendExtended = xend + (xend - xstart)*extendRatio;
@@ -447,12 +457,12 @@ classdef ImageProcessor < Modules.Driver
                 imagesc(s4, wlImg);
                 colormap(s4, 'gray');
                 hold(s4, 'on');
-                plot(s4, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
+                % plot(s4, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2), 'Color', cmap(2, :));
                 for k = 1:6
-                    xstart = (cornerPositions(1, 1)*k+cornerPositions(2, 1)*(7-k))/7;
-                    xend = (cornerPositions(4, 1)*k+cornerPositions(3, 1)*(7-k))/7;
-                    ystart = (cornerPositions(1, 2)*k+cornerPositions(2, 2)*(7-k))/7;
-                    yend = (cornerPositions(4, 2)*k+cornerPositions(3, 2)*(7-k))/7;
+                    xstart = waveguidePositions(k, 1);
+                    ystart = waveguidePositions(k, 2);
+                    xend = waveguidePositions(k, 3);
+                    yend = waveguidePositions(k, 4);
 
                     xstartExtended = xstart + (xstart - xend)*extendRatio;
                     xendExtended = xend + (xend - xstart)*extendRatio;
@@ -475,18 +485,63 @@ classdef ImageProcessor < Modules.Driver
 
             sortedBrightness = sort(wgNoFrame(:), 'descend');
             thres = sortedBrightness(round(length(wgNoFrame(:))*thresRatio));
-            wgOnly = wgNoFrame;
+            wgOnly = double(wgNoFrame);
             wgOnly(wgOnly < thres) = 0;
+
+            wgMask = (wgOnly > 0);
+            wgMask = bwareaopen(wgMask, 30);
+            wgOnly(~wgMask) = 0;
 
             xs = [];
             ys = [];    
+            maxVals = max(wgOnly, [], 1);
+            sortedMaxVals = sort(maxVals, 'descend');
+            leftIsBrighter = max(maxVals(1:xStart-wgWidth)) > max(maxVals(xEnd+wgWidth:xSize));
+            function result = inDark(x)
+                if leftIsBrighter
+                    result = x > xEnd+wgWidth;
+                else
+                    result = x < xStart-wgWidth;
+                end
+            end
             for k = 1:xSize
-                if k >= xStart-wgWidth && k <= xStart+wgWidth || k > xEnd-wgWidth && k < xEnd+wgWidth
+                if k >= xStart-wgWidth && k <= xStart+wgWidth || k >= xEnd-wgWidth && k <= xEnd+wgWidth
                     continue;
                 end
-                if sum(wgOnly(:, k) ~= 0) > 10
+                
+                if sum(wgOnly(:, k) ~= 0) <= 5 || (sum(wgOnly(:, k) ~= 0) <= 10 && ~inDark(k))
+                    continue
+                end
+                if sum(wgOnly(:, k) ~= 0) > 5 && inDark(k)
                     xs(end+1) = k;
                     ys(end+1) = [1:ySize]*double(wgOnly(:, k))/sum(wgOnly(:, k), 'all');
+%                     nonZeroYs = find(wgOnly(:, k));
+%                     ys(end+1) = (min(nonZeroYs)+max(nonZeroYs))/2;
+                elseif sum(wgOnly(:, k) ~= 0) > 10 && maxVals(k) > sortedMaxVals(round(xSize/5))
+                    background = min(wgOnly(wgOnly(:,k)>0, k));
+                    [peakVals, peakPos] = findpeaks(wgOnly(:, k));
+                    [sortedPeakVals, sortedIdx] = sort(peakVals, 'descend');
+                    sortedPeakPos = peakPos(sortedIdx);
+                    for l = 2:length(sortedPeakVals)
+                        if abs(sortedPeakPos(1)-sortedPeakPos(l)) > 5
+                            peakStart = min(sortedPeakPos(1), sortedPeakPos(l));
+                            peakEnd = max(sortedPeakPos(1), sortedPeakPos(l));
+                            [peakVals, peakPos] = findpeaks(-wgOnly(peakStart:peakEnd, k));
+                            if length(peakVals) == 1
+                                for m = 1:5
+                                    xs(end+1) = k;
+                                    ys(end+1) = peakStart + peakPos - 1;
+                                end
+                            end
+                                % ys(end+1) = peakStart + peakPos - 1;
+                            xs(end+1) = k;
+                            ys(end+1) = (sortedPeakPos(1)+sortedPeakPos(l))/2;
+                            break;
+                        end
+                    end 
+                    xs(end+1) = k;
+                    ys(end+1) = [1:ySize]*double(wgOnly(:, k))/sum(wgOnly(:, k), 'all');
+
                 end
             end
 
