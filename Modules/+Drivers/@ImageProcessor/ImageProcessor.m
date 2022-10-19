@@ -330,7 +330,7 @@ classdef ImageProcessor < Modules.Driver
                 processedImage(CC.PixelIdxList{idx(k)}) = 1;
             end
         end
-        function [waveguidePositions, extendRatio] = getWaveguidePositions(obj, wlImg, drawFig)
+        function [waveguidePositions, cornerPositions, extendRatio] = getWaveguidePositions(obj, wlImg, drawFig)
             if ~exist('drawFig', 'var')
                 drawFig = false;
             end
@@ -387,9 +387,12 @@ classdef ImageProcessor < Modules.Driver
             end
 
             rotVectors = rotWaveguidePositions - [xCenter, yCenter, xCenter, yCenter];
+            rotCornerVectors = rotCornerPositions - [xCenter, yCenter];
             hyperResWaveguidePositions = rotWaveguidePositions;
             hyperResWaveguidePositions(:, 1:2) = rotVectors(:, 1:2)*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
             hyperResWaveguidePositions(:, 3:4) = rotVectors(:, 3:4)*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
+            hyperResCornerPositions = rotCornerVectors*[cosd(angle), -sind(angle); sind(angle), cosd(angle)]+[xCenter, yCenter];
+            cornerPositions = hyperResCornerPositions/2;
             waveguidePositions = hyperResWaveguidePositions / 2;
             extendRatio = ((pieceXmax-pieceXmin+1)/(xRight-xLeft+1)-1)/2;
             if drawFig

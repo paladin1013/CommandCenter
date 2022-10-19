@@ -42,178 +42,25 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             dotPos = find(path=='.', 1, 'last');
             fileName = extractBetween(path, lastSlashPos+1, dotPos-1);
             fileName = fileName{1};
-            
+            date = extractBetween(path, lastSlashPos-16, lastSlashPos-13);
+            date = str2num(date{1});
             [tokens,matches] = regexp(fileName,'[cC]hiplet_?(\d+)(.*)','tokens','match'); 
             chipletData = load(path);
             if length(tokens{1}) >= 2 && ~isempty(tokens{1}{2})
-                chipletData.chipletIdx = str2num(tokens{1}{2});
+                chipletData.chipletIdx = str2num(tokens{1}{1});
                 [subTokens, subMatches] = regexp(tokens{1}{2}, '_x(\d+)_y(\d+)_ID(\d+)', 'tokens', 'match');
                 chipletID = str2num(subTokens{1}{3});
                 chipletData.chipletID = chipletID; 
-            else
+                chipletData.nthChiplet = (date-824)*16+chipletData.chipletIdx;
+
+                else
                 chipletData.chipletIdx = NaN;
                 chipletData.chipletID = NaN;
+                chipletData.nthChiplet = NaN;
                 fprintf("chipletID and chipletIdx is not assigned. Please consider to format the data file similar with `chiplet1_x0_y0_ID16`.\n");
             end 
-        end 
-        function emitters = processChiplet(chipletData, drawFig, cornerPosition_xy)
-            % Parallel can be used if more data is required
-            if isstruct(chipletData) && isfield(chipletData, 'path') && ~isfield(chipletData, 'widefieldData')
-                chipletIdx = chipletData.chipletIdx;
-                chipletID = chipletData.chipletID;
-                fprintf("Loading file %s, chipletIdx: %d, chipletID: %d\n", chipletData.path, chipletData.chipletIdx, chipletData.chipletID);
-                % Take the data path as input
-                chipletData = load(chipletData.path);
-                chipletData.chipletIdx = chipletIdx;
-                chipletData.chipletID = chipletID;
-            end
-            % Output data structure: cell array, each cell contain fields:
-            %       absPosX, absPosY (absolute in the image), relPosX, relPosY (relative to the center of the chiplet), region ('center', 'frame', 'tip', 'bulk');
-            %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
-            %       spectrums (struct array, contains `nSpectrums` spectrums)
-            %           hasPeak (boolean), intensity (N*1 array), freqs_THz (N*1 array), fitStartIdx, fitEndIdx, fittedIntensity ((fitEndIdx-fitStartIdx+1)*1 array), peakFreq_THz (double), linewidth (double)
-            nSpectrums = length(chipletData.widefieldData);
-            assert(isfield(chipletData, 'chipletIdx'), "Please manually assign chipletData.chipletIdx (the n-th scanned chiplet).");
-            assert(isfield(chipletData, 'chipletID'), "Please manually assign chipletData.chipletID (the ID number on the sample that represents this chiplet, can be seen on whitelight image).");
-
-            allFilteredImgs = [];
-            allFreqs = [];
-            % Find all positions whose maximum intensity exceeds mincount (record x, y, freq, maxcount)
-            maxFreqDiff = 0;
-            for k = 1:nSpectrums
-                tempData = chipletData.widefieldData{k};
-                allFilteredImgs = cat(3, allFilteredImgs, tempData.filtered_imgs);
-                allFreqs = [allFreqs, tempData.freqs];
-                maxFreqDiff = max(maxFreqDiff, max(diff(tempData.freqs)));
-            end
-
-            [maxIntensity, maxIdx] = max(allFilteredImgs, [], 3);
-            [validYs, validXs] = find(maxIntensity > Drivers.FullChipDataAnalyzer.processMincount); % Note that the image has different coordinate system than regular plots.
-            validInds = sub2ind(size(allFilteredImgs(:, :, 1)), validYs, validXs);
-
-            peakIntensities = maxIntensity(validInds);
-            peakIdx = maxIdx(validInds);
-            peakFreqs = transpose(allFreqs(peakIdx));
-            
-
-            % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
-            emitterIdx = dbscan([validXs, validYs, peakFreqs*max(min(2e4, 1/maxFreqDiff), 1e4)], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 2e4 to get a closer order of magnitude with image pixels (usually 512).
-          
-            if exist('drawFig', 'var') && drawFig
-                fig = figure;
-                ax = axes(fig);
-                scatter3(ax, validXs, validYs, peakFreqs, (peakIntensities-Drivers.FullChipDataAnalyzer.processMincount+500)/500, emitterIdx, 'filled');
-                colormap(ax, 'lines');
-
-            end
-            nEmitters = length(unique(emitterIdx));
-
-            emitters = [];
-            imageXmax = size(allFilteredImgs, 1);
-            imageXmin = 1;
-            imageYmax = size(allFilteredImgs, 2);
-            imageYmin = 1;
-            for l = 1:nEmitters
-                tempIdx = find(emitterIdx==l);
-                tempXs = validXs(tempIdx);
-                tempYs = validYs(tempIdx);
-
-                tempIntensities = peakIntensities(tempIdx);
-                tempFreqs = peakFreqs(tempIdx);
-                [maxIntensity, maxIdx] = max(tempIntensities);
-                emitters(l).absPosX = tempXs(maxIdx);
-                emitters(l).absPosY = tempYs(maxIdx);
-                % For emitter image block: add padding to neighbor pixels
-                xmin = max(emitters(l).absPosX-Drivers.FullChipDataAnalyzer.padding, imageXmin);
-                xmax = min(emitters(l).absPosX+Drivers.FullChipDataAnalyzer.padding, imageXmax);
-                ymin = max(emitters(l).absPosY-Drivers.FullChipDataAnalyzer.padding, imageYmin);
-                ymax = min(emitters(l).absPosY+Drivers.FullChipDataAnalyzer.padding, imageYmax);
-                freqIdxMin = max(min(peakIdx(tempIdx))-Drivers.FullChipDataAnalyzer.freqPadding, 1);
-                freqIdxMax = min(max(peakIdx(tempIdx))+Drivers.FullChipDataAnalyzer.freqPadding, length(allFreqs));
-                
-                emitters(l).nthChiplet = chipletData.nthChiplet;
-
-                emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
-                emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
-                emitters(l).maxIntensity = double(maxIntensity);
-
-                emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
-                emitters(l).chipletIdx = chipletData.chipletIdx;
-                emitters(l).chipletCoordX = chipletData.coordX;
-                emitters(l).chipletCoordY = chipletData.coordY;
-                emitters(l).chipletID = chipletData.chipletID;
-                emitters(l).size_pixel = sum(emitterIdx==l);
-
-                % Get spectrum
-                findPeakIntensity = NaN(nSpectrums, 1);
-                findPeakFreq = NaN(nSpectrums, 1);
-                findPeakWidth_THz = NaN(nSpectrums, 1);
-                findPeakAmplitude = NaN(nSpectrums, 1);
-                spectrumValid = NaN(nSpectrums, 1);
-                fittedX = NaN(nSpectrums, 1);
-                fittedY = NaN(nSpectrums, 1);
-                for k = 1:nSpectrums
-                    % freqs_THz = reshape(freqs_THz, nPoints, 1);
-                    % intensities = chipletData.widefieldData{k}.filtered_imgs(emitters(l).absPosY, emitters(l).absPosX, :);
-                    % intensities = reshape(intensities, nPoints, 1);
-
-                    tempBox = double(chipletData.widefieldData{k}.filtered_imgs(ymin:ymax, xmin:xmax, freqIdxMin:freqIdxMax));
-                    nPoints = freqIdxMax-freqIdxMin+1;
-                    % tempBackground = double(mean(tempBox, 'all'));
-                    sumIntensities = reshape(sum(tempBox-Drivers.FullChipDataAnalyzer.backgroundNoise, [1, 2]), nPoints, 1);
-                    freqs_THz = chipletData.widefieldData{k}.freqs(freqIdxMin:freqIdxMax);
-                    
-                    if max(sumIntensities) > Drivers.FullChipDataAnalyzer.sumMincount
-                        hasPeak = true;
-                        [peakIntensity, sumPeakIdx] = max(sumIntensities);
-                        peakFreq_THz = freqs_THz(sumPeakIdx);
-                        maxPlane = tempBox(:, :, sumPeakIdx);
-                        props = regionprops(true(size(maxPlane)), maxPlane, 'WeightedCentroid');
-                        fittedX(k) = props.WeightedCentroid(2)+xmin-1;
-                        fittedY(k) = props.WeightedCentroid(1)+ymin-1;
-
-                        % Use findpeaks to briefly get the linewidth and peak frequency (Usually incorrect);
-                        % fitStartIdx = max(1, peakIdx-40);
-                        % fitEndIdx = min(nPoints, peakIdx+40);
-                        [sortedFreqs_THz, sortedIdx] = sort(freqs_THz, 'ascend');
-                        sumIntensities = sumIntensities(sortedIdx);
-                        
-                        [findPeakIntensities, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(sumIntensities, sortedFreqs_THz);
-                        [maxIntensity, maxIdx] = max(findPeakIntensities);
-                        peakWidth_THz = findPeakWidths(maxIdx);
-                        findPeakIntensity(k) = findPeakIntensities(maxIdx);
-                        findPeakFreq(k) = findPeakFreqs(maxIdx);
-                        findPeakWidth_THz(k) = findPeakWidths(maxIdx);
-                        findPeakAmplitude(k) = findPeakAmplitudes(maxIdx);
-                        if sum(sumIntensities >= maxIntensity/3) < 2
-                            % No other frequency points have intensitiy larger than half of the maximum intensity
-                            spectrumValid(k) = false;
-                        else
-                            spectrumValid(k) = true;
-                        end
-                    else
-                        hasPeak = false;
-                        peakFreq_THz = NaN;
-                        peakIntensity = NaN;
-                        peakWidth_THz = NaN;
-                        spectrumValid(k) = false;
-                    end
-                    spectrums(k) = struct('spectrumValid', spectrumValid(k), 'hasPeak', hasPeak, 'sumIntensities', sumIntensities, 'freqs_THz', freqs_THz, ...
-                    'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz, 'fittedX', fittedX(k), 'fittedY', fittedY(k));
-                end
-                emitters(l).spectrums = spectrums;
-                emitters(l).maxSumIntensity = max(peakIntensity);
-                emitters(l).valid = any(spectrumValid);
-                emitters(l).fittedX = mean(fittedX);
-                emitters(l).fittedY = mean(fittedY);
-                [region, centerDistance] = Drivers.FullChipDataAnalyzer.getRegion(emitters(l).fittedX, emitters(l).fittedY, cornerPosition_xy);
-                emitters(l).region = region;
-                emitters(l).centerDistance = centerDistance;
-            end
-            % valid = extractfield(emitters, 'valid');
-            % emitters(~valid) = [];
-        end
-        function [region, centerDistance] = getRegion(absPosX, absPosY, cornerPosition_xy, drawFig, wl_img)
+        end  
+        function region = getRegion(absPosX, absPosY, cornerPosition_xy, drawFig, wl_img)
             if ~exist('wl_img', 'var')
                 xsize = 512;
                 ysize = 512;
@@ -238,24 +85,12 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             leftTipPolygon_yx = [cornerAbsPos_yx(1:2, :); cornerAbsPos_yx([2, 1], :)-[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
             rightTipPolygon_yx = [cornerAbsPos_yx([4, 3], :); cornerAbsPos_yx([3, 4], :)+[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
             centerDistance = NaN;
-            
-            waveguidePositions = NaN(6, 2, 2); % 6 waveguides; 2 points; yx axis
-            waveguideDists = NaN(6, 1);
-            for k = 1:6
-                waveguidePositions(k, 1, :) = cornerAbsPos_yx(1, :)*k/7+cornerAbsPos_yx(2, :)*(7-k)/7;
-                waveguidePositions(k, 2, :) = cornerAbsPos_yx(4, :)*k/7+cornerAbsPos_yx(3, :)*(7-k)/7;
-                waveguideDists(k) = getPointLineDistance(absPosX, absPosY, waveguidePositions(k, 1, 2), waveguidePositions(k, 1, 1), waveguidePositions(k, 2, 2), waveguidePositions(k, 2, 1), true, true); % Infinity length should be set to true.
-            end
             if inpolygon(absPosY, absPosX, cornerAbsPos_yx(:, 1), cornerAbsPos_yx(:, 2)) && ~onFrame
                 region = 'center';
-                [minval, closestLine] = min(abs(waveguideDists));
-                centerDistance = waveguideDists(closestLine);
             elseif onFrame
                 region = 'frame';
             elseif inpolygon(absPosY, absPosX, leftTipPolygon_yx(:, 1), leftTipPolygon_yx(:, 2)) || inpolygon(absPosY, absPosX, rightTipPolygon_yx(:, 1), rightTipPolygon_yx(:, 2))
                 region = 'tip';
-                [minval, closestLine] = min(abs(waveguideDists));
-                centerDistance = waveguideDists(closestLine);
             else
                 region = 'bulk';
             end
@@ -266,7 +101,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 colormap('gray');
                 hold(ax, 'on');
                 plot(ax, cornerAbsPos_yx([1, 2, 3, 4, 1], 2), cornerAbsPos_yx([1, 2, 3, 4, 1], 1));
-                Drivers.FullChipDataAnalyzer.plotRotLines(ax, cornerPosition_xy);
+                % obj.plotRotLines(ax, cornerPosition_xy);
                 scatter(ax, absPosX, absPosY, 'filled');
                 fprintf("Distance: %f\n", centerDistance);
             end
@@ -280,12 +115,15 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             fittedX = extractfield(emitters, 'fittedX');
             fittedY = extractfield(emitters, 'fittedY');
             centerDistance = extractfield(emitters, 'centerDistance');
+            nthChiplet = extractfield(emitters, 'nthChiplet');
             fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
 
             valid = valid&((fittedX-absPosX).^2+(fittedY-absPosY).^2<0.5);
             valid = valid&(abs(fittedX-absPosX)<0.5)&(abs(fittedY-absPosY)<0.5);
             valid = valid&(abs(centerDistance)<5);
             valid = valid&(fittedLinewidth_THz>30e-6);
+            valid = valid & (nthChiplet~= 56) & (nthChiplet~= 17);
+
             if exist('drawFig', 'var') && drawFig
                 fig = figure;
                 ax = axes(fig);
@@ -390,17 +228,17 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
             emitters = cell2mat(updatedEmitters);
         end
-        function plotRotLines(rotAx, rotCorners_xy)
-            extWgLines = cell(1, 6);
-            hold(rotAx, 'on');
-            for k = 1:6
-                startPos = (rotCorners_xy(1, :)*k+rotCorners_xy(2, :)*(7-k))/7;
-                endPos = (rotCorners_xy(4, :)*k+rotCorners_xy(3, :)*(7-k))/7;
-                extendedStartPos = startPos + (startPos-endPos)*Drivers.FullChipDataAnalyzer.extendRatio;
-                extendedEndPos = endPos + (endPos-startPos)*Drivers.FullChipDataAnalyzer.extendRatio;
-                extWgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
-            end
-        end
+        % function plotRotLines(rotAx, rotCorners_xy)
+        %     extWgLines = cell(1, 6);
+        %     hold(rotAx, 'on');
+        %     for k = 1:6
+        %         startPos = (rotCorners_xy(1, :)*k+rotCorners_xy(2, :)*(7-k))/7;
+        %         endPos = (rotCorners_xy(4, :)*k+rotCorners_xy(3, :)*(7-k))/7;
+        %         extendedStartPos = startPos + (startPos-endPos)*Drivers.FullChipDataAnalyzer.extendRatio;
+        %         extendedEndPos = endPos + (endPos-startPos)*Drivers.FullChipDataAnalyzer.extendRatio;
+        %         extWgLines{k} = plot(rotAx, [extendedStartPos(1), extendedEndPos(1)], [extendedStartPos(2), extendedEndPos(2)], 'Color', 'r');
+        %     end
+        % end
         function emitters = parallelFitPeaks(emitters, batchSize)
             if ~exist('batchSize', 'var')
                 batchSize = 500;
@@ -438,6 +276,201 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 data = [];
                 warning(sprintf("obj.%s is not properly saved in matlab prefs."), name);
             end
+        end
+
+        function emitters = processChiplet(obj, chipletData, drawFig)
+            % Parallel can be used if more data is required
+            if isstruct(chipletData) && isfield(chipletData, 'path') && ~isfield(chipletData, 'widefieldData')
+                chipletIdx = chipletData.chipletIdx;
+                chipletID = chipletData.chipletID;
+                fprintf("Loading file %s, chipletIdx: %d, chipletID: %d\n", chipletData.path, chipletData.chipletIdx, chipletData.chipletID);
+                % Take the data path as input
+                chipletData = load(chipletData.path);
+                chipletData.chipletIdx = chipletIdx;
+                chipletData.chipletID = chipletID;
+            end
+            % Output data structure: cell array, each cell contain fields:
+            %       absPosX, absPosY (absolute in the image), relPosX, relPosY (relative to the center of the chiplet), region ('center', 'frame', 'tip', 'bulk');
+            %       brightness (Maximum of original EMCCD count), fittedBrightness (maximum count after Lorentzian filtering), resonantFreq_THz
+            %       spectrums (struct array, contains `nSpectrums` spectrums)
+            %           hasPeak (boolean), intensity (N*1 array), freqs_THz (N*1 array), fitStartIdx, fitEndIdx, fittedIntensity ((fitEndIdx-fitStartIdx+1)*1 array), peakFreq_THz (double), linewidth (double)
+            nSpectrums = length(chipletData.widefieldData);
+            assert(isfield(chipletData, 'chipletIdx'), "Please manually assign chipletData.chipletIdx (the n-th scanned chiplet).");
+            assert(isfield(chipletData, 'chipletID'), "Please manually assign chipletData.chipletID (the ID number on the sample that represents this chiplet, can be seen on whitelight image).");
+
+            allFilteredImgs = [];
+            allFreqs = [];
+            % Find all positions whose maximum intensity exceeds mincount (record x, y, freq, maxcount)
+            maxFreqDiff = 0;
+            for k = 1:nSpectrums
+                tempData = chipletData.widefieldData{k};
+                allFilteredImgs = cat(3, allFilteredImgs, tempData.filtered_imgs);
+                allFreqs = [allFreqs, tempData.freqs];
+                maxFreqDiff = max(maxFreqDiff, max(diff(tempData.freqs)));
+            end
+
+            [maxIntensity, maxIdx] = max(allFilteredImgs, [], 3);
+            [validYs, validXs] = find(maxIntensity > Drivers.FullChipDataAnalyzer.processMincount); % Note that the image has different coordinate system than regular plots.
+            validInds = sub2ind(size(allFilteredImgs(:, :, 1)), validYs, validXs);
+
+            peakIntensities = maxIntensity(validInds);
+            peakIdx = maxIdx(validInds);
+            peakFreqs = transpose(allFreqs(peakIdx));
+
+            
+
+            % Remove neighborhood: for a specific frequency, there should be only one recorded spot in a small region.
+            emitterIdx = dbscan([validXs, validYs, peakFreqs*max(min(2e4, 1/maxFreqDiff), 1e4)], 10, 1); % peakFreqs: usually only changes 0.05THz during a scan. Times 2e4 to get a closer order of magnitude with image pixels (usually 512).
+          
+            if ~exist('drawFig', 'var')
+                drawFig = false;
+            end
+            if drawFig
+                fig = figure;
+                ax = axes(fig);
+                scatter3(ax, validXs, validYs, peakFreqs, (peakIntensities-Drivers.FullChipDataAnalyzer.processMincount+500)/500, emitterIdx, 'filled');
+                colormap(ax, 'lines');
+
+            end
+            nEmitters = length(unique(emitterIdx));
+
+            emitters = [];
+            imageXmax = size(allFilteredImgs, 1);
+            imageXmin = 1;
+            imageYmax = size(allFilteredImgs, 2);
+            imageYmin = 1;
+
+            fprintf("    Start automatic calculating waveguide positions.\n");
+            [waveguidePositions, cornerPositions] = obj.waveguideAutoMatch(chipletData.wl_img, drawFig);
+
+            fprintf("    Start processing emitters.\n")
+            for l = 1:nEmitters
+                tempIdx = find(emitterIdx==l);
+                tempXs = validXs(tempIdx);
+                tempYs = validYs(tempIdx);
+
+                tempIntensities = peakIntensities(tempIdx);
+                tempFreqs = peakFreqs(tempIdx);
+                [maxIntensity, maxIdx] = max(tempIntensities);
+                emitters(l).absPosX = tempXs(maxIdx);
+                emitters(l).absPosY = tempYs(maxIdx);
+                % For emitter image block: add padding to neighbor pixels
+                xmin = max(emitters(l).absPosX-Drivers.FullChipDataAnalyzer.padding, imageXmin);
+                xmax = min(emitters(l).absPosX+Drivers.FullChipDataAnalyzer.padding, imageXmax);
+                ymin = max(emitters(l).absPosY-Drivers.FullChipDataAnalyzer.padding, imageYmin);
+                ymax = min(emitters(l).absPosY+Drivers.FullChipDataAnalyzer.padding, imageYmax);
+                freqIdxMin = max(min(peakIdx(tempIdx))-Drivers.FullChipDataAnalyzer.freqPadding, 1);
+                freqIdxMax = min(max(peakIdx(tempIdx))+Drivers.FullChipDataAnalyzer.freqPadding, length(allFreqs));
+                
+                emitters(l).nthChiplet = chipletData.nthChiplet;
+
+                emitters(l).relPosX = emitters(l).absPosX - chipletData.widefieldData{1}.segment.absCenterX;
+                emitters(l).relPosY = emitters(l).absPosY - chipletData.widefieldData{1}.segment.absCenterY;
+                emitters(l).maxIntensity = double(maxIntensity);
+
+                emitters(l).resonantFreq_THz = tempFreqs(maxIdx);
+                emitters(l).chipletIdx = chipletData.chipletIdx;
+                emitters(l).chipletCoordX = chipletData.coordX;
+                emitters(l).chipletCoordY = chipletData.coordY;
+                emitters(l).chipletID = chipletData.chipletID;
+                emitters(l).size_pixel = sum(emitterIdx==l);
+
+                % Get spectrum
+                findPeakIntensity = NaN(nSpectrums, 1);
+                findPeakFreq = NaN(nSpectrums, 1);
+                findPeakWidth_THz = NaN(nSpectrums, 1);
+                findPeakAmplitude = NaN(nSpectrums, 1);
+                spectrumValid = NaN(nSpectrums, 1);
+                fittedX = NaN(nSpectrums, 1);
+                fittedY = NaN(nSpectrums, 1);
+                gaussianSigma = NaN(nSpectrums, 1);
+                gaussianAmplitude = NaN(nSpectrums, 1);
+                for k = 1:nSpectrums
+                    % freqs_THz = reshape(freqs_THz, nPoints, 1);
+                    % intensities = chipletData.widefieldData{k}.filtered_imgs(emitters(l).absPosY, emitters(l).absPosX, :);
+                    % intensities = reshape(intensities, nPoints, 1);
+
+                    tempBox = double(chipletData.widefieldData{k}.filtered_imgs(ymin:ymax, xmin:xmax, freqIdxMin:freqIdxMax));
+                    nPoints = freqIdxMax-freqIdxMin+1;
+                    % tempBackground = double(mean(tempBox, 'all'));
+                    sumIntensities = reshape(sum(tempBox-Drivers.FullChipDataAnalyzer.backgroundNoise, [1, 2]), nPoints, 1);
+                    freqs_THz = chipletData.widefieldData{k}.freqs(freqIdxMin:freqIdxMax);
+                    
+                    if max(sumIntensities) > Drivers.FullChipDataAnalyzer.sumMincount
+                        hasPeak = true;
+                        [peakIntensity, sumPeakIdx] = max(sumIntensities);
+                        peakFreq_THz = freqs_THz(sumPeakIdx);
+                        maxPlane = tempBox(:, :, sumPeakIdx);
+                        props = regionprops(true(size(maxPlane)), maxPlane, 'WeightedCentroid');
+                        fittedX(k) = props.WeightedCentroid(2)+xmin-1;
+                        fittedY(k) = props.WeightedCentroid(1)+ymin-1;
+
+                        % Fit the variance and amplitude of the 2d gaussian distribution
+                        [X, Y] = meshgrid(xmin:xmax, ymin:ymax);
+                        % Method 0: Use gaussian distribution formula directly
+                        maxPlaneSum = sum(maxPlane(:));
+
+                        gaussianSigma(k) = sqrt(sum(maxPlane(:).*((X(:)-fittedX(k)).^2+(Y(:)-fittedY(k)).^2))/maxPlaneSum);
+
+                        gaussianAmplitude(k) = maxPlaneSum/2/pi/gaussianSigma(k)^2;
+                        
+                        % Method 1: iterative (most accurate but time-consuming)
+                        
+                        
+                        % Method 2: Weighted regression (fastest)
+
+
+                        % Use findpeaks to briefly get the linewidth and peak frequency (Usually incorrect);
+                        % fitStartIdx = max(1, peakIdx-40);
+                        % fitEndIdx = min(nPoints, peakIdx+40);
+                        [sortedFreqs_THz, sortedIdx] = sort(freqs_THz, 'ascend');
+                        sumIntensities = sumIntensities(sortedIdx);
+                        
+                        [findPeakIntensities, findPeakFreqs, findPeakWidths, findPeakAmplitudes] = findpeaks(sumIntensities, sortedFreqs_THz);
+                        [maxIntensity, maxIdx] = max(findPeakIntensities);
+                        peakWidth_THz = findPeakWidths(maxIdx);
+                        findPeakIntensity(k) = findPeakIntensities(maxIdx);
+                        findPeakFreq(k) = findPeakFreqs(maxIdx);
+                        findPeakWidth_THz(k) = findPeakWidths(maxIdx);
+                        findPeakAmplitude(k) = findPeakAmplitudes(maxIdx);
+                        if sum(sumIntensities >= maxIntensity/3) < 2
+                            % No other frequency points have intensitiy larger than half of the maximum intensity
+                            spectrumValid(k) = false;
+                        else
+                            spectrumValid(k) = true;
+                        end
+                    else
+                        hasPeak = false;
+                        peakFreq_THz = NaN;
+                        peakIntensity = NaN;
+                        peakWidth_THz = NaN;
+                        spectrumValid(k) = false;
+                    end
+                    spectrums(k) = struct('spectrumValid', spectrumValid(k), 'hasPeak', hasPeak, 'sumIntensities', sumIntensities, 'freqs_THz', freqs_THz, ...
+                    'peakFreq_THz', peakFreq_THz, 'peakIntensity', peakIntensity, 'peakWidth_THz', peakWidth_THz, 'fittedX', fittedX(k), 'fittedY', fittedY(k), ...
+                    'maxPlane', maxPlane, 'gaussianSigma', gaussianSigma(k), 'gaussianAmplitude', gaussianAmplitude(k));
+                end
+                emitters(l).spectrums = spectrums;
+                emitters(l).maxSumIntensity = max(peakIntensity);
+                emitters(l).valid = any(spectrumValid);
+                emitters(l).fittedX = mean(fittedX);
+                emitters(l).fittedY = mean(fittedY);
+                emitters(l).gaussianSigma = mean(gaussianSigma);
+                emitters(l).gaussianAmplitude = mean(gaussianAmplitude);
+
+
+                region = obj.getRegion(emitters(l).fittedX, emitters(l).fittedY, cornerPositions);
+                if strcmp(region, 'center') || strcmp(region, 'tip')
+                    centerDistance = obj.getEmitterCenterDistance(emitters(l).fittedX, emitters(l).fittedY, waveguidePositions);
+                else
+                    centerDistance = NaN;
+                end
+                emitters(l).region = region;
+                emitters(l).centerDistance = centerDistance;
+
+            end
+            % valid = extractfield(emitters, 'valid');
+            % emitters(~valid) = [];
         end
 
         function framePos_xy = getGdsFrame(obj, gdsImg)
@@ -747,7 +780,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
         
-        function waveguidePositions = waveguideAutoMatch(obj, wlImg, drawFig, drawIntermediate, ax)
+        function [waveguidePositions, cornerPositions] = waveguideAutoMatch(obj, wlImg, drawFig, drawIntermediate, ax)
 
             
             ip = Drivers.ImageProcessor.instance();
@@ -760,7 +793,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
 
 
             % wlImg = rot90(wlImg, 2);
-            [waveguidePositions, extendRatio] = ip.getWaveguidePositions(wlImg, drawIntermediate);
+            [waveguidePositions, cornerPositions, extendRatio] = ip.getWaveguidePositions(wlImg, drawIntermediate);
 
             if ~exist('drawFig', 'var') || ~drawFig
                 return;
@@ -773,7 +806,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             imagesc(ax, wlImg);
             colormap(ax, 'gray');
             hold(ax, 'on');
-            % plot(ax, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2));
+            plot(ax, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2));
             cmap = lines(1);
             for k = 1:6
                 % xstart = (cornerPositions(1, 1)*k+cornerPositions(2, 1)*(7-k))/7;
@@ -793,10 +826,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 plot(ax, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap);
             end
         end
-        function allWaveguidePositions = getAllWaveguidePositions(obj, startnum)
+        function [allWaveguidePositions, allCornerPositions] = getAllWaveguidePositions(obj, drawFig, startnum)
+            if ~exist('drawFig', 'var')
+                drawFig = false;
+            end
             [allFolders, allFileNames] = obj.getAllDataFiles;
             nChiplets = length(allFolders);
             allWaveguidePositions = NaN(nChiplets, 6, 4);
+            allCornerPositions = NaN(nChiplets, 4, 2);
 
             if ~exist('startNum', 'var')
                 startNum = 1;
@@ -808,15 +845,16 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 idx = str2num(tokens{1}{1});
                 fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
                 load(fullfile(srcDir, allFileNames{k}), 'wl_img');
-                wl_img = rot90(wl_img, 2);
+                % wl_img = rot90(wl_img, 2);
                 fig = figure;
                 fig.Position = [500, 200, 1000, 800];
                 ax = axes(fig);
                 % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, true, ax);
-                allWaveguidePositions(k, :, :) = obj.waveguideAutoMatch(wl_img, true, false, ax);
+                [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img, true, false, ax);
                 saveas(fig, fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k}, sprintf("automatch_chiplet%d.png", idx)));
             end
             save(fullfile(obj.dataRootDir, 'CleanedData', 'allWaveguidePositions.mat'), 'allWaveguidePositions');
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'allCornerPositions.mat'), 'allCornerPositions');
         end
         function emitterGroups = divideEmitters(obj, emitters, chiplets)
             nChiplets = length(chiplets);
@@ -883,24 +921,28 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 pause(0.1);
             end
         end
-        function plotSingleWL(obj, emitters, wlImg, gdsPosition, ax)
+        function plotSingleWL(obj, emitters, wlImg, ax)
             cmap = lines(2);
             fittedX = extractfield(emitters, 'fittedX');
             fittedY = extractfield(emitters, 'fittedY');
             xSize = 512;
             ySize = 512;
-            fittedX = xSize + 1 - fittedX;
-            fittedY = ySize + 1 - fittedY;
+            % fittedX = xSize + 1 - fittedX;
+            % fittedY = ySize + 1 - fittedY;
             absPosX = extractfield(emitters, 'absPosX');
             absPosY = extractfield(emitters, 'absPosY');
-            absPosX = xSize + 1 - absPosX;
-            absPosY = ySize + 1 - absPosY;
+            % absPosX = xSize + 1 - absPosX;
+            % absPosY = ySize + 1 - absPosY;
             centerDistance = extractfield(emitters, 'centerDistance');
             region = extractfield(emitters, 'region');
             valid = obj.getEmitterValidity(emitters);
             fittedPeakAmplitude = extractfield(emitters, 'fittedPeakAmplitude');
             fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
             
+            if ~exist('ax', 'var') || isempty(ax) || ~isvalid(ax)
+                fig = figure;
+                ax = axes(fig);
+            end
             % obj.gdsMatch(wlImg, gdsPosition, true, ax);
             obj.waveguideAutoMatch(wlImg, true, false, ax);
             hold(ax, 'on');
@@ -936,6 +978,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             
         end
         function allWaveguidePositions = plotChipletEmitters(obj, plotEmitters, emitters, startNum)
+            % Deprecated
             [allFolders, allFileNames] = obj.getAllDataFiles;
             % load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
             if ~exist('startNum', 'var')
@@ -943,6 +986,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
             nChiplets = length(allFolders);
             allWaveguidePositions = NaN(nChiplets, 6, 4);
+            allCornerPositions = NaN(nChiplets, 4, 2);
             if exist('plotEmitters', 'var') && plotEmitters
                 if ~exist('emitters', 'var') || isempty(emitters)
                     load(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', 'all_emitters_data.mat'), 'emitters')
@@ -980,14 +1024,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fusedAx = axes(fig);
                 if ~exist('plotEmitters', 'var') || ~plotEmitters
                     % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, true, fusedAx);
-                    allWaveguidePositions(k, :, :) = obj.waveguideAutoMatch(wl_img, true, false, fusedAx);
+                    [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img, true, false, fusedAx);
                 else
-                    allWaveguidePositions(k, :, :) = obj.waveguideAutoMatch(wl_img);
+                    [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img);
                     % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition);
                     fusedAx.Position = [0.17, 0.1, 0.7, 0.8];
                 end
                 if exist('plotEmitters', 'var') && plotEmitters
-                    obj.plotSingleWL(emitters(valid&(nthChiplet==k)), wl_img, gdsPosition, fusedAx);
+                    obj.plotSingleWL(emitters(valid&(nthChiplet==k)), wl_img, fusedAx);
                 end
                 fig.Position = [500, 200, 1000, 800];
                 saveas(fig, fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k}, sprintf("chiplet%d_size%d_slant%d.png", idx, chipletSize, imSlant)));
@@ -995,6 +1039,16 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
 
             save(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'), 'allWaveguidePositions')
         end 
+
+        function centerDistance = getEmitterCenterDistance(obj, absPosX, absPosY, waveguidePositions)
+            waveguideDists = NaN(6, 1);
+            for m = 1:6
+                waveguideDists(m) = getPointLineDistance(absPosX, absPosY, waveguidePositions(m, 1), waveguidePositions(m, 2), waveguidePositions(m, 3), waveguidePositions(m, 4), true, true); % Infinity length should be set to true.
+            end
+            [minval, closestLine] = min(abs(waveguideDists));
+            centerDistance = waveguideDists(closestLine);
+        end
+
         function emitters = updateEmitterCenterDistance(obj, emitters, allWaveguidePositions)
             nthChiplet = extractfield(emitters, 'nthChiplet');
             region = extractfield(emitters, 'region');
@@ -1003,14 +1057,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 tempN = chipletList(k);
                 emitterIdx = find(nthChiplet==tempN & (strcmp(region, 'tip')|strcmp(region, 'center')));
                 for l = 1:length(emitterIdx)
-                    waveguideDists = NaN(6, 1);
                     absPosX = emitters(emitterIdx(l)).absPosX;
                     absPosY = emitters(emitterIdx(l)).absPosY;
-                    for m = 1:6
-                        waveguideDists(m) = getPointLineDistance(absPosX, absPosY, allWaveguidePositions(tempN, m, 1), allWaveguidePositions(tempN, m, 2), allWaveguidePositions(tempN, m, 3), allWaveguidePositions(tempN, m, 4), true, true); % Infinity length should be set to true.
-                    end
-                    [minval, closestLine] = min(abs(waveguideDists));
-                    emitters(emitterIdx(l)).centerDistance = waveguideDists(closestLine);
+                    emitters(emitterIdx(l)).centerDistance =obj.getEmitterCenterDistance(absPosX, absPosY, squeeze(allWaveguidePositions(tempN, :, :)));
                 end
             end
         end
@@ -1179,7 +1228,6 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 % plot all chiplets
                 chiplets = unique(nthChiplet);
             end
-            [allFolders, allFileNames] = obj.getAllDataFiles;
             inTarget = zeros(1, length(valid));
             for l = 1:length(chiplets)
                 inTarget = inTarget | (nthChiplet == chiplets(l));
@@ -1197,24 +1245,25 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 emitterGroups = obj.divideEmitters(emitters, chiplets);
                 load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant');
                 for k = 1:length(chiplets)
+                    nthChiplet = chiplets(k);
                     fig = figure;
                     fig.Position = [100, 300, 1600, 700];
                     s1 = subplot(1, 2, 1);
                     obj.plotSingleScatter(emitterGroups{k}, s1);
                     s2 = subplot(1, 2, 2);
 
-                    srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
-                    dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
-                    [tokens,matches] = regexp(allFileNames{k},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
+                    srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{nthChiplet});
+                    dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{nthChiplet});
+                    [tokens,matches] = regexp(allFileNames{nthChiplet},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
                     idx = str2num(tokens{1}{1});
-                    fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
-                    load(fullfile(srcDir, allFileNames{k}), 'wl_img');
-                    chipletSize = allSize(k);
-                    imSlant = allSlant(k);
+                    fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{nthChiplet}, k, length(chiplets), idx);
+                    load(fullfile(srcDir, allFileNames{nthChiplet}), 'wl_img');
+                    chipletSize = allSize(nthChiplet);
+                    imSlant = allSlant(nthChiplet);
                     fprintf("ChipletSize: %d, ImageSlant: %d\n", chipletSize, imSlant);
                     tempPositionFile = fullfile(obj.dataRootDir, 'CleanedData', 'GdsPositions', sprintf("gdsPosition_%d_%d.mat", chipletSize, imSlant));
                     load(tempPositionFile, 'gdsPosition');
-                    obj.plotSingleWL(emitterGroups{k}, wl_img, gdsPosition, s2);
+                    obj.plotSingleWL(emitterGroups{k}, wl_img, s2);
                 end
             end
         end
@@ -1253,12 +1302,15 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 chipletData.nthChiplet = k;
                 obj.prevChipletData = chipletData;
                 obj.prevChipletDataPath = fullfile(srcDir, allFileNames{k});
-                emitters = Drivers.FullChipDataAnalyzer.processChiplet(chipletData, false, squeeze(allFrameCorners_xy(k, :, :)));
+                emitters = obj.processChiplet(chipletData, false);
                 allEmitters{k} = emitters;
                 save(fullfile(dstDir, sprintf("chiplet%d_emitters.mat", idx)), "emitters");
             end
             emitters = horzcat(allEmitters{:});
-            save(fullfile(obj.dataRootDir, 'ProcessedData', "all_emitters_data.mat"), "emitters");
+            save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', "all_emitters_data.mat"), "emitters");
+            emitters = obj.parallelFitPeaks(emitters);
+            save(fullfile(obj.dataRootDir, 'ProcessedData', 'AllChipletsData', "all_emitters_data_fitted.mat"), "emitters");
+
             % emitters = horzcat(allExperimentEmitters{:});
             % save(fullfile(sumDir, "all_emitters_data.mat"), emitters);
         end
