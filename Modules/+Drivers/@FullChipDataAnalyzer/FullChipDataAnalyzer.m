@@ -17,6 +17,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         wgLines = {};
         prevChipletData;
         prevChipletDataPath;
+        allWaveguidePositions;
+        allCornerPositions;
+        allChipletStatistics;
     end
     properties(Constant)
         processMincount = 12000;
@@ -31,6 +34,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         regionMap = {'center', 'frame', 'tip', 'bulk', 'out'};
         namespace = "Drivers_FullChipDataAnalyzer";
         extendRatio = 2/3;
+        EMGain = 1200;
     end
 
     methods(Static)
@@ -69,23 +73,22 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 ysize = size(wl_img, 1);
             end
 
-            cornerPosition_xy = [xsize, ysize]+1 - cornerPosition_xy;
-            cornerPosition_xy = cornerPosition_xy([3, 4, 1, 2], :);
-            cornerAbsPos_yx = cornerPosition_xy(:, [2, 1]);
-            line1 = cornerAbsPos_yx(1:2, :);
-            line2 = cornerAbsPos_yx(2:3, :);
-            line3 = cornerAbsPos_yx(3:4, :);
-            line4 = cornerAbsPos_yx([4, 1], :);
+            cornerPosition_yx = cornerPosition_xy(:, [2, 1]);
+            line1 = cornerPosition_yx(1:2, :); % Left
+            line2 = cornerPosition_yx(2:3, :); % Bottom
+            line3 = cornerPosition_yx(3:4, :); % Right
+            line4 = cornerPosition_yx([4, 1], :); % Top
             frameWidth = Drivers.FullChipDataAnalyzer.frameWidth;
+            waveguideSpacing = (norm(cornerPosition_yx(1, :)-cornerPosition_yx(2, :))+norm(cornerPosition_yx(4, :)-cornerPosition_yx(3, :)))/14;
             onFrame1 = getPointLineDistance(absPosX, absPosY, line1(1, 2), line1(1, 1), line1(2, 2), line1(2, 1)) < frameWidth;
-            onFrame2 = getPointLineDistance(absPosX, absPosY, line2(1, 2), line2(1, 1), line2(2, 2), line2(2, 1)) < frameWidth;
+            onFrame2 = getPointLineDistance(absPosX, absPosY, line2(1, 2), line2(1, 1), line2(2, 2), line2(2, 1)) < frameWidth + waveguideSpacing/2;
             onFrame3 = getPointLineDistance(absPosX, absPosY, line3(1, 2), line3(1, 1), line3(2, 2), line3(2, 1)) < frameWidth;
-            onFrame4 = getPointLineDistance(absPosX, absPosY, line4(1, 2), line4(1, 1), line4(2, 2), line4(2, 1)) < frameWidth;
+            onFrame4 = getPointLineDistance(absPosX, absPosY, line4(1, 2), line4(1, 1), line4(2, 2), line4(2, 1)) < frameWidth + waveguideSpacing/2;
             onFrame= onFrame1 || onFrame2 || onFrame3 || onFrame4;
-            leftTipPolygon_yx = [cornerAbsPos_yx(1:2, :); cornerAbsPos_yx([2, 1], :)-[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
-            rightTipPolygon_yx = [cornerAbsPos_yx([4, 3], :); cornerAbsPos_yx([3, 4], :)+[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
+            leftTipPolygon_yx = [cornerPosition_yx(1:2, :); cornerPosition_yx([2, 1], :)-[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
+            rightTipPolygon_yx = [cornerPosition_yx([4, 3], :); cornerPosition_yx([3, 4], :)+[0, 75]] + [frameWidth, 0; -frameWidth, 0; -frameWidth, 0; frameWidth, 0];
             centerDistance = NaN;
-            if inpolygon(absPosY, absPosX, cornerAbsPos_yx(:, 1), cornerAbsPos_yx(:, 2)) && ~onFrame
+            if inpolygon(absPosY, absPosX, cornerPosition_yx(:, 1), cornerPosition_yx(:, 2)) && ~onFrame
                 region = 'center';
             elseif onFrame
                 region = 'frame';
@@ -100,7 +103,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 imagesc(ax, wl_img);
                 colormap('gray');
                 hold(ax, 'on');
-                plot(ax, cornerAbsPos_yx([1, 2, 3, 4, 1], 2), cornerAbsPos_yx([1, 2, 3, 4, 1], 1));
+                plot(ax, cornerPosition_yx([1, 2, 3, 4, 1], 2), cornerPosition_yx([1, 2, 3, 4, 1], 1));
                 % obj.plotRotLines(ax, cornerPosition_xy);
                 scatter(ax, absPosX, absPosY, 'filled');
                 fprintf("Distance: %f\n", centerDistance);
@@ -108,28 +111,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         end
 
         obj = instance();
-        function valid = getEmitterValidity(emitters, drawFig)
-            valid = cell2mat(extractfield(emitters, 'valid'));
-            absPosX = extractfield(emitters, 'absPosX');
-            absPosY = extractfield(emitters, 'absPosY');
-            fittedX = extractfield(emitters, 'fittedX');
-            fittedY = extractfield(emitters, 'fittedY');
-            centerDistance = extractfield(emitters, 'centerDistance');
-            nthChiplet = extractfield(emitters, 'nthChiplet');
-            fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
-
-            valid = valid&((fittedX-absPosX).^2+(fittedY-absPosY).^2<0.5);
-            valid = valid&(abs(fittedX-absPosX)<0.5)&(abs(fittedY-absPosY)<0.5);
-            valid = valid&(abs(centerDistance)<5);
-            valid = valid&(fittedLinewidth_THz>30e-6);
-            valid = valid & (nthChiplet~= 56) & (nthChiplet~= 17);
-
-            if exist('drawFig', 'var') && drawFig
-                fig = figure;
-                ax = axes(fig);
-                scatter(ax, fittedX-absPosX, fittedY-absPosY, 5, 'filled');
-            end
-        end
+        
         
 
         function emitters = fitPeaks(emitters, drawFig, batchIdx) % Lorentzian fitting
@@ -258,6 +240,32 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         end
     end
     methods
+        function valid = getEmitterValidity(obj, emitters, drawFig)
+            valid = cell2mat(extractfield(emitters, 'valid'));
+            absPosX = extractfield(emitters, 'absPosX');
+            absPosY = extractfield(emitters, 'absPosY');
+            fittedX = extractfield(emitters, 'fittedX');
+            fittedY = extractfield(emitters, 'fittedY');
+            centerDistance = extractfield(emitters, 'centerDistance');
+            nthChiplet = extractfield(emitters, 'nthChiplet');
+            fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
+
+            valid = valid&((fittedX-absPosX).^2+(fittedY-absPosY).^2<0.5);
+            valid = valid&(abs(fittedX-absPosX)<0.5)&(abs(fittedY-absPosY)<0.5);
+            valid = valid&(abs(centerDistance)<5);
+            valid = valid&(fittedLinewidth_THz>30e-6);
+            % valid = valid & (nthChiplet~= 56) & (nthChiplet~= 17);
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allChipletValid.mat'), 'allChipletValid');
+            invalidChiplets = find(~allChipletValid);
+            for k = 1:length(invalidChiplets)
+                valid = valid & (nthChiplet ~= invalidChiplets(k));
+            end
+            if exist('drawFig', 'var') && drawFig
+                fig = figure;
+                ax = axes(fig);
+                scatter(ax, fittedX-absPosX, fittedY-absPosY, 5, 'filled');
+            end
+        end
         function obj = FullChipDataAnalyzer()
             obj.gdsCorners = obj.fetchPrefData('gdsCorners');
             obj.wlCorners = obj.fetchPrefData('wlCorners');
@@ -341,8 +349,11 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             imageYmin = 1;
 
             fprintf("    Start automatic calculating waveguide positions.\n");
-            [waveguidePositions, cornerPositions] = obj.waveguideAutoMatch(chipletData.wl_img, drawFig);
-
+            wlFig = figure;
+            wlAx = axes(wlFig);
+            [waveguidePositions, cornerPositions] = obj.waveguideAutoMatch(chipletData.wl_img, drawFig, false, wlAx);
+            hold(wlAx, 'on');
+            
             fprintf("    Start processing emitters.\n")
             for l = 1:nEmitters
                 tempIdx = find(emitterIdx==l);
@@ -467,7 +478,24 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
                 emitters(l).region = region;
                 emitters(l).centerDistance = centerDistance;
-
+                A = emitters(l).gaussianAmplitude/obj.EMGain;
+                s = emitters(l).gaussianSigma;
+                b = obj.backgroundNoise/obj.EMGain;
+                emitters(l).posErr = sqrt((A/12+(4*b+A)*s^2)/(pi*s^2*A^2));
+            end
+            if drawFig
+                region = extractfield(emitters, 'region');
+                fittedX = extractfield(emitters, 'fittedX');
+                fittedY = extractfield(emitters, 'fittedY');
+                scatterSize = 10;
+                center = strcmp(region, 'center');
+                tip = strcmp(region, 'tip');
+                bulk = strcmp(region, 'bulk');
+                frame = strcmp(region, 'frame');
+                scatter(wlAx, fittedX(center), fittedY(center), scatterSize, 'filled');
+                scatter(wlAx, fittedX(tip), fittedY(tip), scatterSize, 'filled');
+                scatter(wlAx, fittedX(bulk), fittedY(bulk), scatterSize, 'filled');
+                scatter(wlAx, fittedX(frame), fittedY(frame), scatterSize, 'filled');
             end
             % valid = extractfield(emitters, 'valid');
             % emitters(~valid) = [];
@@ -487,7 +515,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             uiwait(gdsFig);
             framePos_xy = obj.gdsRectH.Position;
             obj.framePos_xy = framePos_xy;
-            save(fullfile(obj.dataRootDir, "CleanedData", "framePos_xy.mat"), 'framePos_xy');
+            save(fullfile(obj.dataRootDir, "CleanedData", "SupplementaryFiles", "framePos_xy.mat"), 'framePos_xy');
         end
 
         function updateFramePos(obj, varargin)
@@ -533,11 +561,11 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
         end
 
         function getGdsTemplate(obj, wlImg, presetPosition)
-            gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
+            gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "SupplementaryFiles", "chiplet_only.png")));
             gdsImg = (gdsImg>0);
             obj.gdsImg = gdsImg;
             if ~exist('wlImg', 'var') || isempty(wlImg)
-                wlImg = load(fullfile(obj.dataRootDir, "CleanedData", "wl_sample.mat"));
+                wlImg = load(fullfile(obj.dataRootDir, "CleanedData", "SupplementaryFiles", "wl_sample.mat"));
             end
 
             if isfield(wlImg, 'wlImg')
@@ -629,7 +657,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             reshapedGdsImg = imrotate(obj.gdsImg, rotationAngle/pi*180, 'nearest', 'crop');
             
 
-            save(fullfile(obj.dataRootDir, "CleanedData", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
+            save(fullfile(obj.dataRootDir, "CleanedData", "SupplementaryFiles", "reshapedImgs.mat"), 'reshapedGdsImg', 'reshapedWlImg');
             normedWlImg = reshapedWlImg - mean(reshapedWlImg, 'all');
 
             coarseRatio = 10;
@@ -727,14 +755,14 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 allSize(k) = imSize;
                 allSlant(k) = slant;
             end
-            save(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant');
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'wlImgInfo.mat'), 'allSize', 'allSlant');
         end
 
         function initAllTemplates(obj, startNum)
             if ~exist('startNum', 'var')
                 startNum = 1;
             end
-            load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
             [allFolders, allFileNames] = obj.getAllDataFiles;
             nFiles = length(allFileNames);
             allGdsPositions = [];
@@ -780,6 +808,25 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
         
+        function plotFittedWaveguide(obj, wlImg, waveguidePositions, cornerPositions, ax)
+            imagesc(ax, wlImg);
+            colormap(ax, 'gray');
+            hold(ax, 'on');
+            plot(ax, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2));
+            cmap = lines(1);
+            for k = 1:6
+                xstart = waveguidePositions(k, 1);
+                ystart = waveguidePositions(k, 2);
+                xend = waveguidePositions(k, 3);
+                yend = waveguidePositions(k, 4);
+
+                xstartExtended = xstart + (xstart - xend)*obj.extendRatio;
+                xendExtended = xend + (xend - xstart)*obj.extendRatio;
+                ystartExtended = ystart + (ystart - yend)*obj.extendRatio;
+                yendExtended = yend + (yend - ystart)*obj.extendRatio;
+                plot(ax, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap);
+            end
+        end
         function [waveguidePositions, cornerPositions] = waveguideAutoMatch(obj, wlImg, drawFig, drawIntermediate, ax)
 
             
@@ -793,7 +840,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
 
 
             % wlImg = rot90(wlImg, 2);
-            [waveguidePositions, cornerPositions, extendRatio] = ip.getWaveguidePositions(wlImg, drawIntermediate);
+            [waveguidePositions, cornerPositions] = ip.getWaveguidePositions(wlImg, drawIntermediate);
 
             if ~exist('drawFig', 'var') || ~drawFig
                 return;
@@ -802,31 +849,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fig = figure;
                 ax = axes(fig);
             end
-            
-            imagesc(ax, wlImg);
-            colormap(ax, 'gray');
-            hold(ax, 'on');
-            plot(ax, cornerPositions([1, 2, 3, 4, 1], 1), cornerPositions([1, 2, 3, 4, 1], 2));
-            cmap = lines(1);
-            for k = 1:6
-                % xstart = (cornerPositions(1, 1)*k+cornerPositions(2, 1)*(7-k))/7;
-                % xend = (cornerPositions(4, 1)*k+cornerPositions(3, 1)*(7-k))/7;
-                % ystart = (cornerPositions(1, 2)*k+cornerPositions(2, 2)*(7-k))/7;
-                % yend = (cornerPositions(4, 2)*k+cornerPositions(3, 2)*(7-k))/7;
-
-                xstart = waveguidePositions(k, 1);
-                ystart = waveguidePositions(k, 2);
-                xend = waveguidePositions(k, 3);
-                yend = waveguidePositions(k, 4);
-
-                xstartExtended = xstart + (xstart - xend)*extendRatio;
-                xendExtended = xend + (xend - xstart)*extendRatio;
-                ystartExtended = ystart + (ystart - yend)*extendRatio;
-                yendExtended = yend + (yend - ystart)*extendRatio;
-                plot(ax, [xstartExtended, xendExtended], [ystartExtended, yendExtended], 'Color', cmap);
-            end
+            obj.plotFittedWaveguide(wlImg, waveguidePositions, cornerPositions, ax);
         end
-        function [allWaveguidePositions, allCornerPositions] = getAllWaveguidePositions(obj, drawFig, startnum)
+        function [allWaveguidePositions, allCornerPositions] = getAllPositions(obj, drawFig, startNum)
             if ~exist('drawFig', 'var')
                 drawFig = false;
             end
@@ -846,21 +871,31 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{k}, k, length(allFolders), idx);
                 load(fullfile(srcDir, allFileNames{k}), 'wl_img');
                 % wl_img = rot90(wl_img, 2);
-                fig = figure;
-                fig.Position = [500, 200, 1000, 800];
-                ax = axes(fig);
-                % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, true, ax);
-                [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img, true, false, ax);
-                saveas(fig, fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k}, sprintf("automatch_chiplet%d.png", idx)));
+                if drawFig
+                    fig = figure;
+                    fig.Position = [500, 200, 1000, 800];
+                    ax = axes(fig);
+                    % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, true, ax);
+                    [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img, true, false, ax);
+                    saveas(fig, fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k}, sprintf("automatch_chiplet%d.png", idx)));
+                else
+                    [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img, false, false);
+                end
             end
-            save(fullfile(obj.dataRootDir, 'CleanedData', 'allWaveguidePositions.mat'), 'allWaveguidePositions');
-            save(fullfile(obj.dataRootDir, 'CleanedData', 'allCornerPositions.mat'), 'allCornerPositions');
+            obj.allWaveguidePositions = allWaveguidePositions;
+            obj.allCornerPositions = allCornerPositions;
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allWaveguidePositions.mat'), 'allWaveguidePositions');
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allCornerPositions.mat'), 'allCornerPositions');
         end
         function emitterGroups = divideEmitters(obj, emitters, chiplets)
+            nthChiplet = extractfield(emitters, 'nthChiplet');
+            if ~exist('chiplets' ,'var')
+                chiplets = unique(nthChiplet);
+            end
+            
             nChiplets = length(chiplets);
             emitterGroups = cell(1, nChiplets);
             valid = obj.getEmitterValidity(emitters);
-            nthChiplet = extractfield(emitters, 'nthChiplet');
             for k = 1:nChiplets
                 emitterGroups{k} = emitters(valid & (nthChiplet == chiplets(k)));
             end
@@ -869,7 +904,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             % wl_img = rot90(wl_img, 2);
             reshapedWlImg = imresize(wl_img, size(wl_img)./[gdsPosition.verticalRatio, gdsPosition.horizontalRatio]);
             if isempty(obj.gdsImg)
-                gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "chiplet_only.png")));
+                gdsImg = rgb2gray(imread(fullfile(obj.dataRootDir, "CleanedData", "SupplementaryFiles", "chiplet_only.png")));
                 gdsImg = (gdsImg>0);
                 obj.gdsImg = gdsImg;
             end
@@ -897,7 +932,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             wlRef = imref2d(size(reshapedWlImg));
             if isempty(obj.framePos_xy)
                 try
-                    load(fullfile(obj.dataRootDir, "CleanedData", "framePos_xy.mat"), 'framePos_xy');
+                    load(fullfile(obj.dataRootDir, "CleanedData", "SupplementaryFiles", "framePos_xy.mat"), 'framePos_xy');
                     obj.framePos_xy = framePos_xy;
                 catch
                     obj.framePos_xy = obj.getGdsFrame(obj.gdsImg);
@@ -922,17 +957,16 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
         function plotSingleWL(obj, emitters, wlImg, ax)
+            nthChiplet = unique(extractfield(emitters, 'nthChiplet'));
+            if length(nthChiplet) > 1
+                error("Emitters from more than one chiplets are included.");
+            end
+            
             cmap = lines(2);
             fittedX = extractfield(emitters, 'fittedX');
             fittedY = extractfield(emitters, 'fittedY');
-            xSize = 512;
-            ySize = 512;
-            % fittedX = xSize + 1 - fittedX;
-            % fittedY = ySize + 1 - fittedY;
             absPosX = extractfield(emitters, 'absPosX');
             absPosY = extractfield(emitters, 'absPosY');
-            % absPosX = xSize + 1 - absPosX;
-            % absPosY = ySize + 1 - absPosY;
             centerDistance = extractfield(emitters, 'centerDistance');
             region = extractfield(emitters, 'region');
             valid = obj.getEmitterValidity(emitters);
@@ -943,8 +977,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 fig = figure;
                 ax = axes(fig);
             end
-            % obj.gdsMatch(wlImg, gdsPosition, true, ax);
-            obj.waveguideAutoMatch(wlImg, true, false, ax);
+            obj.plotFittedWaveguide(wlImg, squeeze(obj.allWaveguidePositions(nthChiplet, :, :)), squeeze(obj.allCornerPositions(nthChiplet, :, :)), ax);
             hold(ax, 'on');
             tipValid = strcmp(region, 'tip');
             centerValid = strcmp(region, 'center'); 
@@ -974,13 +1007,13 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
 
 
-            pause(0.1);
+            pause(0.3);
             
         end
-        function allWaveguidePositions = plotChipletEmitters(obj, plotEmitters, emitters, startNum)
+        function [allWaveguidePositions, allCornerPositions] = plotChipletEmitters(obj, plotEmitters, emitters, startNum)
             % Deprecated
             [allFolders, allFileNames] = obj.getAllDataFiles;
-            % load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
+            % load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'wlImgInfo.mat'), 'allSize', 'allSlant'); % variables: allSize (64*1), allSlant(64*1)
             if ~exist('startNum', 'var')
                 startNum = 1;
             end
@@ -1023,11 +1056,9 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
                 fusedAx = axes(fig);
                 if ~exist('plotEmitters', 'var') || ~plotEmitters
-                    % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition, true, fusedAx);
                     [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img, true, false, fusedAx);
                 else
                     [allWaveguidePositions(k, :, :), allCornerPositions(k, :, :)] = obj.waveguideAutoMatch(wl_img);
-                    % allWaveguidePositions(k, :, :) = obj.gdsMatch(wl_img, gdsPosition);
                     fusedAx.Position = [0.17, 0.1, 0.7, 0.8];
                 end
                 if exist('plotEmitters', 'var') && plotEmitters
@@ -1037,7 +1068,8 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 saveas(fig, fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k}, sprintf("chiplet%d_size%d_slant%d.png", idx, chipletSize, imSlant)));
             end
 
-            save(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'), 'allWaveguidePositions')
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allWaveguidePositions.mat'), 'allWaveguidePositions');
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allCornerPositions.mat'), 'allCornerPositions');
         end 
 
         function centerDistance = getEmitterCenterDistance(obj, absPosX, absPosY, waveguidePositions)
@@ -1049,77 +1081,140 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             centerDistance = waveguideDists(closestLine);
         end
 
-        function emitters = updateEmitterCenterDistance(obj, emitters, allWaveguidePositions)
-            nthChiplet = extractfield(emitters, 'nthChiplet');
-            region = extractfield(emitters, 'region');
-            chipletList = unique(nthChiplet);
-            for k = 1:length(chipletList)
-                tempN = chipletList(k);
-                emitterIdx = find(nthChiplet==tempN & (strcmp(region, 'tip')|strcmp(region, 'center')));
-                for l = 1:length(emitterIdx)
-                    absPosX = emitters(emitterIdx(l)).absPosX;
-                    absPosY = emitters(emitterIdx(l)).absPosY;
-                    emitters(emitterIdx(l)).centerDistance =obj.getEmitterCenterDistance(absPosX, absPosY, squeeze(allWaveguidePositions(tempN, :, :)));
+        function emitters = updateEmitterProperties(obj, emitters, properties)
+            if isstring(properties) || ischar(properties)
+                properties = {properties};
+            end
+            for k = 1:length(properties)
+                property = properties{k};
+                if strcmp(property, 'posErr')
+                    for l = 1:length(emitters)
+                        A = emitters(l).gaussianAmplitude/obj.EMGain;
+                        s = emitters(l).gaussianSigma;
+                        b = obj.backgroundNoise/obj.EMGain;
+                        emitters(l).posErr = sqrt((A/12+(4*b+A)*s^2)/(pi*s^2*A^2));
+                    end
+                elseif strcmp(property, 'region')
+                    if isempty(obj.allCornerPositions)
+                        load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allCornerPositions.mat'), 'allCornerPositions')
+                        obj.allCornerPositions = allCornerPositions;
+                    end
+                    nthChiplet = extractfield(emitters, 'nthChiplet');
+                    for l = 1:length(emitters)
+                        emitters(l).region = obj.getRegion(emitters(l).absPosX, emitters(l).absPosY, squeeze(obj.allCornerPositions(nthChiplet(l), :, :)));
+                    end
+                elseif strcmp(property, 'centerDistance')
+                    if isempty(obj.allWaveguidePositions)
+                        load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allWaveguidePositions.mat'), 'allWaveguidePositions')
+                        obj.allWaveguidePositions = allWaveguidePositions;
+                    end
+                    nthChiplet = extractfield(emitters, 'nthChiplet');
+                    region = extractfield(emitters, 'region');
+                    chipletList = unique(nthChiplet);
+                    for k = 1:length(chipletList)
+                        tempN = chipletList(k);
+                        emitterIdx = find(nthChiplet==tempN & (strcmp(region, 'tip')|strcmp(region, 'center')));
+                        for l = 1:length(emitterIdx)
+                            absPosX = emitters(emitterIdx(l)).absPosX;
+                            absPosY = emitters(emitterIdx(l)).absPosY;
+                            emitters(emitterIdx(l)).centerDistance =obj.getEmitterCenterDistance(absPosX, absPosY, squeeze(obj.allWaveguidePositions(tempN, :, :)));
+                        end
+                    end
+                elseif strcmp(property, 'edgeDistance_nm') % Will first update normCenterDistance_nm
+                    if isempty(obj.allChipletStatistics)
+                        load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allChipletStatistics.mat'), 'allChipletStatistics')
+                        obj.allChipletStatistics = allChipletStatistics;
+                    end
+
+                    for k = 1:length(emitters)
+                        if ~isempty(emitters(k).centerDistance) && ~isnan(emitters(k).centerDistance)
+                            centerDistance_nm = emitters(k).centerDistance*obj.pixel2nm;
+                            tempChiplet = emitters(k).nthChiplet;
+                            lowerEdge_pixel = obj.allChipletStatistics(tempChiplet).tipMin;
+                            upperEdge_pixel = obj.allChipletStatistics(tempChiplet).tipMax;
+                            wgWidth = obj.allChipletStatistics(tempChiplet).waveguideWidth_nm;
+                            emitters(k).normCenterDistance_nm = (centerDistance_nm-lowerEdge_pixel)/(upperEdge_pixel-lowerEdge_pixel)*wgWidth - wgWidth/2;
+                            emitters(k).normPosErr_nm = emitters(k).posErr*obj.pixel2nm/(upperEdge_pixel-lowerEdge_pixel)*wgWidth;
+                            emitters(k).edgeDistance_nm = wgWidth/2-abs(emitters(k).normCenterDistance_nm);
+                            emitters(k).edgeDistanceMin_nm = emitters(k).edgeDistance_nm - emitters(k).normPosErr_nm;
+                            emitters(k).edgeDistanceMax_nm = min(wgWidth/2, emitters(k).edgeDistance_nm + emitters(k).normPosErr_nm);
+
+                        end
+                    end
                 end
             end
         end
+
         function plotSingleScatter(obj, emitters, ax)
             cmap = lines(2);
-            fittedX = extractfield(emitters, 'fittedX');
-            fittedY = extractfield(emitters, 'fittedY');
-            xSize = 512;
-            ySize = 512;
-            fittedX = xSize + 1 - fittedX;
-            fittedY = ySize + 1 - fittedY;
-            absPosX = extractfield(emitters, 'absPosX');
-            absPosY = extractfield(emitters, 'absPosY');
-            absPosX = xSize + 1 - absPosX;
-            absPosY = ySize + 1 - absPosY;
-            centerDistance = extractfield(emitters, 'centerDistance');
+            % fittedX = extractfield(emitters, 'fittedX');
+            % fittedY = extractfield(emitters, 'fittedY');
+            % xSize = 512;
+            % ySize = 512;
+            % fittedX = xSize + 1 - fittedX;
+            % fittedY = ySize + 1 - fittedY;
+            % absPosX = extractfield(emitters, 'absPosX');
+            % absPosY = extractfield(emitters, 'absPosY');
+            % absPosX = xSize + 1 - absPosX;
+            % absPosY = ySize + 1 - absPosY;
             region = extractfield(emitters, 'region');
             fittedLinewidth_THz = extractfield(emitters, 'fittedLinewidth_THz');
             fittedPeakAmplitude = extractfield(emitters, 'fittedPeakAmplitude');
-
-            centerDistance_nm = centerDistance * obj.pixel2nm;
+            % posErr_nm = extractfield(emitters, 'posErr')*obj.pixel2nm;
+            normPosErr_nm = extractfield(emitters, 'normPosErr_nm');
+            % centerDistance = extractfield(emitters, 'centerDistance');
+            % centerDistance_nm = centerDistance * obj.pixel2nm;
+            edgeDistance_nm = extractfield(emitters, 'edgeDistance_nm');
+            edgeDistanceMin_nm = extractfield(emitters, 'edgeDistanceMin_nm');
+            edgeDistanceMax_nm = extractfield(emitters, 'edgeDistanceMax_nm');
 
             scatterSize = 10;
             
             tipValid = strcmp(region, 'tip');
-            tipFittedX = fittedX(tipValid);
-            tipFittedY = fittedY(tipValid);
-            tipPosErr = sqrt((tipFittedX - absPosX(tipValid)).^2+(tipFittedY - absPosY(tipValid)).^2)*obj.pixel2nm;
-            tipCenterDistance_nm = centerDistance_nm(tipValid);
+            % tipFittedX = fittedX(tipValid);
+            % tipFittedY = fittedY(tipValid);
+            % tipPosErr_nm = sqrt((tipFittedX - absPosX(tipValid)).^2+(tipFittedY - absPosY(tipValid)).^2)*obj.pixel2nm;
+            tipPosErr_nm = normPosErr_nm(tipValid);
+            tipEdgeDistance_nm = edgeDistance_nm(tipValid);
+            tipEdgeDistanceMin_nm = edgeDistanceMin_nm(tipValid);
+            tipEdgeDistanceMax_nm = edgeDistanceMax_nm(tipValid);
             tipFittedLinewidth_THz = fittedLinewidth_THz(tipValid);
             tipFOM = 30e-6./tipFittedLinewidth_THz;
             
-            scatter(ax, tipCenterDistance_nm, tipFOM, scatterSize, 'filled', 'Color', cmap(2, :), 'MarkerFaceAlpha', 0.5, 'MarkerEdgeAlpha', 0.5);
+            tipScatterH = scatter(ax, tipEdgeDistance_nm, tipFOM, scatterSize, 'filled', 'Color', cmap(2, :), 'MarkerFaceAlpha', 0.5, 'MarkerEdgeAlpha', 0.5);
             
             for l = 1:sum(tipValid)
-                line([tipCenterDistance_nm(l)-tipPosErr(l), tipCenterDistance_nm(l)+tipPosErr(l)], [tipFOM(l), tipFOM(l)], 'Color', [cmap(1, :), 0.2], 'Parent', ax, 'LineWidth', 1);
-                % line([tipCenterDistance_nm(l), tipCenterDistance_nm(l)], [tipFOM(l)+tipFOM(l), tipFOM(l)-tipFOM(l)], 'Color', cmap(2, :), 'Parent', ax, 'LineWidth', 1);
+                line([tipEdgeDistanceMin_nm(l), tipEdgeDistanceMax_nm(l)], [tipFOM(l), tipFOM(l)], 'Color', [cmap(1, :), 0.2], 'Parent', ax, 'LineWidth', 1);
+                % line([tipEdgeDistance_nm(l), tipEdgeDistance_nm(l)], [tipFOM(l)+tipFOM(l), tipFOM(l)-tipFOM(l)], 'Color', cmap(2, :), 'Parent', ax, 'LineWidth', 1);
             end
             
-            centerValid = strcmp(region, 'center'); 
-            centerFittedX = fittedX(centerValid);
-            centerFittedY = fittedY(centerValid);
-            centerPosErr = sqrt((centerFittedX - absPosX(centerValid)).^2+(centerFittedY - absPosY(centerValid)).^2)*obj.pixel2nm;
-            centerCenterDistance_nm = centerDistance_nm(centerValid);
-            centerFittedLinewidth_THz = fittedLinewidth_THz(centerValid);
-            centerFOM = 30e-6./centerFittedLinewidth_THz;
+            % centerValid = strcmp(region, 'center'); 
+            % centerFittedX = fittedX(centerValid);
+            % centerFittedY = fittedY(centerValid);
+            % centerPosErr_nm = sqrt((centerFittedX - absPosX(centerValid)).^2+(centerFittedY - absPosY(centerValid)).^2)*obj.pixel2nm;
+            % centerPosErr_nm = normPosErr_nm(centerValid);
+            % centerEdgeDistance_nm = edgeDistance_nm(centerValid);
+            % centerFittedLinewidth_THz = fittedLinewidth_THz(centerValid);
+            % centerFOM = 30e-6./centerFittedLinewidth_THz;
 
-            hold(ax, 'on');
-            scatter(ax, centerCenterDistance_nm, centerFOM, scatterSize, 'filled', 'Color', cmap(1, :), 'MarkerFaceAlpha', 0.5, 'MarkerEdgeAlpha', 0.5)
+            % hold(ax, 'on');
+            % centerScatterH = scatter(ax, centerEdgeDistance_nm, centerFOM, scatterSize, 'filled', 'Color', cmap(1, :), 'MarkerFaceAlpha', 0.5, 'MarkerEdgeAlpha', 0.5)
             
-            for l = 1:sum(centerValid)
-                line([centerCenterDistance_nm(l)-centerPosErr(l), centerCenterDistance_nm(l)+centerPosErr(l)], [centerFOM(l), centerFOM(l)], 'Color', [cmap(2, :), 0.2], 'Parent', ax, 'LineWidth', 1);
-                % line([centerCenterDistance_nm(l), centerCenterDistance_nm(l)], [centerFOM(l)+centerFOM(l), centerFOM(l)-centerFOM(l)], 'Color', cmap(1, :), 'Parent', ax, 'LineWidth', 1);
-            end
+            % for l = 1:sum(centerValid)
+            %     line([centerEdgeDistance_nm(l)-centerPosErr_nm(l), centerEdgeDistance_nm(l)+centerPosErr_nm(l)], [centerFOM(l), centerFOM(l)], 'Color', [cmap(2, :), 0.2], 'Parent', ax, 'LineWidth', 1);
+            %     % line([centerEdgeDistance_nm(l), centerEdgeDistance_nm(l)], [centerFOM(l)+centerFOM(l), centerFOM(l)-centerFOM(l)], 'Color', cmap(1, :), 'Parent', ax, 'LineWidth', 1);
+            % end
 
             ax.LineWidth = 2;
             ax.FontSize = 13;
             box(ax, 'on');
-            ax.XLabel.String = "Distance to center (nm)";
+            % ax.XLabel.String = "Distance to center (nm)";
+            ax.XLabel.String = "Distance to edge (nm)";
+
             ax.YLabel.String = "FOM";
+            ax.XLim = [0, 140];
+            % legendH = legend(ax, [tipScatterH, centerScatterH], {'tip', 'center'});
+            % legendH.Location = 'northwest';
             pause(0.1);
         end
         function plotScatters(obj, emitters, plotSingleChiplets, chiplets)
@@ -1151,7 +1246,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 end
             end
         end
-        function distanceStatistics = getCenterDistanceStatistics(obj, emitters)
+        function updateAllChipletStatistics(obj, emitters)
             nthChiplet = extractfield(emitters, 'nthChiplet');
             if ~exist('chiplets', 'var')
                 % plot all chiplets
@@ -1160,47 +1255,70 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             region = extractfield(emitters, 'region');
             valid = obj.getEmitterValidity(emitters);
             centerDistance = extractfield(emitters, 'centerDistance');
-            distanceStatistics = [];
-            load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'));
+            posErr = extractfield(emitters, 'posErr');
+            allChipletStatistics = [];
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'wlImgInfo.mat'), 'allSlant', 'allSize');
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allWaveguideWidth_nm.mat'), 'allWaveguideWidth_nm');
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allChipletValid.mat'), 'allChipletValid');
 
             for k = 1:length(chiplets)
                 tipValid = valid & (nthChiplet == chiplets(k)) & strcmp(region, 'tip');
                 tipCenterDistance_nm = centerDistance(tipValid) * obj.pixel2nm;
+                tipPosErr_nm = posErr(tipValid)*obj.pixel2nm;
                 tipAvg = mean(tipCenterDistance_nm);
                 tipStd = std(tipCenterDistance_nm);
-                tipMax = max(tipCenterDistance_nm);
-                tipMin = min(tipCenterDistance_nm);
+                tipMax = max(tipCenterDistance_nm+tipPosErr_nm);
+                tipMin = min(tipCenterDistance_nm-tipPosErr_nm);
                 centerValid = valid & (nthChiplet == chiplets(k)) & strcmp(region, 'center');
                 centerCenterDistance_nm = centerDistance(centerValid) * obj.pixel2nm;
+                centerPosErr_nm = posErr(centerValid)*obj.pixel2nm;
                 centerAvg = mean(centerCenterDistance_nm);
                 centerStd = std(centerCenterDistance_nm);
-                centerMax = max(centerCenterDistance_nm);
-                centerMin = min(centerCenterDistance_nm);
+                centerMax = max(centerCenterDistance_nm+centerPosErr_nm);
+                centerMin = min(centerCenterDistance_nm-centerPosErr_nm);
                 allAvg = mean([tipCenterDistance_nm, centerCenterDistance_nm]);
                 allStd = std([tipCenterDistance_nm, centerCenterDistance_nm]);
-                allMax = max([tipCenterDistance_nm, centerCenterDistance_nm]);
-                allMin = min([tipCenterDistance_nm, centerCenterDistance_nm]);
+                allMax = max([tipMax, centerMax]);
+                allMin = min([tipMin, centerMin]);
                 chipletSize = allSize(chiplets(k));
+                chipletValid = allChipletValid(chiplets(k));
                 imSlant = allSlant(chiplets(k));
-                tempDistanceStatistics = struct('tipAvg', tipAvg, 'tipStd', tipStd, 'tipMin', tipMin, 'tipMax', tipMax, ...
+                waveguideWidth_nm = allWaveguideWidth_nm(chiplets(k));
+                tempChipletStatistics = struct('nthChiplet', chiplets(k), 'tipAvg', tipAvg, 'tipStd', tipStd, 'tipMin', tipMin, 'tipMax', tipMax, ...
                 'centerAvg', centerAvg, 'centerStd', centerStd, 'centerMin', centerMin, 'centerMax', centerMax, ...
                 'allAvg', allAvg, 'allStd', allStd, 'allMin', allMin, 'allMax', allMax, ...
-                'chipletSize', chipletSize, 'imSlant', imSlant);
-                if isempty(distanceStatistics)
-                    distanceStatistics = tempDistanceStatistics;
+                'chipletSize', chipletSize, 'imSlant', imSlant, 'waveguideWidth_nm', waveguideWidth_nm, 'chipletValid', chipletValid);
+                tempFields = fields(tempChipletStatistics);
+                for k = 1:length(tempFields)
+                    field = tempFields{k};
+                    if isempty(tempChipletStatistics.(field))
+                        tempChipletStatistics.(field) = NaN; % In case the chiplet is invalid
+                    end
+                end
+                if isempty(allChipletStatistics)
+                    allChipletStatistics = tempChipletStatistics;
                 else
-                    distanceStatistics(end+1) = tempDistanceStatistics;
+                    allChipletStatistics(end+1) = tempChipletStatistics;
                 end
             end
+            obj.allChipletStatistics = allChipletStatistics;
+            save(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allChipletStatistics.mat'), 'allChipletStatistics');
         end
-        function plotDistanceStatistics(obj, emitters, ax)
-            distanceStatistics = obj.getCenterDistanceStatistics(emitters);
-            allAvg = extractfield(distanceStatistics, 'allAvg');
-            allStd = extractfield(distanceStatistics, 'allStd');
-            allMin = extractfield(distanceStatistics, 'allMin');
-            allMax = extractfield(distanceStatistics, 'allMax');
-            chipletSize = extractfield(distanceStatistics, 'chipletSize');
-            imSlant = extractfield(distanceStatistics, 'imSlant');
+        function plotDistanceStatistics(obj, emitters, dataset, ax, plotRange)
+            if isempty(obj.allChipletStatistics)
+                load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allChipletStatistics.mat'), 'allChipletStatistics');
+                obj.allChipletStatistics = allChipletStatistics;
+            end
+
+            assert(any(strcmp(dataset, ["tip", "center", "all"])), "Argument `dataset` should be on of the 'tip', 'center', 'all'");
+            avg = extractfield(obj.allChipletStatistics, sprintf('%sAvg', dataset));
+            std = extractfield(obj.allChipletStatistics, sprintf('%sStd', dataset));
+            min = extractfield(obj.allChipletStatistics, sprintf('%sMin', dataset));
+            max = extractfield(obj.allChipletStatistics, sprintf('%sMax', dataset));
+            chipletSize = extractfield(obj.allChipletStatistics, 'chipletSize');
+            imSlant = extractfield(obj.allChipletStatistics, 'imSlant');
+            nthChiplet = extractfield(obj.allChipletStatistics, 'nthChiplet');
+            waveguideWidth_nm = extractfield(obj.allChipletStatistics, 'waveguideWidth_nm');
             cmap = lines(3); % Use different color to represent different sizes (chipletSize = 1, 2, 3)
             markers = {'o', '^', '*'}; % Use different marker to represent different slants (chipletSize = 4, 5, 6)
             if ~exist('ax') || isempty(ax) || ~isvalid(ax)
@@ -1208,10 +1326,24 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
                 ax = axes(fig);
             end
             hold(ax, 'on');
-            for k = 1:length(distanceStatistics)
-                scatter(ax, k, allAvg(k), markers{imSlant(k)-3}, 'filled', 'MarkerFaceColor', cmap(chipletSize(k), :), 'MarkerEdgeColor', cmap(chipletSize(k), :));
-                line([k, k], [allAvg(k)+allStd(k), allAvg(k)-allStd(k)], 'Color', cmap(chipletSize(k), :), 'Parent', ax, 'LineWidth', 2);
-                line([k, k], [allMin(k), allMax(k)], 'LineStyle', '--', 'Color', cmap(chipletSize(k), :), 'Parent', ax, 'LineWidth', 0.5);
+            if exist('plotRange', 'var') && plotRange
+                rangeFig = figure;
+                rangeAx = axes(rangeFig);
+                % scatter(rangeAx, waveguideWidth_nm, max-min, 'filled');
+                scatter(rangeAx, nthChiplet, max-min, 'filled');
+
+                rangeAx.LineWidth = 2;
+                rangeAx.FontSize = 13;
+                box(rangeAx, 'on');
+                % rangeAx.XLabel.String = "Gds waveguide width (nm)";
+                % rangeAx.XLim = [250, 290];
+                rangeAx.XLabel.String = "Chiplet number";
+                rangeAx.YLabel.String = "Distance range (nm)";
+            end
+            for k = 1:length(obj.allChipletStatistics)
+                scatter(ax, nthChiplet(k), avg(k), markers{imSlant(k)-3}, 'filled', 'MarkerFaceColor', cmap(chipletSize(k), :), 'MarkerEdgeColor', cmap(chipletSize(k), :));
+                line([nthChiplet(k), nthChiplet(k)], [avg(k)+std(k), avg(k)-std(k)], 'Color', cmap(chipletSize(k), :), 'Parent', ax, 'LineWidth', 2);
+                line([nthChiplet(k), nthChiplet(k)], [min(k), max(k)], 'LineStyle', '--', 'Color', cmap(chipletSize(k), :), 'Parent', ax, 'LineWidth', 0.5);
 
             end
             ax.LineWidth = 2;
@@ -1232,37 +1364,47 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             for l = 1:length(chiplets)
                 inTarget = inTarget | (nthChiplet == chiplets(l));
             end
-            fig = figure;
-            fig.Position = [100, 300, 1600, 700];
-            s1 = subplot(1, 2, 1);
-            obj.plotSingleScatter(emitters(inTarget&valid), s1);
+            scatterFig = figure;
+            scatterFig.Position = [100, 300, 600, 500];
+            scatterAx = axes(scatterFig);
+            obj.plotSingleScatter(emitters(inTarget&valid), scatterAx);
         
-            s2 = subplot(1, 2, 2);
-            obj.plotDistanceStatistics(emitters(inTarget&valid), s2);
+            chipletsFig = figure;
+            chipletsFig.Position = [800, 300, 600, 500];
+            chipletsAx = axes(chipletsFig);
+            obj.plotDistanceStatistics(emitters(inTarget&valid), 'tip', chipletsAx);
+
+            pause(0.3);
+
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allCornerPositions.mat'), 'allCornerPositions');
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'allWaveguidePositions.mat'), 'allWaveguidePositions');
+            obj.allCornerPositions = allCornerPositions;
+            obj.allWaveguidePositions = allWaveguidePositions;
+
             if exist('plotSingleChiplets') && plotSingleChiplets
                 [allFolders, allFileNames] = obj.getAllDataFiles;
                 
                 emitterGroups = obj.divideEmitters(emitters, chiplets);
-                load(fullfile(obj.dataRootDir, 'CleanedData', 'wlImgInfo.mat'), 'allSize', 'allSlant');
                 for k = 1:length(chiplets)
                     nthChiplet = chiplets(k);
                     fig = figure;
                     fig.Position = [100, 300, 1600, 700];
-                    s1 = subplot(1, 2, 1);
-                    obj.plotSingleScatter(emitterGroups{k}, s1);
-                    s2 = subplot(1, 2, 2);
+                    pause(0.1);
+                    if isempty(emitterGroups{k})
+                        continue
+                    end
 
+                    s1 = axes(fig);
+                    s1 = subplot(1, 2, 1, s1);
+                    obj.plotSingleScatter(emitterGroups{k}, s1);
+                    s2 = axes(fig);
+                    s2 = subplot(1, 2, 2, s2);
                     srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{nthChiplet});
                     dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{nthChiplet});
                     [tokens,matches] = regexp(allFileNames{nthChiplet},'[cC]hiplet_?(\d+)(.*)\.mat$','tokens','match');
                     idx = str2num(tokens{1}{1});
                     fprintf("Processing file '%s' (%d/%d), idx: %d.\n", allFileNames{nthChiplet}, k, length(chiplets), idx);
                     load(fullfile(srcDir, allFileNames{nthChiplet}), 'wl_img');
-                    chipletSize = allSize(nthChiplet);
-                    imSlant = allSlant(nthChiplet);
-                    fprintf("ChipletSize: %d, ImageSlant: %d\n", chipletSize, imSlant);
-                    tempPositionFile = fullfile(obj.dataRootDir, 'CleanedData', 'GdsPositions', sprintf("gdsPosition_%d_%d.mat", chipletSize, imSlant));
-                    load(tempPositionFile, 'gdsPosition');
                     obj.plotSingleWL(emitterGroups{k}, wl_img, s2);
                 end
             end
@@ -1285,7 +1427,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             nValid = length(allFileNames);
             allEmitters = cell(nValid, 1);
 
-            load(fullfile(obj.dataRootDir, 'CleanedData', 'gdsFramePos.mat'));
+            load(fullfile(obj.dataRootDir, 'CleanedData', 'SupplementaryFiles', 'gdsFramePos.mat'));
             for k = 1:nValid
                 srcDir = fullfile(obj.dataRootDir, 'CleanedData', allFolders{k});
                 dstDir = fullfile(obj.dataRootDir, 'ProcessedData', allFolders{k});
@@ -1315,6 +1457,7 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             % save(fullfile(sumDir, "all_emitters_data.mat"), emitters);
         end
     end
+
 end
 
 

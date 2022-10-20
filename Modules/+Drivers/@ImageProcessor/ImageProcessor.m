@@ -330,7 +330,7 @@ classdef ImageProcessor < Modules.Driver
                 processedImage(CC.PixelIdxList{idx(k)}) = 1;
             end
         end
-        function [waveguidePositions, cornerPositions, extendRatio] = getWaveguidePositions(obj, wlImg, drawFig)
+        function [waveguidePositions, cornerPositions] = getWaveguidePositions(obj, wlImg, drawFig)
             if ~exist('drawFig', 'var')
                 drawFig = false;
             end
@@ -585,7 +585,8 @@ classdef ImageProcessor < Modules.Driver
                 drawFig = false;
             end
             cmap = lines(1);
-            rotationAngle = obj.getAngle(segments, drawFig, 0.02, true);
+            t = tic;
+            rotationAngle = obj.getAngle(segments, drawFig, 0.1, true);
             segImg = segments{1}.image;
             segX = size(segImg, 2);
             segY = size(segImg, 1);
