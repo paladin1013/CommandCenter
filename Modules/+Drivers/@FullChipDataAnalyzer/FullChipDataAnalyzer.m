@@ -1190,6 +1190,83 @@ classdef FullChipDataAnalyzer < matlab.mixin.Heterogeneous & handle
             end
         end
 
+        function plotGroupedStatistics(obj, emitters)
+            valid = obj.getEmitterValidity(emitters);
+            region = extractfield(emitters, 'region');
+            regionValid = strcmp(region, "tip") | strcmp(region, "center");
+            validEmitters = emitters(valid & regionValid);
+            centerDistance = extractfield(validEmitters, 'centerDistance');
+            fittedLinewidth_THz = extractfield(validEmitters, 'fittedLinewidth_THz');
+            fittedPeakAmplitude = extractfield(validEmitters, 'fittedPeakAmplitude');
+            bins = 100;
+            maxDistance = 2.5;
+            nEmitters = length(validEmitters);
+            linewidthAvg = zeros(2, bins);
+            linewidthVar = zeros(2, bins);
+            amplitudeAvg = zeros(2, bins);
+            amplitudeVar = zeros(2, bins);
+            emitterCnt = zeros(2, bins);
+            distanceThr = maxDistance/bins*[1:bins];
+            for k = 1:bins
+                
+                below = abs(centerDistance)<distanceThr(k);
+                above = abs(centerDistance)>=distanceThr(k);
+                emitterCnt(1, k) = sum(below);
+                emitterCnt(2, k) = sum(above);
+                linewidthAvg(1, k) = mean(fittedLinewidth_THz(below));
+                linewidthAvg(2, k) = mean(fittedLinewidth_THz(above));
+                linewidthVar(1, k) = var(fittedLinewidth_THz(below));
+                linewidthVar(2, k) = var(fittedLinewidth_THz(above));
+                amplitudeAvg(1, k) = mean(fittedPeakAmplitude(below));
+                amplitudeAvg(2, k) = mean(fittedPeakAmplitude(above));
+                amplitudeVar(1, k) = var(fittedPeakAmplitude(below));
+                amplitudeVar(2, k) = var(fittedPeakAmplitude(above));
+            end
+
+            cmap = lines(2);
+
+            fig = figure;
+            ax = axes(fig);
+            ax = subplot(1, 3, 1, ax);
+            hold(ax, 'on');
+            plot(ax, distanceThr*obj.pixel2nm, emitterCnt(1, :)/nEmitters, 'LineWidth', 2);
+            plot(ax, distanceThr*obj.pixel2nm, emitterCnt(2, :)/nEmitters, 'LineWidth', 2);
+            box(ax, 'on');
+            ax.LineWidth = 2;
+            ax.XLabel.String = "Distance to waveguide center (nm)";
+            ax.YLabel.String = "Emitter ratio";
+            ax.FontSize = 18;
+
+            ax = axes(fig);
+            ax = subplot(1, 3, 2, ax);
+            hold(ax, 'on');
+            % plot(ax, distanceThr*obj.pixel2nm, linewidthAvg(1, :), 'LineWidth', 2);
+            % plot(ax, distanceThr*obj.pixel2nm, linewidthAvg(2, :), 'LineWidth', 2);
+            errorfill(distanceThr*obj.pixel2nm, linewidthAvg(1, :), sqrt(linewidthVar(1, :)),'parent',ax, 'LineWidth', 2);
+            errorfill(distanceThr*obj.pixel2nm, linewidthAvg(2, :), sqrt(linewidthVar(2, :)),'parent',ax, 'LineWidth', 2);
+            box(ax, 'on');
+            ax.LineWidth = 2;
+            ax.XLabel.String = "Distance to waveguide center (nm)";
+            ax.YLabel.String = "Average linewidth (THz)";
+            ax.FontSize = 18;
+
+            ax = axes(fig);
+            ax = subplot(1, 3, 3, ax);
+            hold(ax, 'on');
+            % plot(ax, distanceThr*obj.pixel2nm, amplitudeAvg(1, :), 'LineWidth', 2);
+            % plot(ax, distanceThr*obj.pixel2nm, amplitudeAvg(2, :), 'LineWidth', 2);
+            errorfill(distanceThr*obj.pixel2nm, amplitudeAvg(1, :), sqrt(amplitudeVar(1, :)),'parent',ax, 'LineWidth', 2);
+            errorfill(distanceThr*obj.pixel2nm, amplitudeAvg(2, :), sqrt(amplitudeVar(2, :)),'parent',ax, 'LineWidth', 2);
+            box(ax, 'on');
+            ax.LineWidth = 2;
+            ax.XLabel.String = "Distance to waveguide center (nm)";
+            ax.YLabel.String = "Average intensity (a.u.)";
+            ax.FontSize = 18;
+
+
+
+
+        end
         function plotSingleScatter(obj, emitters, ax)
             cmap = lines(2);
             % fittedX = extractfield(emitters, 'fittedX');
